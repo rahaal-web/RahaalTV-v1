@@ -4503,7 +4503,6 @@ export function AdminDashboardView({
 
               {activeTab === 'notifications' && (
                 <AdminNotificationsPanel
-                  user={user}
                   catalog={catalog}
                   requests={requests}
                   isOwner={isOwner}

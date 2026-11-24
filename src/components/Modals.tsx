@@ -1,7 +1,6 @@
 import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 import {
   AlertTriangle,
-  Bell,
   Bookmark,
   Captions,
   Check,
@@ -94,7 +93,6 @@ import {
 } from '../types/media';
 import { FooterTopic } from './Footer';
 import { OptimizedImage } from './OptimizedImage';
-import { PushPermissionCard } from './PushPermissionCard';
 import { RunningRabbitLoader } from './RunningRabbitLoader';
 
 function useDialogAccessibility(
@@ -2876,7 +2874,6 @@ interface LoginModalProps {
   onContinueAsGuest?: () => void;
   onExitGuest?: () => void;
   onOpenWatchHistory?: () => void;
-  onOpenNotifications?: () => void;
   onOpenAdmin: () => void;
   onNotify?: (msg: string) => void;
 }
@@ -2892,7 +2889,6 @@ export function LoginModal({
   onContinueAsGuest,
   onExitGuest,
   onOpenWatchHistory,
-  onOpenNotifications,
   onOpenAdmin,
   onNotify,
 }: LoginModalProps) {
@@ -3046,19 +3042,6 @@ export function LoginModal({
               </button>
             )}
 
-            {onOpenNotifications && (
-              <button
-                type="button"
-                onClick={onOpenNotifications}
-                className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-white/[0.06] hover:bg-white/15 border border-white/10 py-3 text-xs font-extrabold text-white transition-colors cursor-pointer"
-              >
-                <Bell className="w-4 h-4 text-[#f9c400]" />
-                <span>مركز الإشعارات</span>
-              </button>
-            )}
-
-            <PushPermissionCard compact onNotify={onNotify} />
-
             <button
               type="button"
               onClick={() => {
@@ -3107,19 +3090,6 @@ export function LoginModal({
                 <span>سجل المشاهدة (شاهدته مؤخراً)</span>
               </button>
             )}
-
-            {onOpenNotifications && (
-              <button
-                type="button"
-                onClick={onOpenNotifications}
-                className="w-full min-h-[44px] inline-flex items-center justify-center gap-2 rounded-xl bg-white/[0.06] hover:bg-white/15 border border-white/10 py-3 text-xs font-extrabold text-white transition-colors cursor-pointer"
-              >
-                <Bell className="w-4 h-4 text-[#f9c400]" />
-                <span>مركز الإشعارات</span>
-              </button>
-            )}
-
-            <PushPermissionCard compact onNotify={onNotify} />
 
             {onExitGuest && (
               <button

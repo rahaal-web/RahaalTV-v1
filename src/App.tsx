@@ -22,7 +22,6 @@ import {
   TrailerModal,
   WatchlistModal,
 } from './components/Modals';
-import { NotificationsDrawer } from './components/NotificationsDrawer';
 import { RecentlyWatchedSection } from './components/RecentlyWatchedSection';
 import { RunningRabbitLoader } from './components/RunningRabbitLoader';
 import { SearchDrawer } from './components/SearchDrawer';
@@ -95,15 +94,8 @@ import {
   parseRouteFromLocationParts,
   readRouterHistoryState,
   RouterHistoryState,
-  sanitizeInternalRouteUrl,
   ScrollPositionStore,
 } from './lib/router';
-import {
-  loadLocalReadNotificationIds,
-  loadNotificationPreferences,
-  markNotificationReadLocally,
-  saveNotificationPreferences,
-} from './lib/notifications';
 import {
   applyDisplayDevicePrefs,
   detectClientCapabilities,
@@ -151,13 +143,11 @@ import {
   HomeLayoutConfig,
   ImagePlaceholderConfig,
   MediaItem,
-  NotificationPreferences,
   PopupShieldHostRule,
   RecentlyWatchedPreferences,
   RecentlyWatchedRecord,
   RecentlyWatchedUiConfig,
   SiteSettings,
-  UserNotificationRecord,
   UserProfileRecord,
   VisitorRequest,
   WebsiteBrandingConfig,
@@ -239,7 +229,6 @@ export default function App() {
   const searchOpen = activeOverlay === 'search';
   const watchlistOpen = activeOverlay === 'watchlist';
   const watchHistoryOpen = activeOverlay === 'watch_history';
-  const notificationsOpen = activeOverlay === 'notifications';
   const loginOpen = activeOverlay === 'login';
   const mobileMenuOpen = activeOverlay === 'mobile_menu';
   const iosGuideOpen = activeOverlay === 'ios_guide';
@@ -254,14 +243,6 @@ export default function App() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const clientCapabilities = useMemo(() => detectClientCapabilities(), []);
   const [compatBannerDismissed, setCompatBannerDismissed] = useState(false);
-
-  const [notificationPrefs, setNotificationPrefs] = useState<NotificationPreferences>(() =>
-    loadNotificationPreferences()
-  );
-  const [localReadNotificationIds, setLocalReadNotificationIds] = useState<Set<string>>(() =>
-    loadLocalReadNotificationIds()
-  );
-  const [notificationsList] = useState<UserNotificationRecord[]>([]);
 
   const scrollStoreRef = useRef(new ScrollPositionStore());
   const currentNavKeyRef = useRef<string>(
@@ -703,24 +684,6 @@ export default function App() {
     clearAllOverlayStates,
     restoreScrollForNavKey,
   ]);
-
-  // Listen to Web Push notification clicks forwarded from Service Worker
-  useEffect(() => {
-    const onPushNavigate = (e: Event) => {
-      const detail = (e as CustomEvent<{ url?: string }>).detail;
-      const safeTarget = sanitizeInternalRouteUrl(detail?.url);
-      if (!safeTarget) return;
-      const parsed = parseRouteFromLocationParts({
-        pathname: '/',
-        search: '',
-        hash: safeTarget,
-        basePrefix: getAppBasePrefix(),
-      });
-      navigateToRoute(parsed.route);
-    };
-    window.addEventListener('rtv:push-navigate', onPushNavigate);
-    return () => window.removeEventListener('rtv:push-navigate', onPushNavigate);
-  }, [navigateToRoute]);
 
   const effectiveBrandName =
     siteSettings.branding?.siteName?.trim() || siteSettings.siteName || 'RahaL TV';
@@ -1886,12 +1849,6 @@ export default function App() {
         onOpenSearch={() => openOverlay('search')}
         onOpenWatchlist={() => openOverlay('watchlist')}
         onOpenWatchHistory={() => openOverlay('watch_history')}
-        onOpenNotifications={() => openOverlay('notifications')}
-        unreadNotificationsCount={
-          notificationsList.filter(
-            (n) => !localReadNotificationIds.has(n.id) && !(firebaseUser && n.readByUids?.includes(firebaseUser.uid))
-          ).length
-        }
         onOpenContact={() => openOverlay('footer_topic', () => setFooterTopic('requests'))}
         onOpenLogin={() => openOverlay('login')}
         onOpenAdmin={() => openAdminPage()}
@@ -2119,31 +2076,6 @@ export default function App() {
         }
       />
 
-      <NotificationsDrawer
-        isOpen={notificationsOpen}
-        onClose={() => closeTopOverlay()}
-        notifications={notificationsList}
-        localReadIds={localReadNotificationIds}
-        uid={firebaseUser?.uid || null}
-        preferences={notificationPrefs}
-        onUpdatePreferences={(next) => {
-          setNotificationPrefs(saveNotificationPreferences(next));
-        }}
-        onMarkRead={(notifId) => {
-          setLocalReadNotificationIds(markNotificationReadLocally(notifId));
-        }}
-        onMarkAllRead={() => {
-          let next = localReadNotificationIds;
-          for (const n of notificationsList) {
-            next = markNotificationReadLocally(n.id);
-          }
-          setLocalReadNotificationIds(new Set(next));
-        }}
-        catalog={activeCatalog}
-        onSelectMedia={(item) => handleSelectMedia(item)}
-        onNotify={showToast}
-      />
-
       <WatchlistModal
         isOpen={watchlistOpen}
         onClose={() => closeTopOverlay()}
@@ -2207,7 +2139,6 @@ export default function App() {
         onContinueAsGuest={handleContinueAsGuest}
         onExitGuest={handleExitGuest}
         onOpenWatchHistory={() => openOverlay('watch_history')}
-        onOpenNotifications={() => openOverlay('notifications')}
         onOpenAdmin={() => openAdminPage()}
         onNotify={showToast}
       />

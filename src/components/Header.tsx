@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import {
-  Bell,
   Bookmark,
   ChevronDown,
   Clapperboard,
@@ -29,8 +28,6 @@ interface HeaderProps {
   onOpenSearch: () => void;
   onOpenWatchlist: () => void;
   onOpenWatchHistory?: () => void;
-  onOpenNotifications?: () => void;
-  unreadNotificationsCount?: number;
   onOpenContact: () => void;
   onOpenLogin: () => void;
   onOpenAdmin: () => void;
@@ -59,8 +56,6 @@ export function Header({
   onOpenSearch,
   onOpenWatchlist,
   onOpenWatchHistory,
-  onOpenNotifications,
-  unreadNotificationsCount = 0,
   onOpenContact,
   onOpenLogin,
   onOpenAdmin,
@@ -321,22 +316,6 @@ export function Header({
               <span className="hidden md:inline">بحث سريع</span>
             </button>
 
-            {onOpenNotifications && (
-              <button
-                type="button"
-                onClick={onOpenNotifications}
-                aria-label="الإشعارات"
-                className="relative inline-flex h-10 w-10 items-center justify-center rounded-xl bg-[#181818] border border-white/10 text-[#e5e5e5] hover:border-[#f9c400]/60 hover:text-white transition-colors cursor-pointer shrink-0"
-              >
-                <Bell className="w-4 h-4 text-[#f9c400]" />
-                {unreadNotificationsCount > 0 && (
-                  <span className="font-latin absolute -top-1 -left-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-[#E50914] px-1 text-[9px] font-black text-white tabular-nums">
-                    {unreadNotificationsCount}
-                  </span>
-                )}
-              </button>
-            )}
-
             <button
               type="button"
               onClick={onOpenWatchlist}
@@ -524,27 +503,6 @@ export function Header({
                 >
                   <History className="w-4 h-4 text-[#f9c400]" />
                   <span>شاهدته مؤخراً (سجل المشاهدة)</span>
-                </button>
-              )}
-
-              {onOpenNotifications && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    dismissUncontrolledMenu();
-                    onOpenNotifications();
-                  }}
-                  className="flex min-h-11 w-full items-center justify-between gap-3 rounded-xl bg-[#1c1c1c] px-3.5 text-sm font-bold text-white hover:bg-[#262626] transition-colors cursor-pointer"
-                >
-                  <span className="inline-flex items-center gap-3">
-                    <Bell className="w-4 h-4 text-[#f9c400]" />
-                    <span>الإشعارات والتنبيهات الفورية</span>
-                  </span>
-                  {unreadNotificationsCount > 0 && (
-                    <span className="font-latin rounded-md bg-[#E50914] px-2 py-0.5 text-[10px] font-black text-white">
-                      {unreadNotificationsCount}
-                    </span>
-                  )}
                 </button>
               )}
 

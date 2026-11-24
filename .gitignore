@@ -9,5 +9,3 @@ coverage/
 .rahaltv-adapters.json
 .rahaltv-secrets.json
 .rahaltv-analytics.json
-.rahaltv-push-data.json
-.rahaltv-push-vapid.json

@@ -21,7 +21,6 @@ export type ActiveOverlayName =
   | 'search'
   | 'watchlist'
   | 'watch_history'
-  | 'notifications'
   | 'login'
   | 'footer_topic'
   | 'mobile_menu'

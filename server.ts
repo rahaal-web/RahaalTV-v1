@@ -39,7 +39,6 @@ import {
   type VerifiedAdminContext,
   verifyOwnerAdminMiddleware,
 } from './server/dbSecretVault.ts';
-import { attachPushRoutes, createWebPushService } from './server/webPushService.ts';
 
 const PORT = 3000;
 
@@ -6044,8 +6043,6 @@ async function startServer() {
       });
     }
   });
-
-  attachPushRoutes(app, createWebPushService());
 
   const httpServer = http.createServer(app);
 
