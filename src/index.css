@@ -850,3 +850,162 @@ html[data-rtv-low-spec="true"] .rtv-placeholder-shimmer {
   }
 }
 
+/* ============================================================
+   Running Rabbit Loader (SVG + CSS, zero JS frame loops)
+   ============================================================ */
+@keyframes rtv-rabbit-reveal {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes rtv-rabbit-hop {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  35% {
+    transform: translateY(-4px) rotate(-3deg);
+  }
+  70% {
+    transform: translateY(1px) rotate(2deg);
+  }
+}
+
+@keyframes rtv-rabbit-ear {
+  0%, 100% {
+    transform: rotate(0deg);
+  }
+  40% {
+    transform: rotate(-10deg);
+  }
+  75% {
+    transform: rotate(5deg);
+  }
+}
+
+@keyframes rtv-rabbit-stride-front {
+  0%, 100% {
+    transform: rotate(-22deg);
+  }
+  50% {
+    transform: rotate(28deg);
+  }
+}
+
+@keyframes rtv-rabbit-stride-back {
+  0%, 100% {
+    transform: rotate(28deg);
+  }
+  50% {
+    transform: rotate(-26deg);
+  }
+}
+
+@keyframes rtv-rabbit-shadow-pulse {
+  0%, 100% {
+    transform: scaleX(1);
+    opacity: 0.48;
+  }
+  40% {
+    transform: scaleX(0.76);
+    opacity: 0.28;
+  }
+}
+
+@keyframes rtv-rabbit-streak {
+  0% {
+    transform: translateX(-8px);
+    opacity: 0.25;
+  }
+  50% {
+    transform: translateX(6px);
+    opacity: 0.9;
+  }
+  100% {
+    transform: translateX(18px);
+    opacity: 0;
+  }
+}
+
+.rtv-rabbit-delayed {
+  opacity: 0;
+  animation: rtv-rabbit-reveal 0.14s ease-out var(--rtv-rabbit-delay, 120ms) forwards;
+}
+
+.rtv-rabbit-delayed-immediate {
+  opacity: 1;
+}
+
+.rtv-rabbit-body {
+  transform-box: fill-box;
+  transform-origin: center center;
+  animation: rtv-rabbit-hop 0.44s ease-in-out infinite;
+  will-change: transform;
+}
+
+.rtv-rabbit-ear {
+  transform-box: fill-box;
+  transform-origin: bottom center;
+  animation: rtv-rabbit-ear 0.44s ease-in-out infinite;
+}
+
+.rtv-rabbit-ear-back {
+  animation-delay: -0.08s;
+}
+
+.rtv-rabbit-leg-front {
+  transform-box: fill-box;
+  transform-origin: 70% 15%;
+  animation: rtv-rabbit-stride-front 0.44s ease-in-out infinite;
+}
+
+.rtv-rabbit-leg-back {
+  transform-box: fill-box;
+  transform-origin: 35% 15%;
+  animation: rtv-rabbit-stride-back 0.44s ease-in-out infinite;
+}
+
+.rtv-rabbit-shadow {
+  transform-box: fill-box;
+  transform-origin: center center;
+  animation: rtv-rabbit-shadow-pulse 0.44s ease-in-out infinite;
+}
+
+.rtv-rabbit-streak-1 {
+  animation: rtv-rabbit-streak 0.44s linear infinite;
+}
+
+.rtv-rabbit-streak-2 {
+  animation: rtv-rabbit-streak 0.44s linear 0.18s infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rtv-rabbit-delayed {
+    opacity: 1 !important;
+    animation: none !important;
+  }
+  .rtv-rabbit-body,
+  .rtv-rabbit-ear,
+  .rtv-rabbit-leg-front,
+  .rtv-rabbit-leg-back,
+  .rtv-rabbit-shadow,
+  .rtv-rabbit-streak-1,
+  .rtv-rabbit-streak-2 {
+    animation: none !important;
+  }
+}
+
+html[data-rtv-low-spec="true"] .rtv-rabbit-body,
+html[data-rtv-low-spec="true"] .rtv-rabbit-ear,
+html[data-rtv-low-spec="true"] .rtv-rabbit-leg-front,
+html[data-rtv-low-spec="true"] .rtv-rabbit-leg-back,
+html[data-rtv-low-spec="true"] .rtv-rabbit-shadow,
+html[data-rtv-low-spec="true"] .rtv-rabbit-streak-1,
+html[data-rtv-low-spec="true"] .rtv-rabbit-streak-2 {
+  animation: none !important;
+}
+
+

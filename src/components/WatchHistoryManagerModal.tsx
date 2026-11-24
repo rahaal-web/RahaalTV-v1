@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
   CheckCircle2,
@@ -74,6 +74,18 @@ export function WatchHistoryManagerModal({
     });
   }, [items, searchQuery, prefs.hideCompleted, catalogById]);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   const handleConfirmClear = async () => {
@@ -91,6 +103,7 @@ export function WatchHistoryManagerModal({
       role="dialog"
       aria-modal="true"
       aria-label="إدارة سجل المشاهدة"
+      data-rtv-focus-trap="true"
       className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4"
     >
       <div className="fixed inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
@@ -138,10 +151,7 @@ export function WatchHistoryManagerModal({
               </span>
               <button
                 type="button"
-                onClick={() => {
-                  onClose();
-                  onOpenLogin();
-                }}
+                onClick={onOpenLogin}
                 className="inline-flex items-center gap-1.5 rounded-xl bg-[#f9c400] hover:bg-[#dfb20b] px-3 py-1.5 text-[11px] font-black text-[#06131c] cursor-pointer shrink-0"
               >
                 <LogIn className="w-3.5 h-3.5" />
@@ -263,10 +273,7 @@ export function WatchHistoryManagerModal({
                 >
                   <div className="flex items-center gap-3 min-w-0 flex-1">
                     <div
-                      onClick={() => {
-                        onResumeItem(rec, matched);
-                        onClose();
-                      }}
+                      onClick={() => onResumeItem(rec, matched)}
                       className="h-18 w-13 rounded-xl overflow-hidden shrink-0 cursor-pointer border border-white/10"
                     >
                       <OptimizedImage
@@ -321,10 +328,7 @@ export function WatchHistoryManagerModal({
                   <div className="flex items-center gap-1.5 shrink-0">
                     <button
                       type="button"
-                      onClick={() => {
-                        onResumeItem(rec, matched);
-                        onClose();
-                      }}
+                      onClick={() => onResumeItem(rec, matched)}
                       className="inline-flex items-center gap-1 rounded-xl bg-[#E50914] hover:bg-[#f40612] px-3 py-2 text-xs font-extrabold text-white cursor-pointer"
                     >
                       <Play className="w-3.5 h-3.5 fill-current" />
@@ -333,10 +337,7 @@ export function WatchHistoryManagerModal({
 
                     <button
                       type="button"
-                      onClick={() => {
-                        onOpenDetails(rec, matched);
-                        onClose();
-                      }}
+                      onClick={() => onOpenDetails(rec, matched)}
                       aria-label={`صفحة تفاصيل ${title}`}
                       className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-white/[0.06] hover:bg-white/15 text-[#b7c9ef] hover:text-white cursor-pointer"
                     >

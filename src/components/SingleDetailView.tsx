@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { User } from 'firebase/auth';
 import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import {
+  ArrowRight,
   Bookmark,
   Calendar,
   Check,
@@ -40,6 +41,7 @@ import { formatShortServerName } from '../lib/playerTheme';
 import { MediaItem, CatalogFilterState, MediaRatingRecord } from '../types/media';
 import { MovieCard } from './MovieCard';
 import { OptimizedImage } from './OptimizedImage';
+import { RunningRabbitLoader } from './RunningRabbitLoader';
 
 interface SingleDetailViewProps {
   catalog: MediaItem[];
@@ -52,6 +54,8 @@ interface SingleDetailViewProps {
   onSelectMedia: (item: MediaItem, openDownloads?: boolean) => void;
   onApplyFilter: (partial: Partial<CatalogFilterState>) => void;
   onNavigateHome: () => void;
+  onNavigateBack?: () => void;
+  onSelectEpisode?: (episode: number) => void;
   onOpenTrailer: (item: MediaItem) => void;
   onOpenPlayer: (item: MediaItem, episodeNumber?: number, serverIndex?: number) => void;
   isInWatchlist: boolean;
@@ -81,6 +85,8 @@ export function SingleDetailView({
   onSelectMedia,
   onApplyFilter,
   onNavigateHome,
+  onNavigateBack,
+  onSelectEpisode,
   onOpenTrailer,
   onOpenPlayer,
   isInWatchlist,
@@ -319,14 +325,25 @@ export function SingleDetailView({
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-5">
             {/* Breadcrumb & Page Title */}
             <div className="min-w-0 flex-1 drop-shadow-[0_2px_10px_rgba(0,0,0,0.9)]">
-              <nav className="mb-2.5 flex flex-wrap items-center gap-1.5 text-xs font-bold text-[#b7c9ef]">
-                <button
-                  type="button"
-                  onClick={onNavigateHome}
-                  className="hover:text-white transition-colors cursor-pointer"
-                >
-                  RahaL TV
-                </button>
+              <div className="mb-2.5 flex flex-wrap items-center gap-2">
+                {onNavigateBack && (
+                  <button
+                    type="button"
+                    onClick={onNavigateBack}
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-[#1a242e]/90 hover:bg-[#D92321] border border-white/15 px-3 py-1.5 text-xs font-extrabold text-white transition-colors cursor-pointer shrink-0"
+                  >
+                    <ArrowRight className="w-3.5 h-3.5" />
+                    <span>رجوع</span>
+                  </button>
+                )}
+                <nav className="flex flex-wrap items-center gap-1.5 text-xs font-bold text-[#b7c9ef]">
+                  <button
+                    type="button"
+                    onClick={onNavigateHome}
+                    className="hover:text-white transition-colors cursor-pointer"
+                  >
+                    RahaL TV
+                  </button>
                 {itemCategories[0] && (
                   <>
                     <ChevronLeft className="w-3.5 h-3.5 text-white/40" />
@@ -354,6 +371,7 @@ export function SingleDetailView({
                 <ChevronLeft className="w-3.5 h-3.5 text-white/40" />
                 <span className="text-white">{item.title}</span>
               </nav>
+              </div>
 
               <h1
                 style={{ fontSize: 'var(--rtv-detail-title-size, 20px)' }}
@@ -893,13 +911,20 @@ export function SingleDetailView({
                   </div>
                   <div className="flex items-center justify-between text-[10px] font-bold text-[#b7c9ef]">
                     <span>
-                      {ratingsLoading
-                        ? 'جارٍ تحميل التقييمات...'
-                        : ratingsPermissionError
-                        ? 'يلزم نشر قواعد مجموعة ratings في Firestore'
-                        : ratingCount > 0
-                        ? `مبني على ${ratingCount} ${ratingCount === 1 ? 'تقييم' : 'تقييمات'}`
-                        : 'كن أول من يقيّم هذا العرض'}
+                      {ratingsLoading ? (
+                        <RunningRabbitLoader
+                          variant="inline"
+                          size="sm"
+                          delayMs={120}
+                          label="جارٍ تحميل التقييمات..."
+                        />
+                      ) : ratingsPermissionError ? (
+                        'يلزم نشر قواعد مجموعة ratings في Firestore'
+                      ) : ratingCount > 0 ? (
+                        `مبني على ${ratingCount} ${ratingCount === 1 ? 'تقييم' : 'تقييمات'}`
+                      ) : (
+                        'كن أول من يقيّم هذا العرض'
+                      )}
                     </span>
                     {ratingCount > 0 && (
                       <span className="font-latin text-[#f9c400]">
@@ -1036,7 +1061,10 @@ export function SingleDetailView({
                           <button
                             key={ep.number}
                             type="button"
-                            onClick={() => setSelectedEpisodeNumber(ep.number)}
+                            onClick={() => {
+                              setSelectedEpisodeNumber(ep.number);
+                              onSelectEpisode?.(ep.number);
+                            }}
                             className={`inline-flex items-center gap-1.5 rounded-xl border px-3 min-h-[42px] md:min-h-0 py-2 text-xs font-extrabold transition-all cursor-pointer ${
                               isEpActive
                                 ? 'bg-[#D92321] border-[#ff5a58] text-white shadow-md'
@@ -1252,6 +1280,7 @@ export function SingleDetailView({
                         type="button"
                         onClick={() => {
                           setSelectedEpisodeNumber(ep.number);
+                          onSelectEpisode?.(ep.number);
                           onOpenPlayer(item, ep.number, 0);
                         }}
                         className="group flex items-center justify-between gap-3 rounded-2xl bg-[#1a242e] border border-white/[0.08] p-3.5 text-right hover:border-[#D92321] transition-all cursor-pointer"

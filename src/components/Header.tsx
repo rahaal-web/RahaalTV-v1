@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
+  Bell,
   Bookmark,
   ChevronDown,
   Clapperboard,
@@ -28,6 +29,8 @@ interface HeaderProps {
   onOpenSearch: () => void;
   onOpenWatchlist: () => void;
   onOpenWatchHistory?: () => void;
+  onOpenNotifications?: () => void;
+  unreadNotificationsCount?: number;
   onOpenContact: () => void;
   onOpenLogin: () => void;
   onOpenAdmin: () => void;
@@ -38,9 +41,15 @@ interface HeaderProps {
   isGuest?: boolean;
   isAdmin: boolean;
   activeCategory: string;
-  currentView: 'home' | 'archive' | 'single' | 'admin';
+  currentView: 'home' | 'archive' | 'single' | 'admin' | 'not_found';
   branding?: WebsiteBrandingConfig;
   siteName?: string;
+  mobileMenuOpen?: boolean;
+  onOpenMobileMenu?: () => void;
+  onCloseMobileMenu?: () => void;
+  iosGuideOpen?: boolean;
+  onOpenIOSGuide?: () => void;
+  onCloseIOSGuide?: () => void;
 }
 
 export function Header({
@@ -50,6 +59,8 @@ export function Header({
   onOpenSearch,
   onOpenWatchlist,
   onOpenWatchHistory,
+  onOpenNotifications,
+  unreadNotificationsCount = 0,
   onOpenContact,
   onOpenLogin,
   onOpenAdmin,
@@ -62,10 +73,43 @@ export function Header({
   currentView,
   branding,
   siteName,
+  mobileMenuOpen: controlledMobileMenuOpen,
+  onOpenMobileMenu,
+  onCloseMobileMenu,
+  iosGuideOpen,
+  onOpenIOSGuide,
+  onCloseIOSGuide,
 }: HeaderProps) {
   const [sectionsOpen, setSectionsOpen] = useState(false);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [internalMobileMenuOpen, setInternalMobileMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+
+  const isControlledMenu = typeof controlledMobileMenuOpen === 'boolean';
+  const mobileMenuOpen = isControlledMenu
+    ? Boolean(controlledMobileMenuOpen)
+    : internalMobileMenuOpen;
+
+  const openMobileMenu = () => {
+    if (onOpenMobileMenu) {
+      onOpenMobileMenu();
+    } else {
+      setInternalMobileMenuOpen(true);
+    }
+  };
+
+  const closeMobileMenu = () => {
+    if (onCloseMobileMenu) {
+      onCloseMobileMenu();
+    } else {
+      setInternalMobileMenuOpen(false);
+    }
+  };
+
+  const dismissUncontrolledMenu = () => {
+    if (!isControlledMenu) {
+      setInternalMobileMenuOpen(false);
+    }
+  };
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 16);
@@ -73,6 +117,19 @@ export function Header({
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
+
+  useEffect(() => {
+    if (!mobileMenuOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        if (onCloseMobileMenu) onCloseMobileMenu();
+        else setInternalMobileMenuOpen(false);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [mobileMenuOpen, onCloseMobileMenu]);
 
   const activeNorm = normalizeArabicText(activeCategory);
   const isMoviesActive =
@@ -247,7 +304,12 @@ export function Header({
             }`}
           >
             <div className="hidden sm:inline-flex">
-              <PWAInstallButton variant="header" />
+              <PWAInstallButton
+                variant="header"
+                guideOpen={iosGuideOpen}
+                onOpenGuide={onOpenIOSGuide}
+                onCloseGuide={onCloseIOSGuide}
+              />
             </div>
             <button
               type="button"
@@ -258,6 +320,22 @@ export function Header({
               <Search className="w-4 h-4 text-[#E50914] shrink-0" />
               <span className="hidden md:inline">بحث سريع</span>
             </button>
+
+            {onOpenNotifications && (
+              <button
+                type="button"
+                onClick={onOpenNotifications}
+                aria-label="الإشعارات"
+                className="relative inline-flex h-10 w-10 items-center justify-center rounded-xl bg-[#181818] border border-white/10 text-[#e5e5e5] hover:border-[#f9c400]/60 hover:text-white transition-colors cursor-pointer shrink-0"
+              >
+                <Bell className="w-4 h-4 text-[#f9c400]" />
+                {unreadNotificationsCount > 0 && (
+                  <span className="font-latin absolute -top-1 -left-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-[#E50914] px-1 text-[9px] font-black text-white tabular-nums">
+                    {unreadNotificationsCount}
+                  </span>
+                )}
+              </button>
+            )}
 
             <button
               type="button"
@@ -320,7 +398,7 @@ export function Header({
             {/* Mobile Hamburger Button */}
             <button
               type="button"
-              onClick={() => setMobileMenuOpen(true)}
+              onClick={openMobileMenu}
               aria-label="فتح القائمة الجانبية"
               className="inline-flex lg:hidden h-10 w-10 items-center justify-center rounded-xl bg-[#181818] border border-white/10 text-white hover:border-white/30 cursor-pointer shrink-0"
             >
@@ -332,10 +410,16 @@ export function Header({
 
       {/* Mobile Slide-Over Hamburger Drawer (One-Handed Friendly RTL) */}
       {mobileMenuOpen && (
-        <div className="fixed inset-0 z-50 flex lg:hidden">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="القائمة الجانبية"
+          data-rtv-focus-trap="true"
+          className="fixed inset-0 z-50 flex lg:hidden"
+        >
           <div
             className="fixed inset-0 bg-black/75 backdrop-blur-sm"
-            onClick={() => setMobileMenuOpen(false)}
+            onClick={closeMobileMenu}
           />
           <div className="relative z-10 flex h-full w-80 max-w-[88vw] flex-col bg-[#141414] border-l border-white/10 p-4 sm:p-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] overflow-y-auto">
             <div className="flex items-center justify-between pb-4 mb-4 border-b border-white/10">
@@ -346,7 +430,7 @@ export function Header({
               )}
               <button
                 type="button"
-                onClick={() => setMobileMenuOpen(false)}
+                onClick={closeMobileMenu}
                 className="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-[#202020] text-white hover:bg-[#E50914] transition-colors cursor-pointer"
                 aria-label="إغلاق القائمة"
               >
@@ -358,7 +442,7 @@ export function Header({
             <button
               type="button"
               onClick={() => {
-                setMobileMenuOpen(false);
+                dismissUncontrolledMenu();
                 onOpenLogin();
               }}
               className="mb-3 flex min-h-11 w-full items-center justify-between gap-2 rounded-xl bg-[#1c1c1c] border border-white/10 px-3.5 py-2 text-xs font-bold text-white hover:border-[#E50914]/60 cursor-pointer"
@@ -378,7 +462,7 @@ export function Header({
             <button
               type="button"
               onClick={() => {
-                setMobileMenuOpen(false);
+                dismissUncontrolledMenu();
                 onOpenSearch();
               }}
               className="mb-4 flex min-h-11 w-full items-center gap-2.5 rounded-xl bg-[#202020] border border-white/10 px-4 text-sm font-bold text-[#a3a3a3] hover:text-white cursor-pointer"
@@ -392,8 +476,8 @@ export function Header({
               <button
                 type="button"
                 onClick={() => {
+                  dismissUncontrolledMenu();
                   onNavigateHome();
-                  setMobileMenuOpen(false);
                 }}
                 className={`flex min-h-11 w-full items-center gap-3 rounded-xl px-3.5 text-sm font-bold transition-colors cursor-pointer ${
                   currentView === 'home'
@@ -408,8 +492,8 @@ export function Header({
               <button
                 type="button"
                 onClick={() => {
+                  dismissUncontrolledMenu();
                   onSelectCategory('افلام');
-                  setMobileMenuOpen(false);
                 }}
                 className="flex min-h-11 w-full items-center gap-3 rounded-xl bg-[#1c1c1c] px-3.5 text-sm font-bold text-white hover:bg-[#262626] transition-colors cursor-pointer"
               >
@@ -420,8 +504,8 @@ export function Header({
               <button
                 type="button"
                 onClick={() => {
+                  dismissUncontrolledMenu();
                   onSelectCategory('مسلسلات');
-                  setMobileMenuOpen(false);
                 }}
                 className="flex min-h-11 w-full items-center gap-3 rounded-xl bg-[#1c1c1c] px-3.5 text-sm font-bold text-white hover:bg-[#262626] transition-colors cursor-pointer"
               >
@@ -433,7 +517,7 @@ export function Header({
                 <button
                   type="button"
                   onClick={() => {
-                    setMobileMenuOpen(false);
+                    dismissUncontrolledMenu();
                     onOpenWatchHistory();
                   }}
                   className="flex min-h-11 w-full items-center gap-3 rounded-xl bg-[#1c1c1c] px-3.5 text-sm font-bold text-white hover:bg-[#262626] transition-colors cursor-pointer"
@@ -443,11 +527,32 @@ export function Header({
                 </button>
               )}
 
+              {onOpenNotifications && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    dismissUncontrolledMenu();
+                    onOpenNotifications();
+                  }}
+                  className="flex min-h-11 w-full items-center justify-between gap-3 rounded-xl bg-[#1c1c1c] px-3.5 text-sm font-bold text-white hover:bg-[#262626] transition-colors cursor-pointer"
+                >
+                  <span className="inline-flex items-center gap-3">
+                    <Bell className="w-4 h-4 text-[#f9c400]" />
+                    <span>الإشعارات والتنبيهات الفورية</span>
+                  </span>
+                  {unreadNotificationsCount > 0 && (
+                    <span className="font-latin rounded-md bg-[#E50914] px-2 py-0.5 text-[10px] font-black text-white">
+                      {unreadNotificationsCount}
+                    </span>
+                  )}
+                </button>
+              )}
+
               <button
                 type="button"
                 onClick={() => {
+                  dismissUncontrolledMenu();
                   onOpenContact();
-                  setMobileMenuOpen(false);
                 }}
                 className="flex min-h-11 w-full items-center gap-3 rounded-xl bg-[#1c1c1c] px-3.5 text-sm font-bold text-white hover:bg-[#262626] transition-colors cursor-pointer"
               >
@@ -464,8 +569,8 @@ export function Header({
                   <button
                     type="button"
                     onClick={() => {
+                      dismissUncontrolledMenu();
                       if (item.category) onSelectCategory(item.category);
-                      setMobileMenuOpen(false);
                     }}
                     className="flex min-h-10 w-full items-center justify-between px-2 text-sm font-bold text-white cursor-pointer"
                   >
@@ -481,8 +586,8 @@ export function Header({
                           key={sub.category}
                           type="button"
                           onClick={() => {
+                            dismissUncontrolledMenu();
                             onSelectCategory(sub.category);
-                            setMobileMenuOpen(false);
                           }}
                           className="min-h-11 rounded-lg bg-[#242424] px-2.5 py-2 text-right text-xs font-medium text-[#d4d4d4] hover:bg-[#E50914] hover:text-white transition-colors cursor-pointer truncate"
                         >
@@ -497,15 +602,18 @@ export function Header({
 
             <PWAInstallButton
               variant="drawer"
-              onAfterClick={() => setMobileMenuOpen(false)}
+              guideOpen={iosGuideOpen}
+              onOpenGuide={onOpenIOSGuide}
+              onCloseGuide={onCloseIOSGuide}
+              onAfterClick={dismissUncontrolledMenu}
             />
 
             {isAdmin && (
               <button
                 type="button"
                 onClick={() => {
+                  dismissUncontrolledMenu();
                   onOpenAdmin();
-                  setMobileMenuOpen(false);
                 }}
                 className="mt-auto flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#f9c400] text-xs font-black text-[#0f0f0f] cursor-pointer"
               >
@@ -567,7 +675,7 @@ export function Header({
         </button>
         <button
           type="button"
-          onClick={() => setMobileMenuOpen(true)}
+          onClick={openMobileMenu}
           className="flex flex-col items-center justify-center gap-0.5 py-1.5 text-[10px] font-bold text-[#a3a3a3] cursor-pointer"
         >
           <Menu className="w-4 h-4" />

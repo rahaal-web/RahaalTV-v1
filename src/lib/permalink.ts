@@ -42,13 +42,13 @@ export function buildDedicatedMediaUrl(
   episodeNumber?: number
 ): string {
   const slugOrId = encodeURIComponent((target.slug || target.id || '').trim() || 'work');
-  const epSuffix = episodeNumber && episodeNumber > 1 ? `&ep=${episodeNumber}` : '';
+  const epSuffix = episodeNumber && episodeNumber > 1 ? `?ep=${episodeNumber}` : '';
 
   if (typeof window !== 'undefined' && window.location?.origin) {
     const prefix = getAppBasePrefix();
-    return `${window.location.origin}${prefix}/?watch=${slugOrId}${epSuffix}`;
+    return `${window.location.origin}${prefix}/#/watch/${slugOrId}${epSuffix}`;
   }
-  return `https://rahaltv.com/?watch=${slugOrId}${epSuffix}`;
+  return `https://rahaltv.com/#/watch/${slugOrId}${epSuffix}`;
 }
 
 const KNOWN_THIRD_PARTY_SCRAPE_HINTS =
@@ -91,28 +91,34 @@ export function resolveDisplayShortUrl(
 export function readWatchRouteFromLocation(): {
   watchKey: string | null;
   episode: number | null;
+  openDownloads?: boolean;
 } {
   if (typeof window === 'undefined') {
-    return { watchKey: null, episode: null };
+    return { watchKey: null, episode: null, openDownloads: false };
   }
 
   const { pathname, search, hash } = window.location;
   const params = new URLSearchParams(search);
-  const queryWatch = params.get('watch') || params.get('v');
-  const epRaw = Number(params.get('ep') || '0');
+  const hashQIdx = hash.indexOf('?');
+  const hashParams = new URLSearchParams(hashQIdx >= 0 ? hash.slice(hashQIdx + 1) : '');
+
+  const epRaw = Number(hashParams.get('ep') || params.get('ep') || '0');
   const episode = Number.isFinite(epRaw) && epRaw >= 1 ? Math.floor(epRaw) : null;
+  const openDownloads = hashParams.get('dl') === '1' || params.get('dl') === '1';
 
-  if (queryWatch && queryWatch.trim()) {
-    return { watchKey: queryWatch.trim(), episode };
-  }
-
-  const hashMatch = hash.match(/^#\/?watch\/([^/?#]+)/i);
+  const hashPath = hashQIdx >= 0 ? hash.slice(0, hashQIdx) : hash;
+  const hashMatch = hashPath.match(/^#\/?watch\/([^/?#]+)/i);
   if (hashMatch?.[1]) {
     try {
-      return { watchKey: decodeURIComponent(hashMatch[1]), episode };
+      return { watchKey: decodeURIComponent(hashMatch[1]), episode, openDownloads };
     } catch {
-      return { watchKey: hashMatch[1], episode };
+      return { watchKey: hashMatch[1], episode, openDownloads };
     }
+  }
+
+  const queryWatch = params.get('watch') || params.get('v');
+  if (queryWatch && queryWatch.trim()) {
+    return { watchKey: queryWatch.trim(), episode, openDownloads };
   }
 
   const prefix = getAppBasePrefix();
@@ -120,13 +126,13 @@ export function readWatchRouteFromLocation(): {
   const pathMatch = relPath.match(/^\/?watch\/([^/?#]+)/i);
   if (pathMatch?.[1]) {
     try {
-      return { watchKey: decodeURIComponent(pathMatch[1]), episode };
+      return { watchKey: decodeURIComponent(pathMatch[1]), episode, openDownloads };
     } catch {
-      return { watchKey: pathMatch[1], episode };
+      return { watchKey: pathMatch[1], episode, openDownloads };
     }
   }
 
-  return { watchKey: null, episode: null };
+  return { watchKey: null, episode: null, openDownloads: false };
 }
 
 export function findMediaByRouteKey(catalog: MediaItem[], routeKey: string): MediaItem | undefined {

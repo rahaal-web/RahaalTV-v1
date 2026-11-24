@@ -42,14 +42,17 @@ import {
   MediaItem,
   SiteSettings,
 } from '../types/media';
-import { MovieCard, MovieCardSkeleton } from './MovieCard';
+import { MovieCard } from './MovieCard';
 import { OptimizedImage } from './OptimizedImage';
+import { RunningRabbitLoader } from './RunningRabbitLoader';
 
 interface HomeViewProps {
   catalog: MediaItem[];
   siteSettings: SiteSettings;
   isAdmin?: boolean;
   loading?: boolean;
+  loadError?: string | null;
+  onRetryLoad?: () => void;
   onSelectMedia: (item: MediaItem, openDownloads?: boolean) => void;
   onApplyFilter: (partial: Partial<CatalogFilterState>) => void;
   onPlayNow: (item: MediaItem) => void;
@@ -256,6 +259,8 @@ export function HomeView({
   siteSettings,
   isAdmin = false,
   loading = false,
+  loadError = null,
+  onRetryLoad,
   onSelectMedia,
   onApplyFilter,
   onPlayNow,
@@ -409,19 +414,30 @@ export function HomeView({
     safeLibraryPage * LIBRARY_PAGE_SIZE
   );
 
-  /* Loading Skeleton View */
+  /* Loading State */
   if (loading && catalog.length === 0) {
     return (
-      <div className="space-y-10 pb-16">
-        <div className="h-[430px] sm:h-[470px] md:h-[600px] lg:h-[660px] rtv-hero-fullbleed rtv-skeleton" />
-        <div className="mx-auto max-w-[1440px] px-4 sm:px-6 lg:px-8 space-y-8">
-          <div className="h-12 w-full rounded-2xl rtv-skeleton" />
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-4">
-            {Array.from({ length: 10 }).map((_, idx) => (
-              <MovieCardSkeleton key={idx} />
-            ))}
-          </div>
-        </div>
+      <div className="mx-auto max-w-[1440px] px-4 sm:px-6 lg:px-8 pt-24 sm:pt-28 pb-16">
+        <RunningRabbitLoader
+          variant="section"
+          size="lg"
+          label="جاري تحميل أحدث الأفلام والمسلسلات..."
+          delayMs={120}
+        />
+      </div>
+    );
+  }
+
+  /* Error State when catalog failed to load */
+  if (!loading && loadError && catalog.length === 0) {
+    return (
+      <div className="mx-auto max-w-[1440px] px-4 sm:px-6 lg:px-8 pt-24 sm:pt-28 pb-16">
+        <RunningRabbitLoader
+          variant="section"
+          error={loadError}
+          onRetry={onRetryLoad}
+          className="mt-6"
+        />
       </div>
     );
   }

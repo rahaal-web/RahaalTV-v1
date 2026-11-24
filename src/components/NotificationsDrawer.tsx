@@ -1,10 +1,9 @@
-import { useMemo, useState } from 'react';
-import { Bell, BellRing, CheckCheck, Settings2, Sparkles, X } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Bell, CheckCheck, Settings2, Sparkles, X } from 'lucide-react';
 import {
   filterNotificationsByPrefs,
   isNotificationRead,
   NOTIFICATION_CATEGORY_LABELS,
-  requestBrowserNotificationPermission,
   saveNotificationPreferences,
 } from '../lib/notifications';
 import type {
@@ -13,6 +12,7 @@ import type {
   NotificationPreferences,
   UserNotificationRecord,
 } from '../types/media';
+import { PushPermissionCard } from './PushPermissionCard';
 
 interface NotificationsDrawerProps {
   isOpen: boolean;
@@ -48,6 +48,18 @@ export function NotificationsDrawer({
   const [activeTab, setActiveTab] = useState<CategoryFilterTab>('all');
   const [showPrefs, setShowPrefs] = useState(false);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isOpen, onClose]);
+
   const prefFiltered = useMemo(
     () => filterNotificationsByPrefs(notifications, preferences),
     [notifications, preferences]
@@ -75,35 +87,17 @@ export function NotificationsDrawer({
 
   if (!isOpen) return null;
 
-  const handleToggleBrowserPush = async () => {
-    if (preferences.browserPushEnabled) {
-      onUpdatePreferences(
-        saveNotificationPreferences({ ...preferences, browserPushEnabled: false })
-      );
-      onNotify('تم إيقاف تنبيهات المتصفح');
-      return;
-    }
-    const granted = await requestBrowserNotificationPermission();
-    onUpdatePreferences(
-      saveNotificationPreferences({ ...preferences, browserPushEnabled: granted })
-    );
-    onNotify(
-      granted
-        ? 'تم تفعيل تنبيهات المتصفح بنجاح'
-        : 'تم رفض إذن تنبيهات المتصفح أو غير مدعوم على هذا الجهاز'
-    );
-  };
-
   return (
     <div
       role="dialog"
       aria-modal="true"
       aria-label="مركز الإشعارات"
+      data-rtv-focus-trap="true"
       className="fixed inset-0 z-50 flex justify-end"
     >
       <div className="fixed inset-0 bg-black/75 backdrop-blur-sm" onClick={onClose} />
       <div className="relative z-10 flex h-full w-full max-w-md flex-col bg-[#0c1821] border-r border-white/10 shadow-2xl">
-        <div className="flex items-center justify-between gap-3 bg-[#1a242e] px-5 py-4 border-b border-white/10">
+        <div className="flex items-center justify-between gap-3 bg-[#1a242e] px-5 pt-[max(1rem,env(safe-area-inset-top))] pb-4 border-b border-white/10">
           <div className="flex items-center gap-2.5 min-w-0">
             <Bell className="w-5 h-5 text-[#f9c400] shrink-0" />
             <div className="min-w-0">
@@ -119,7 +113,7 @@ export function NotificationsDrawer({
               type="button"
               onClick={() => setShowPrefs((p) => !p)}
               aria-label="تفضيلات الإشعارات"
-              className={`inline-flex h-9 w-9 items-center justify-center rounded-xl border transition-colors cursor-pointer ${
+              className={`inline-flex h-10 w-10 items-center justify-center rounded-xl border transition-colors cursor-pointer ${
                 showPrefs
                   ? 'bg-[#E50914] border-[#E50914] text-white'
                   : 'bg-white/5 border-white/10 text-[#b7c9ef] hover:text-white'
@@ -131,11 +125,24 @@ export function NotificationsDrawer({
               type="button"
               onClick={onClose}
               aria-label="إغلاق الإشعارات"
-              className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-white/5 text-white hover:bg-[#D92321] cursor-pointer"
+              className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-white/5 text-white hover:bg-[#D92321] cursor-pointer"
             >
               <X className="w-4 h-4" />
             </button>
           </div>
+        </div>
+
+        {/* Web Push Permission Card */}
+        <div className="border-b border-white/10 bg-[#101c26] p-3.5">
+          <PushPermissionCard
+            compact
+            onStatusChange={(subscribed) => {
+              onUpdatePreferences(
+                saveNotificationPreferences({ ...preferences, browserPushEnabled: subscribed })
+              );
+            }}
+            onNotify={onNotify}
+          />
         </div>
 
         {/* Filter Tabs + Mark All Read */}
@@ -179,23 +186,7 @@ export function NotificationsDrawer({
         {/* Notification Preferences Collapsible Panel */}
         {showPrefs && (
           <div className="border-b border-white/10 bg-[#15222d] p-4 space-y-2.5">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-extrabold text-white">تخصيص أنواع الإشعارات</span>
-              <button
-                type="button"
-                onClick={() => void handleToggleBrowserPush()}
-                className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-[10px] font-extrabold border cursor-pointer ${
-                  preferences.browserPushEnabled
-                    ? 'bg-[#4CAF50]/20 border-[#4CAF50] text-[#4CAF50]'
-                    : 'bg-white/5 border-white/15 text-[#b7c9ef] hover:text-white'
-                }`}
-              >
-                <BellRing className="w-3 h-3" />
-                <span>
-                  {preferences.browserPushEnabled ? 'إشعارات المتصفح مفعّلة' : 'تفعيل إشعارات المتصفح'}
-                </span>
-              </button>
-            </div>
+            <span className="block text-xs font-extrabold text-white">تخصيص أنواع الإشعارات</span>
             <div className="grid grid-cols-2 gap-1.5">
               {(Object.keys(NOTIFICATION_CATEGORY_LABELS) as NotificationCategory[]).map((cat) => (
                 <label
@@ -246,7 +237,6 @@ export function NotificationsDrawer({
                     onMarkRead(notif.id);
                     if (linkedMedia) {
                       onSelectMedia(linkedMedia);
-                      onClose();
                     }
                   }}
                   className={`rounded-2xl border p-3.5 transition-all cursor-pointer ${

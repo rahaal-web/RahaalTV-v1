@@ -1,15 +1,59 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Download, Share, Smartphone, WifiOff, X } from 'lucide-react';
 import { useOnlineStatus, usePWAInstall } from '../hooks/usePWAInstall';
 
 interface PWAInstallButtonProps {
   variant?: 'header' | 'drawer';
   onAfterClick?: () => void;
+  guideOpen?: boolean;
+  onOpenGuide?: () => void;
+  onCloseGuide?: () => void;
 }
 
-export function PWAInstallButton({ variant = 'header', onAfterClick }: PWAInstallButtonProps) {
+export function PWAInstallButton({
+  variant = 'header',
+  onAfterClick,
+  guideOpen: controlledGuideOpen,
+  onOpenGuide,
+  onCloseGuide,
+}: PWAInstallButtonProps) {
   const { isInstallable, isInstalled, isIOS, install } = usePWAInstall();
-  const [showIOSGuide, setShowIOSGuide] = useState(false);
+  const [internalShowIOSGuide, setInternalShowIOSGuide] = useState(false);
+
+  const showIOSGuide =
+    typeof controlledGuideOpen === 'boolean' ? controlledGuideOpen : internalShowIOSGuide;
+
+  const openIOSGuide = () => {
+    if (onOpenGuide) {
+      onOpenGuide();
+    } else {
+      setInternalShowIOSGuide(true);
+    }
+  };
+
+  const closeIOSGuide = () => {
+    if (onCloseGuide) {
+      onCloseGuide();
+    } else {
+      setInternalShowIOSGuide(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!showIOSGuide) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        if (onCloseGuide) {
+          onCloseGuide();
+        } else {
+          setInternalShowIOSGuide(false);
+        }
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [showIOSGuide, onCloseGuide]);
 
   if (isInstalled) {
     return null;
@@ -53,7 +97,7 @@ export function PWAInstallButton({ variant = 'header', onAfterClick }: PWAInstal
         {variant === 'drawer' ? (
           <button
             type="button"
-            onClick={() => setShowIOSGuide(true)}
+            onClick={openIOSGuide}
             className="mb-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#1c1c1c] border border-white/15 px-4 text-xs font-extrabold text-white hover:border-[#4CAF50] transition-colors cursor-pointer"
           >
             <Smartphone className="w-4 h-4 text-[#4CAF50]" />
@@ -62,7 +106,7 @@ export function PWAInstallButton({ variant = 'header', onAfterClick }: PWAInstal
         ) : (
           <button
             type="button"
-            onClick={() => setShowIOSGuide(true)}
+            onClick={openIOSGuide}
             aria-label="تثبيت التطبيق على iOS"
             className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-[#181818] border border-white/15 px-3 text-xs font-bold text-white hover:border-[#4CAF50] transition-colors cursor-pointer whitespace-nowrap"
           >
@@ -72,7 +116,16 @@ export function PWAInstallButton({ variant = 'header', onAfterClick }: PWAInstal
         )}
 
         {showIOSGuide && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="تثبيت RahaL TV على iPhone / iPad"
+            data-rtv-focus-trap="true"
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) closeIOSGuide();
+            }}
+          >
             <div className="w-full max-w-sm rounded-2xl bg-[#181818] border border-white/10 p-6 shadow-2xl text-right">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="font-display text-base font-extrabold text-white">
@@ -80,7 +133,7 @@ export function PWAInstallButton({ variant = 'header', onAfterClick }: PWAInstal
                 </h3>
                 <button
                   type="button"
-                  onClick={() => setShowIOSGuide(false)}
+                  onClick={closeIOSGuide}
                   aria-label="إغلاق"
                   className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-white/5 text-white/80 hover:bg-[#E50914] hover:text-white cursor-pointer"
                 >
@@ -107,7 +160,7 @@ export function PWAInstallButton({ variant = 'header', onAfterClick }: PWAInstal
               </ol>
               <button
                 type="button"
-                onClick={() => setShowIOSGuide(false)}
+                onClick={closeIOSGuide}
                 className="mt-5 w-full min-h-[44px] rounded-xl bg-[#E50914] hover:bg-[#f40612] py-2.5 text-xs font-extrabold text-white transition-colors cursor-pointer"
               >
                 حسنًا

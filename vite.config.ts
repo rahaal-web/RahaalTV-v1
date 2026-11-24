@@ -53,6 +53,7 @@ export default defineConfig(() => {
           ],
         },
         workbox: {
+          importScripts: ['push-sw.js'],
           globPatterns: ['**/*.{js,css,html,ico,png,svg,jpg,webp,woff,woff2}'],
           maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
           skipWaiting: true,
@@ -61,6 +62,7 @@ export default defineConfig(() => {
           navigateFallback: 'index.html',
           navigateFallbackDenylist: [
             /^\/api\//,
+            /^\/uploads\//,
             /\/assets\//,
             /\.(?:png|jpe?g|webp|gif|svg|ico|avif|css|js|woff2?)$/i,
           ],

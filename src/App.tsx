@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, CheckCircle2, Wrench, X } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Compass, Home, Wrench, X } from 'lucide-react';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { collection, doc, onSnapshot, orderBy, query, where } from 'firebase/firestore';
 import type { AdminTab } from './components/AdminDashboardView';
@@ -22,7 +22,9 @@ import {
   TrailerModal,
   WatchlistModal,
 } from './components/Modals';
+import { NotificationsDrawer } from './components/NotificationsDrawer';
 import { RecentlyWatchedSection } from './components/RecentlyWatchedSection';
+import { RunningRabbitLoader } from './components/RunningRabbitLoader';
 import { SearchDrawer } from './components/SearchDrawer';
 import { OfflineIndicator } from './components/PWAControls';
 import { SingleDetailView } from './components/SingleDetailView';
@@ -82,8 +84,26 @@ import {
 import {
   findMediaByRouteKey,
   getAppBasePrefix,
-  readWatchRouteFromLocation,
 } from './lib/permalink';
+import {
+  ActiveOverlayName,
+  AppRoute,
+  ArchiveSortOption,
+  buildRouteHash,
+  createNavKey,
+  DEFAULT_CATALOG_FILTERS,
+  parseRouteFromLocationParts,
+  readRouterHistoryState,
+  RouterHistoryState,
+  sanitizeInternalRouteUrl,
+  ScrollPositionStore,
+} from './lib/router';
+import {
+  loadLocalReadNotificationIds,
+  loadNotificationPreferences,
+  markNotificationReadLocally,
+  saveNotificationPreferences,
+} from './lib/notifications';
 import {
   applyDisplayDevicePrefs,
   detectClientCapabilities,
@@ -131,27 +151,19 @@ import {
   HomeLayoutConfig,
   ImagePlaceholderConfig,
   MediaItem,
+  NotificationPreferences,
   PopupShieldHostRule,
   RecentlyWatchedPreferences,
   RecentlyWatchedRecord,
   RecentlyWatchedUiConfig,
   SiteSettings,
+  UserNotificationRecord,
   UserProfileRecord,
   VisitorRequest,
   WebsiteBrandingConfig,
 } from './types/media';
 
-const DEFAULT_FILTERS: CatalogFilterState = {
-  query: '',
-  category: '',
-  genre: '',
-  year: '',
-  country: '',
-  language: '',
-  quality: '',
-  minImdb: 0,
-  preset: '',
-};
+const DEFAULT_FILTERS: CatalogFilterState = DEFAULT_CATALOG_FILTERS;
 
 const DEFAULT_SETTINGS: SiteSettings = {
   siteName: 'RahaL TV',
@@ -174,31 +186,64 @@ const STORAGE_WATCHLIST = 'moov_watchlist_ids';
 const STORAGE_DISMISSED_STARTERS = 'rahaltv_dismissed_starters';
 const STORAGE_STARTER_CLEARED = 'rahaltv_starter_cleared';
 
-const isAdminPath = () => {
-  if (typeof window === 'undefined') return false;
-  const { pathname, hash } = window.location;
-  if (hash.startsWith('#/admin')) return true;
-  const basePrefix = getAppBasePrefix();
-  const normalizedPath = pathname.replace(/\/+$/, '');
-  return normalizedPath === '/admin' || normalizedPath === `${basePrefix}/admin`;
-};
+function readInitialRouteFromWindow() {
+  if (typeof window === 'undefined') {
+    return {
+      route: { view: 'home' } as AppRoute,
+      needsCanonicalReplace: false,
+    };
+  }
+  return parseRouteFromLocationParts({
+    pathname: window.location.pathname,
+    search: window.location.search,
+    hash: window.location.hash,
+    basePrefix: getAppBasePrefix(),
+  });
+}
 
 export default function App() {
-  const [view, setView] = useState<'home' | 'archive' | 'single' | 'admin'>(() => {
-    if (isAdminPath()) return 'admin';
-    if (readWatchRouteFromLocation().watchKey) return 'single';
-    return 'home';
-  });
-  const [selectedMediaId, setSelectedMediaId] = useState<string>(CATALOG_ITEMS[0].id);
-  const [routeEpisode, setRouteEpisode] = useState<number | undefined>(() => {
-    return readWatchRouteFromLocation().episode || undefined;
-  });
-  const [openDownloadsOnSingle, setOpenDownloadsOnSingle] = useState(false);
-  const [filters, setFilters] = useState<CatalogFilterState>(DEFAULT_FILTERS);
+  const initialRouteParsed = useMemo(() => readInitialRouteFromWindow(), []);
+  const initialRoute = initialRouteParsed.route;
 
-  const [searchOpen, setSearchOpen] = useState(false);
-  const [watchlistOpen, setWatchlistOpen] = useState(false);
-  const [loginOpen, setLoginOpen] = useState(false);
+  const [view, setView] = useState<'home' | 'archive' | 'single' | 'admin' | 'not_found'>(
+    initialRoute.view
+  );
+  const [notFoundPath, setNotFoundPath] = useState<string>(
+    initialRoute.view === 'not_found' ? initialRoute.rawPath || '' : ''
+  );
+  const [requestedWatchKey, setRequestedWatchKey] = useState<string | null>(
+    initialRoute.view === 'single' ? initialRoute.watchKey : null
+  );
+  const [selectedMediaId, setSelectedMediaId] = useState<string>(CATALOG_ITEMS[0].id);
+  const [routeEpisode, setRouteEpisode] = useState<number | undefined>(
+    initialRoute.view === 'single' ? initialRoute.episode : undefined
+  );
+  const [openDownloadsOnSingle, setOpenDownloadsOnSingle] = useState<boolean>(
+    initialRoute.view === 'single' ? Boolean(initialRoute.openDownloads) : false
+  );
+  const [filters, setFilters] = useState<CatalogFilterState>(
+    initialRoute.view === 'archive' ? initialRoute.filters : DEFAULT_FILTERS
+  );
+  const [archiveSort, setArchiveSort] = useState<ArchiveSortOption>(
+    initialRoute.view === 'archive' ? initialRoute.sort : 'latest'
+  );
+  const [archivePage, setArchivePage] = useState<number>(
+    initialRoute.view === 'archive' ? initialRoute.page : 1
+  );
+  const [archivePageSize, setArchivePageSize] = useState<number>(
+    initialRoute.view === 'archive' ? initialRoute.pageSize : 24
+  );
+
+  // Unified Overlay Stack synced with browser history
+  const [activeOverlay, setActiveOverlay] = useState<ActiveOverlayName | null>(null);
+  const searchOpen = activeOverlay === 'search';
+  const watchlistOpen = activeOverlay === 'watchlist';
+  const watchHistoryOpen = activeOverlay === 'watch_history';
+  const notificationsOpen = activeOverlay === 'notifications';
+  const loginOpen = activeOverlay === 'login';
+  const mobileMenuOpen = activeOverlay === 'mobile_menu';
+  const iosGuideOpen = activeOverlay === 'ios_guide';
+
   const [trailerItem, setTrailerItem] = useState<MediaItem | null>(null);
   const [playerState, setPlayerState] = useState<{
     item: MediaItem;
@@ -209,6 +254,22 @@ export default function App() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const clientCapabilities = useMemo(() => detectClientCapabilities(), []);
   const [compatBannerDismissed, setCompatBannerDismissed] = useState(false);
+
+  const [notificationPrefs, setNotificationPrefs] = useState<NotificationPreferences>(() =>
+    loadNotificationPreferences()
+  );
+  const [localReadNotificationIds, setLocalReadNotificationIds] = useState<Set<string>>(() =>
+    loadLocalReadNotificationIds()
+  );
+  const [notificationsList] = useState<UserNotificationRecord[]>([]);
+
+  const scrollStoreRef = useRef(new ScrollPositionStore());
+  const currentNavKeyRef = useRef<string>(
+    typeof window !== 'undefined'
+      ? readRouterHistoryState(window.history.state)?.navKey || createNavKey()
+      : createNavKey()
+  );
+  const currentRouteHashRef = useRef<string>(buildRouteHash(initialRoute));
 
   // Firebase Auth & RBAC State + Client-only Viewer Guest Session
   const [firebaseUser, setFirebaseUser] = useState<User | null>(null);
@@ -244,7 +305,6 @@ export default function App() {
   const [imagePlaceholderConfig, setImagePlaceholderConfig] = useState<ImagePlaceholderConfig>(() =>
     loadStoredPlaceholderConfig()
   );
-  const [watchHistoryOpen, setWatchHistoryOpen] = useState(false);
   const [recentlyWatchedPrefs, setRecentlyWatchedPrefs] = useState<RecentlyWatchedPreferences>(() =>
     loadRecentlyWatchedPrefs()
   );
@@ -269,10 +329,11 @@ export default function App() {
   const [visitorRequests, setVisitorRequests] = useState<VisitorRequest[]>([]);
   const [usersList, setUsersList] = useState<UserProfileRecord[]>([]);
   const [adminsList, setAdminsList] = useState<AdminRoleRecord[]>([]);
-  const [adminRequestedTab, setAdminRequestedTab] = useState<{ tab: AdminTab; nonce: number }>({
-    tab: 'overview',
-    nonce: 0,
-  });
+  const [adminRequestedTab, setAdminRequestedTab] = useState<{ tab: AdminTab; nonce: number }>(() =>
+    initialRoute.view === 'admin' && initialRoute.adminTab
+      ? { tab: initialRoute.adminTab, nonce: 1 }
+      : { tab: 'overview', nonce: 0 }
+  );
 
   const [watchlistIds, setWatchlistIds] = useState<string[]>(() => {
     try {
@@ -316,43 +377,350 @@ export default function App() {
       }),
     [rawActiveCatalog, ratingsByMediaId]
   );
-  const selectedMedia =
-    activeCatalog.find((item) => item.id === selectedMediaId) || activeCatalog[0] || null;
+  const matchedSingleMedia = useMemo(() => {
+    if (requestedWatchKey) {
+      return findMediaByRouteKey(activeCatalog, requestedWatchKey) || null;
+    }
+    return activeCatalog.find((item) => item.id === selectedMediaId) || activeCatalog[0] || null;
+  }, [activeCatalog, requestedWatchKey, selectedMediaId]);
+
+  const selectedMedia = matchedSingleMedia;
   const hasDismissedStarters = starterCleared || dismissedStarterIds.length > 0;
 
-  // Sync browser Back/Forward, deep-linked ?watch=<slug> URLs & /admin route
-  useEffect(() => {
-    const syncFromLocation = () => {
-      if (isAdminPath()) {
-        setView('admin');
+  const clearAllOverlayStates = useCallback(() => {
+    setActiveOverlay(null);
+    setPlayerState(null);
+    setTrailerItem(null);
+    setFooterTopic(null);
+  }, []);
+
+  const restoreScrollForNavKey = useCallback((navKey: string | undefined) => {
+    if (typeof window === 'undefined') return;
+    const savedY = scrollStoreRef.current.get(navKey);
+    if (typeof savedY === 'number') {
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+          window.scrollTo({ top: savedY, behavior: 'auto' });
+        });
+      });
+    }
+  }, []);
+
+  const applyParsedRouteToState = useCallback((route: AppRoute) => {
+    if (route.view === 'home') {
+      setView('home');
+      setNotFoundPath('');
+      setRequestedWatchKey(null);
+      setRouteEpisode(undefined);
+      setOpenDownloadsOnSingle(false);
+      setFilters(DEFAULT_FILTERS);
+      setArchiveSort('latest');
+      setArchivePage(1);
+      setArchivePageSize(24);
+      return;
+    }
+
+    if (route.view === 'archive') {
+      setView('archive');
+      setNotFoundPath('');
+      setRequestedWatchKey(null);
+      setRouteEpisode(undefined);
+      setOpenDownloadsOnSingle(false);
+      setFilters(route.filters);
+      setArchiveSort(route.sort);
+      setArchivePage(route.page);
+      setArchivePageSize(route.pageSize);
+      return;
+    }
+
+    if (route.view === 'single') {
+      setView('single');
+      setNotFoundPath('');
+      setRequestedWatchKey(route.watchKey);
+      setRouteEpisode(route.episode);
+      setOpenDownloadsOnSingle(Boolean(route.openDownloads));
+      const matched = findMediaByRouteKey(activeCatalog, route.watchKey);
+      if (matched) {
+        setSelectedMediaId(matched.id);
+      }
+      return;
+    }
+
+    if (route.view === 'admin') {
+      setView('admin');
+      setNotFoundPath('');
+      setRequestedWatchKey(null);
+      if (route.adminTab) {
+        setAdminRequestedTab((prev) => ({ tab: route.adminTab!, nonce: prev.nonce + 1 }));
+      }
+      return;
+    }
+
+    setView('not_found');
+    setNotFoundPath(route.rawPath || '');
+    setRequestedWatchKey(null);
+  }, [activeCatalog]);
+
+  const navigateToRoute = useCallback(
+    (
+      route: AppRoute,
+      options?: { replace?: boolean; scrollTop?: boolean }
+    ) => {
+      clearAllOverlayStates();
+      applyParsedRouteToState(route);
+
+      if (typeof window === 'undefined') return;
+      const basePrefix = getAppBasePrefix();
+      const nextHash = buildRouteHash(route);
+      const canonicalUrl = `${basePrefix}/${nextHash}`;
+      const currState = readRouterHistoryState(window.history.state);
+      const isOverlayCurrentlyOpen = Boolean(currState?.overlay);
+
+      if (currState && currState.routeHash === nextHash && !isOverlayCurrentlyOpen && !options?.replace) {
+        if (options?.scrollTop !== false) {
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
         return;
       }
-      const { watchKey, episode } = readWatchRouteFromLocation();
-      if (watchKey) {
-        const matched = findMediaByRouteKey(activeCatalog, watchKey);
-        if (matched) {
-          setSelectedMediaId(matched.id);
-          setRouteEpisode(episode || undefined);
-          setView('single');
+
+      if (options?.replace || isOverlayCurrentlyOpen) {
+        const nextKey = isOverlayCurrentlyOpen ? createNavKey() : currentNavKeyRef.current;
+        const nextState: RouterHistoryState = {
+          __rtv: true,
+          navKey: nextKey,
+          routeHash: nextHash,
+          internalDepth: currState?.internalDepth ?? 0,
+          overlay: null,
+        };
+        window.history.replaceState(nextState, '', canonicalUrl);
+        currentNavKeyRef.current = nextKey;
+        currentRouteHashRef.current = nextHash;
+      } else {
+        scrollStoreRef.current.save(currentNavKeyRef.current, window.scrollY);
+        const nextKey = createNavKey();
+        const nextState: RouterHistoryState = {
+          __rtv: true,
+          navKey: nextKey,
+          routeHash: nextHash,
+          internalDepth: (currState?.internalDepth ?? 0) + 1,
+          overlay: null,
+        };
+        window.history.pushState(nextState, '', canonicalUrl);
+        currentNavKeyRef.current = nextKey;
+        currentRouteHashRef.current = nextHash;
+      }
+
+      if (options?.scrollTop !== false) {
+        window.scrollTo({ top: 0, behavior: 'auto' });
+      }
+    },
+    [applyParsedRouteToState, clearAllOverlayStates]
+  );
+
+  const openOverlay = useCallback((name: ActiveOverlayName, setup?: () => void) => {
+    if (name !== 'player') setPlayerState(null);
+    if (name !== 'trailer') setTrailerItem(null);
+    if (name !== 'footer_topic') setFooterTopic(null);
+    setup?.();
+    setActiveOverlay(name);
+
+    if (typeof window === 'undefined') return;
+    const currState = readRouterHistoryState(window.history.state);
+    const currRouteHash = currState?.routeHash || currentRouteHashRef.current || '#/';
+    const currentUrl = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+
+    if (currState?.overlay) {
+      const nextState: RouterHistoryState = {
+        __rtv: true,
+        navKey: currState.navKey,
+        routeHash: currRouteHash,
+        internalDepth: currState.internalDepth,
+        overlay: name,
+      };
+      window.history.replaceState(nextState, '', currentUrl);
+    } else {
+      const nextKey = createNavKey();
+      const nextState: RouterHistoryState = {
+        __rtv: true,
+        navKey: nextKey,
+        routeHash: currRouteHash,
+        internalDepth: (currState?.internalDepth ?? 0) + 1,
+        overlay: name,
+      };
+      window.history.pushState(nextState, '', currentUrl);
+    }
+  }, []);
+
+  const closeTopOverlay = useCallback(() => {
+    if (typeof window !== 'undefined') {
+      const currState = readRouterHistoryState(window.history.state);
+      if (currState?.overlay && currState.internalDepth > 0) {
+        window.history.back();
+        return true;
+      }
+    }
+    const hadOverlay =
+      Boolean(activeOverlay) || Boolean(playerState) || Boolean(trailerItem) || Boolean(footerTopic);
+    clearAllOverlayStates();
+    return hadOverlay;
+  }, [activeOverlay, playerState, trailerItem, footerTopic, clearAllOverlayStates]);
+
+  const navigateBackFromUI = useCallback(() => {
+    if (typeof window !== 'undefined') {
+      const currState = readRouterHistoryState(window.history.state);
+      if (currState && currState.internalDepth > 0) {
+        window.history.back();
+        return;
+      }
+    }
+    navigateToRoute({ view: 'home' });
+  }, [navigateToRoute]);
+
+  // Initial URL normalization + manual scroll restoration + initial history state stamp
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if ('scrollRestoration' in window.history) {
+      window.history.scrollRestoration = 'manual';
+    }
+
+    const parsed = parseRouteFromLocationParts({
+      pathname: window.location.pathname,
+      search: window.location.search,
+      hash: window.location.hash,
+      basePrefix: getAppBasePrefix(),
+    });
+    const basePrefix = getAppBasePrefix();
+    const canonicalHash = buildRouteHash(parsed.route);
+    const canonicalUrl = `${basePrefix}/${canonicalHash}`;
+    const existing = readRouterHistoryState(window.history.state);
+
+    if (!existing || parsed.needsCanonicalReplace) {
+      const stamped: RouterHistoryState = {
+        __rtv: true,
+        navKey: existing?.navKey || currentNavKeyRef.current,
+        routeHash: canonicalHash,
+        internalDepth: existing?.internalDepth ?? 0,
+        overlay: existing?.overlay ?? null,
+      };
+      window.history.replaceState(stamped, '', canonicalUrl);
+      currentNavKeyRef.current = stamped.navKey;
+      currentRouteHashRef.current = canonicalHash;
+    } else {
+      currentNavKeyRef.current = existing.navKey;
+      currentRouteHashRef.current = existing.routeHash;
+    }
+  }, []);
+
+  // Keep matched media ID synced once Firestore finishes loading
+  useEffect(() => {
+    if (view === 'single' && requestedWatchKey) {
+      const matched = findMediaByRouteKey(activeCatalog, requestedWatchKey);
+      if (matched && matched.id !== selectedMediaId) {
+        setSelectedMediaId(matched.id);
+      }
+    }
+  }, [view, requestedWatchKey, activeCatalog, selectedMediaId]);
+
+  // Unified popstate & direct manual hashchange synchronization
+  useEffect(() => {
+    const syncFromHistoryEvent = (eventState: unknown, isHashChange = false) => {
+      if (typeof window === 'undefined') return;
+      const parsed = parseRouteFromLocationParts({
+        pathname: window.location.pathname,
+        search: window.location.search,
+        hash: window.location.hash,
+        basePrefix: getAppBasePrefix(),
+      });
+      const rtvState = readRouterHistoryState(eventState ?? window.history.state);
+      const nextRouteHash = buildRouteHash(parsed.route);
+
+      if (isHashChange && nextRouteHash === currentRouteHashRef.current && !activeOverlay) {
+        return;
+      }
+
+      const prevRouteHash = currentRouteHashRef.current;
+      currentRouteHashRef.current = nextRouteHash;
+
+      if (rtvState?.navKey) {
+        currentNavKeyRef.current = rtvState.navKey;
+      }
+
+      if (rtvState?.overlay) {
+        const requiresPayload =
+          (rtvState.overlay === 'player' && !playerState) ||
+          (rtvState.overlay === 'trailer' && !trailerItem) ||
+          (rtvState.overlay === 'footer_topic' && !footerTopic);
+        if (requiresPayload) {
+          // Transient overlay payload is not in memory on Forward; gracefully settle on underlying route
+          clearAllOverlayStates();
+          applyParsedRouteToState(parsed.route);
+          const cleanState: RouterHistoryState = {
+            ...rtvState,
+            overlay: null,
+          };
+          window.history.replaceState(cleanState, '', `${getAppBasePrefix()}/${nextRouteHash}`);
           return;
         }
-        if (firestoreCatalog.length > 0) {
-          // URL points to an unknown slug after catalog loaded
-          setView('home');
-        }
+        applyParsedRouteToState(parsed.route);
+        setActiveOverlay(rtvState.overlay);
         return;
       }
-      setView((curr) => (curr === 'admin' || curr === 'single' ? 'home' : curr));
+
+      clearAllOverlayStates();
+      applyParsedRouteToState(parsed.route);
+
+      if (prevRouteHash !== nextRouteHash && !isHashChange) {
+        restoreScrollForNavKey(rtvState?.navKey);
+      } else if (isHashChange && !rtvState) {
+        const curr = readRouterHistoryState(window.history.state);
+        const stamped: RouterHistoryState = {
+          __rtv: true,
+          navKey: createNavKey(),
+          routeHash: nextRouteHash,
+          internalDepth: (curr?.internalDepth ?? 0) + 1,
+          overlay: null,
+        };
+        currentNavKeyRef.current = stamped.navKey;
+        window.history.replaceState(stamped, '', `${getAppBasePrefix()}/${nextRouteHash}`);
+      }
     };
 
-    syncFromLocation();
-    window.addEventListener('popstate', syncFromLocation);
-    window.addEventListener('hashchange', syncFromLocation);
+    const onPopState = (e: PopStateEvent) => syncFromHistoryEvent(e.state, false);
+    const onHashChange = () => syncFromHistoryEvent(window.history.state, true);
+
+    window.addEventListener('popstate', onPopState);
+    window.addEventListener('hashchange', onHashChange);
     return () => {
-      window.removeEventListener('popstate', syncFromLocation);
-      window.removeEventListener('hashchange', syncFromLocation);
+      window.removeEventListener('popstate', onPopState);
+      window.removeEventListener('hashchange', onHashChange);
     };
-  }, [activeCatalog, firestoreCatalog.length]);
+  }, [
+    activeOverlay,
+    playerState,
+    trailerItem,
+    footerTopic,
+    applyParsedRouteToState,
+    clearAllOverlayStates,
+    restoreScrollForNavKey,
+  ]);
+
+  // Listen to Web Push notification clicks forwarded from Service Worker
+  useEffect(() => {
+    const onPushNavigate = (e: Event) => {
+      const detail = (e as CustomEvent<{ url?: string }>).detail;
+      const safeTarget = sanitizeInternalRouteUrl(detail?.url);
+      if (!safeTarget) return;
+      const parsed = parseRouteFromLocationParts({
+        pathname: '/',
+        search: '',
+        hash: safeTarget,
+        basePrefix: getAppBasePrefix(),
+      });
+      navigateToRoute(parsed.route);
+    };
+    window.addEventListener('rtv:push-navigate', onPushNavigate);
+    return () => window.removeEventListener('rtv:push-navigate', onPushNavigate);
+  }, [navigateToRoute]);
 
   const effectiveBrandName =
     siteSettings.branding?.siteName?.trim() || siteSettings.siteName || 'RahaL TV';
@@ -361,12 +729,14 @@ export default function App() {
     if (typeof document === 'undefined') return;
     if (view === 'admin') {
       document.title = `إدارة ${effectiveBrandName} — لوحة التحكم`;
-    } else if (view === 'single' && selectedMedia) {
-      document.title = `${selectedMedia.title} — ${effectiveBrandName}`;
+    } else if (view === 'not_found') {
+      document.title = `الصفحة غير موجودة — ${effectiveBrandName}`;
+    } else if (view === 'single' && matchedSingleMedia) {
+      document.title = `${matchedSingleMedia.title} — ${effectiveBrandName}`;
     } else {
       document.title = `${effectiveBrandName} — افلام ومسلسلات بجودة عالية بدون تقطيع`;
     }
-  }, [view, selectedMedia, effectiveBrandName]);
+  }, [view, matchedSingleMedia, effectiveBrandName]);
 
   useEffect(() => {
     applyTypographyToDocument(siteSettings.typography, customFonts);
@@ -386,42 +756,17 @@ export default function App() {
   useEffect(() => {
     return installTvSpatialNavigation({
       onBack: () => {
-        if (playerState) {
-          setPlayerState(null);
+        if (closeTopOverlay()) {
           return true;
         }
-        if (trailerItem) {
-          setTrailerItem(null);
-          return true;
-        }
-        if (searchOpen) {
-          setSearchOpen(false);
-          return true;
-        }
-        if (watchlistOpen) {
-          setWatchlistOpen(false);
-          return true;
-        }
-        if (watchHistoryOpen) {
-          setWatchHistoryOpen(false);
-          return true;
-        }
-        if (loginOpen) {
-          setLoginOpen(false);
-          return true;
-        }
-        if (footerTopic) {
-          setFooterTopic(null);
-          return true;
-        }
-        if (view === 'single' || view === 'archive') {
-          setView('home');
+        if (view !== 'home') {
+          navigateBackFromUI();
           return true;
         }
         return false;
       },
     });
-  }, [playerState, trailerItem, searchOpen, watchlistOpen, watchHistoryOpen, loginOpen, footerTopic, view]);
+  }, [closeTopOverlay, navigateBackFromUI, view]);
 
   useEffect(() => {
     setLiveShieldConfig(siteSettings.popupShield);
@@ -1035,81 +1380,166 @@ export default function App() {
     }, 3200);
   }, []);
 
-  const pushPathIfNeeded = (targetPath: '/' | '/admin') => {
-    if (typeof window === 'undefined') return;
-    const basePrefix = getAppBasePrefix();
-    if (basePrefix) {
-      const desiredUrl = targetPath === '/admin' ? `${basePrefix}/#/admin` : `${basePrefix}/`;
-      const currentUrl = `${window.location.pathname}${window.location.search}${window.location.hash}`;
-      if (currentUrl !== desiredUrl) {
-        window.history.pushState({}, '', desiredUrl);
-      }
-      return;
-    }
-    const currentFull = `${window.location.pathname}${window.location.search}${window.location.hash}`;
-    if (currentFull !== targetPath) {
-      window.history.pushState({}, '', targetPath);
-    }
-  };
 
-  const pushWatchRoute = (item: MediaItem, episodeNumber?: number) => {
-    if (typeof window === 'undefined') return;
-    const basePrefix = getAppBasePrefix();
-    const watchSlug = encodeURIComponent((item.slug || item.id).trim());
-    const epPart = episodeNumber && episodeNumber > 1 ? `&ep=${episodeNumber}` : '';
-    const desiredUrl = `${basePrefix}/?watch=${watchSlug}${epPart}`;
-    const currentFull = `${window.location.pathname}${window.location.search}${window.location.hash}`;
-    if (currentFull !== desiredUrl) {
-      window.history.pushState({}, '', desiredUrl);
-    }
-  };
 
-  const openAdminPage = (tab?: AdminTab) => {
-    const prefs = loadAdminWorkspacePrefs();
-    const moderatorPerms = prefs.moderatorSubPermissions;
-    const isOwner = effectiveAdminRole === 'owner';
-    const fallbackTab: AdminTab = isOwner ? 'overview' : 'catalog';
-    const storedLast = prefs.lastTab as AdminTab | undefined;
-    const desiredTab =
-      tab ||
-      (storedLast && isTabAccessible(storedLast, isOwner, moderatorPerms)
-        ? storedLast
-        : fallbackTab);
-    const resolvedTab: AdminTab = isTabAccessible(desiredTab, isOwner, moderatorPerms)
-      ? desiredTab
-      : fallbackTab;
-    setAdminRequestedTab((prev) => ({ tab: resolvedTab, nonce: prev.nonce + 1 }));
-    pushPathIfNeeded('/admin');
-    setView('admin');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
+  const openAdminPage = useCallback(
+    (tab?: AdminTab) => {
+      const prefs = loadAdminWorkspacePrefs();
+      const moderatorPerms = prefs.moderatorSubPermissions;
+      const isOwner = effectiveAdminRole === 'owner';
+      const fallbackTab: AdminTab = isOwner ? 'overview' : 'catalog';
+      const storedLast = prefs.lastTab as AdminTab | undefined;
+      const desiredTab =
+        tab ||
+        (storedLast && isTabAccessible(storedLast, isOwner, moderatorPerms)
+          ? storedLast
+          : fallbackTab);
+      const resolvedTab: AdminTab = isTabAccessible(desiredTab, isOwner, moderatorPerms)
+        ? desiredTab
+        : fallbackTab;
+      setAdminRequestedTab((prev) => ({ tab: resolvedTab, nonce: prev.nonce + 1 }));
+      navigateToRoute({ view: 'admin', adminTab: resolvedTab });
+    },
+    [effectiveAdminRole, navigateToRoute]
+  );
 
-  const navigateHome = () => {
-    pushPathIfNeeded('/');
-    setRouteEpisode(undefined);
-    setFilters(DEFAULT_FILTERS);
-    setView('home');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
+  const navigateHome = useCallback(() => {
+    navigateToRoute({ view: 'home' });
+  }, [navigateToRoute]);
 
-  const handleSelectMedia = (item: MediaItem, openDownloads = false) => {
-    pushWatchRoute(item);
-    setSelectedMediaId(item.id);
-    setRouteEpisode(undefined);
-    setOpenDownloadsOnSingle(openDownloads);
-    setView('single');
-    if (!openDownloads) {
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    }
-  };
+  const handleSelectMedia = useCallback(
+    (item: MediaItem, openDownloads = false) => {
+      const watchKey = (item.slug || item.id).trim();
+      setSelectedMediaId(item.id);
+      navigateToRoute(
+        {
+          view: 'single',
+          watchKey,
+          ...(openDownloads ? { openDownloads: true } : {}),
+        },
+        { scrollTop: !openDownloads }
+      );
+    },
+    [navigateToRoute]
+  );
 
-  const handleApplyFilter = (partial: Partial<CatalogFilterState>) => {
-    pushPathIfNeeded('/');
-    setRouteEpisode(undefined);
-    setFilters({ ...DEFAULT_FILTERS, ...partial });
-    setView('archive');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
+  const handleSingleEpisodeChange = useCallback(
+    (epNumber: number) => {
+      if (view !== 'single' || !requestedWatchKey) return;
+      navigateToRoute(
+        {
+          view: 'single',
+          watchKey: requestedWatchKey,
+          ...(epNumber > 1 ? { episode: epNumber } : {}),
+          ...(openDownloadsOnSingle ? { openDownloads: true } : {}),
+        },
+        { replace: true, scrollTop: false }
+      );
+    },
+    [view, requestedWatchKey, openDownloadsOnSingle, navigateToRoute]
+  );
+
+  const handleApplyFilter = useCallback(
+    (partial: Partial<CatalogFilterState>) => {
+      const nextFilters: CatalogFilterState = { ...DEFAULT_FILTERS, ...partial };
+      const nextSort: ArchiveSortOption = nextFilters.preset || 'latest';
+      navigateToRoute({
+        view: 'archive',
+        filters: nextFilters,
+        sort: nextSort,
+        page: 1,
+        pageSize: archivePageSize,
+      });
+    },
+    [archivePageSize, navigateToRoute]
+  );
+
+  const handleUpdateArchiveFilters = useCallback(
+    (nextFilters: CatalogFilterState, opts?: { replace?: boolean }) => {
+      const nextSort: ArchiveSortOption =
+        nextFilters.preset && nextFilters.preset !== archiveSort ? nextFilters.preset : archiveSort;
+      navigateToRoute(
+        {
+          view: 'archive',
+          filters: nextFilters,
+          sort: nextSort,
+          page: 1,
+          pageSize: archivePageSize,
+        },
+        { replace: opts?.replace, scrollTop: false }
+      );
+    },
+    [archiveSort, archivePageSize, navigateToRoute]
+  );
+
+  const handleChangeArchivePage = useCallback(
+    (nextPage: number) => {
+      navigateToRoute(
+        {
+          view: 'archive',
+          filters,
+          sort: archiveSort,
+          page: Math.max(1, nextPage),
+          pageSize: archivePageSize,
+        },
+        { scrollTop: true }
+      );
+    },
+    [filters, archiveSort, archivePageSize, navigateToRoute]
+  );
+
+  const handleChangeArchivePageSize = useCallback(
+    (nextPageSize: number) => {
+      navigateToRoute(
+        {
+          view: 'archive',
+          filters,
+          sort: archiveSort,
+          page: 1,
+          pageSize: nextPageSize,
+        },
+        { scrollTop: false }
+      );
+    },
+    [filters, archiveSort, navigateToRoute]
+  );
+
+  const handleChangeArchiveSort = useCallback(
+    (nextSort: ArchiveSortOption) => {
+      const nextFilters: CatalogFilterState =
+        nextSort === 'year'
+          ? { ...filters, preset: '' }
+          : { ...filters, preset: nextSort as CatalogFilterState['preset'] };
+      navigateToRoute(
+        {
+          view: 'archive',
+          filters: nextFilters,
+          sort: nextSort,
+          page: 1,
+          pageSize: archivePageSize,
+        },
+        { scrollTop: false }
+      );
+    },
+    [filters, archivePageSize, navigateToRoute]
+  );
+
+  const handleResetArchiveFilters = useCallback(() => {
+    navigateToRoute({
+      view: 'archive',
+      filters: DEFAULT_FILTERS,
+      sort: 'latest',
+      page: 1,
+      pageSize: archivePageSize,
+    });
+  }, [archivePageSize, navigateToRoute]);
+
+  const handleAdminTabChange = useCallback(
+    (tab: AdminTab) => {
+      navigateToRoute({ view: 'admin', adminTab: tab });
+    },
+    [navigateToRoute]
+  );
 
   const handleToggleWatchlist = (item: MediaItem) => {
     setWatchlistIds((prev) => {
@@ -1246,11 +1676,13 @@ export default function App() {
       showToast('لم يعد هذا العمل متوفراً في الكتالوج الحالي');
       return;
     }
-    setPlayerState({
-      item: target,
-      episode: rec.episodeNumber || 1,
-      serverIndex: rec.lastServerIndex || 0,
-    });
+    openOverlay('player', () =>
+      setPlayerState({
+        item: target,
+        episode: rec.episodeNumber || 1,
+        serverIndex: rec.lastServerIndex || 0,
+      })
+    );
   };
 
   const handleOpenRecentlyWatchedDetails = (
@@ -1290,10 +1722,11 @@ export default function App() {
       <>
         <Suspense
           fallback={
-            <div className="min-h-screen bg-[#06131c] flex flex-col items-center justify-center gap-3 text-white">
-              <div className="h-9 w-9 animate-spin rounded-full border-4 border-[#D92321] border-t-transparent" />
-              <span className="text-xs font-bold text-[#b7c9ef]">جاري تحميل لوحة الإدارة...</span>
-            </div>
+            <RunningRabbitLoader
+              variant="fullscreen"
+              label="جاري تحميل لوحة الإدارة..."
+              delayMs={100}
+            />
           }
         >
           <AdminDashboardView
@@ -1341,6 +1774,7 @@ export default function App() {
               setSiteSettings((prev) => ({ ...prev, popupShield: clean }));
             }}
             requestedTab={adminRequestedTab}
+            onTabChange={handleAdminTabChange}
             onExitDashboard={navigateHome}
             onPreviewMedia={(item) => handleSelectMedia(item, false)}
             onDeleteStarterItems={handleDeleteStarterItems}
@@ -1367,9 +1801,11 @@ export default function App() {
   if (siteSettings.maintenanceMode && !canAccessAdmin) {
     if (authLoading) {
       return (
-        <div className="min-h-screen bg-[#0f0f0f] flex items-center justify-center text-white">
-          <div className="h-9 w-9 animate-spin rounded-full border-4 border-[#E50914] border-t-transparent" />
-        </div>
+        <RunningRabbitLoader
+          variant="fullscreen"
+          label="جاري التحقق من الجلسة..."
+          delayMs={100}
+        />
       );
     }
     return (
@@ -1379,11 +1815,11 @@ export default function App() {
           tagline={siteSettings.tagline}
           message={siteSettings.maintenanceMessage}
           branding={siteSettings.branding}
-          onOpenAdminLogin={() => setLoginOpen(true)}
+          onOpenAdminLogin={() => openOverlay('login')}
         />
         <LoginModal
           isOpen={loginOpen}
-          onClose={() => setLoginOpen(false)}
+          onClose={() => closeTopOverlay()}
           firebaseUser={firebaseUser}
           isGuest={isGuest}
           isAdmin={canAccessAdmin}
@@ -1447,11 +1883,17 @@ export default function App() {
         catalog={activeCatalog}
         onNavigateHome={navigateHome}
         onSelectCategory={(category) => handleApplyFilter({ category })}
-        onOpenSearch={() => setSearchOpen(true)}
-        onOpenWatchlist={() => setWatchlistOpen(true)}
-        onOpenWatchHistory={() => setWatchHistoryOpen(true)}
-        onOpenContact={() => setFooterTopic('requests')}
-        onOpenLogin={() => setLoginOpen(true)}
+        onOpenSearch={() => openOverlay('search')}
+        onOpenWatchlist={() => openOverlay('watchlist')}
+        onOpenWatchHistory={() => openOverlay('watch_history')}
+        onOpenNotifications={() => openOverlay('notifications')}
+        unreadNotificationsCount={
+          notificationsList.filter(
+            (n) => !localReadNotificationIds.has(n.id) && !(firebaseUser && n.readByUids?.includes(firebaseUser.uid))
+          ).length
+        }
+        onOpenContact={() => openOverlay('footer_topic', () => setFooterTopic('requests'))}
+        onOpenLogin={() => openOverlay('login')}
         onOpenAdmin={() => openAdminPage()}
         onSelectMedia={handleSelectMedia}
         watchlistCount={watchlistItems.length}
@@ -1469,6 +1911,12 @@ export default function App() {
         currentView={view}
         branding={siteSettings.branding}
         siteName={effectiveBrandName}
+        mobileMenuOpen={mobileMenuOpen}
+        onOpenMobileMenu={() => openOverlay('mobile_menu')}
+        onCloseMobileMenu={() => closeTopOverlay()}
+        iosGuideOpen={iosGuideOpen}
+        onOpenIOSGuide={() => openOverlay('ios_guide')}
+        onCloseIOSGuide={() => closeTopOverlay()}
       />
 
       <main className="flex-1">
@@ -1478,10 +1926,18 @@ export default function App() {
             siteSettings={siteSettings}
             isAdmin={isOwnerAdmin}
             loading={!initialMediaLoaded && activeCatalog.length === 0}
+            loadError={
+              initialMediaLoaded && activeCatalog.length === 0 ? dbConnectionError : null
+            }
+            onRetryLoad={() => setDbReconnectNonce((n) => n + 1)}
             onSelectMedia={handleSelectMedia}
             onApplyFilter={handleApplyFilter}
-            onPlayNow={(item) => setPlayerState({ item, episode: 1 })}
-            onOpenContact={() => setFooterTopic('requests')}
+            onPlayNow={(item) =>
+              openOverlay('player', () => setPlayerState({ item, episode: 1 }))
+            }
+            onOpenContact={() =>
+              openOverlay('footer_topic', () => setFooterTopic('requests'))
+            }
             onOpenHomeBuilder={() => openAdminPage('home_builder')}
             watchlistIds={watchlistIds}
             onToggleWatchlist={handleToggleWatchlist}
@@ -1509,7 +1965,7 @@ export default function App() {
                 onResumeItem={handleResumeRecentlyWatched}
                 onOpenDetails={handleOpenRecentlyWatchedDetails}
                 onRemoveItem={(rec) => void handleRemoveRecentlyWatched(rec)}
-                onOpenManager={() => setWatchHistoryOpen(true)}
+                onOpenManager={() => openOverlay('watch_history')}
               />
             }
           />
@@ -1519,35 +1975,126 @@ export default function App() {
           <CatalogArchiveView
             catalog={activeCatalog}
             filters={filters}
-            onUpdateFilters={setFilters}
-            onResetFilters={() => setFilters(DEFAULT_FILTERS)}
+            currentPage={archivePage}
+            pageSize={archivePageSize}
+            sortOverride={archiveSort}
+            onUpdateFilters={(next) => handleUpdateArchiveFilters(next)}
+            onSearchQueryChange={(q) =>
+              handleUpdateArchiveFilters({ ...filters, query: q }, { replace: true })
+            }
+            onChangePage={handleChangeArchivePage}
+            onChangePageSize={handleChangeArchivePageSize}
+            onChangeSort={handleChangeArchiveSort}
+            onResetFilters={handleResetArchiveFilters}
+            onNavigateBack={navigateBackFromUI}
             onSelectMedia={handleSelectMedia}
             watchlistIds={watchlistIds}
             onToggleWatchlist={handleToggleWatchlist}
           />
         )}
 
-        {view === 'single' && selectedMedia && (
-          <SingleDetailView
-            catalog={activeCatalog}
-            item={selectedMedia}
-            initialEpisode={routeEpisode}
-            initialOpenDownloads={openDownloadsOnSingle}
-            currentUser={firebaseUser}
-            isGuest={isGuest}
-            onOpenLogin={() => setLoginOpen(true)}
-            onSelectMedia={handleSelectMedia}
-            onApplyFilter={handleApplyFilter}
-            onNavigateHome={navigateHome}
-            onOpenTrailer={(item) => setTrailerItem(item)}
-            onOpenPlayer={(item, ep = 1, srvIdx = 0) =>
-              setPlayerState({ item, episode: ep, serverIndex: srvIdx })
-            }
-            isInWatchlist={watchlistIds.includes(selectedMedia.id)}
-            onToggleWatchlist={handleToggleWatchlist}
-            onNotify={showToast}
-            watchlistIds={watchlistIds}
-          />
+        {view === 'single' && (
+          requestedWatchKey && !matchedSingleMedia ? (
+            !initialMediaLoaded ? (
+              <RunningRabbitLoader
+                variant="fullscreen"
+                label="جاري فتح العمل المطلوب..."
+                delayMs={120}
+              />
+            ) : (
+              <div className="mx-auto max-w-xl px-4 pt-32 pb-20 text-center space-y-5">
+                <div className="mx-auto inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-[#E50914]/15 border border-[#E50914]/40 text-[#ff8a88]">
+                  <Compass className="w-8 h-8" />
+                </div>
+                <div className="space-y-2">
+                  <h1 className="font-display text-2xl sm:text-3xl font-extrabold text-white">
+                    العمل المطلوب غير موجود
+                  </h1>
+                  <p className="text-sm text-[#b7c9ef] leading-relaxed">
+                    قد يكون هذا العمل أُزيل من المكتبة أو أن الرابط غير مكتمل. يمكنك العودة للرئيسية أو تصفح الأقسام.
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center justify-center gap-3">
+                  <button
+                    type="button"
+                    onClick={navigateHome}
+                    className="inline-flex min-h-[44px] items-center gap-2 rounded-xl bg-[#E50914] hover:bg-[#f40612] px-5 py-2.5 text-xs font-extrabold text-white cursor-pointer"
+                  >
+                    <Home className="w-4 h-4" />
+                    <span>العودة للرئيسية</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleApplyFilter({})}
+                    className="inline-flex min-h-[44px] items-center gap-2 rounded-xl bg-[#181818] hover:bg-[#242424] border border-white/15 px-5 py-2.5 text-xs font-bold text-white cursor-pointer"
+                  >
+                    <span>تصفح جميع الأقسام</span>
+                  </button>
+                </div>
+              </div>
+            )
+          ) : matchedSingleMedia ? (
+            <SingleDetailView
+              catalog={activeCatalog}
+              item={matchedSingleMedia}
+              initialEpisode={routeEpisode}
+              initialOpenDownloads={openDownloadsOnSingle}
+              currentUser={firebaseUser}
+              isGuest={isGuest}
+              onOpenLogin={() => openOverlay('login')}
+              onSelectMedia={handleSelectMedia}
+              onApplyFilter={handleApplyFilter}
+              onNavigateHome={navigateHome}
+              onNavigateBack={navigateBackFromUI}
+              onSelectEpisode={handleSingleEpisodeChange}
+              onOpenTrailer={(item) =>
+                openOverlay('trailer', () => setTrailerItem(item))
+              }
+              onOpenPlayer={(item, ep = 1, srvIdx = 0) =>
+                openOverlay('player', () =>
+                  setPlayerState({ item, episode: ep, serverIndex: srvIdx })
+                )
+              }
+              isInWatchlist={watchlistIds.includes(matchedSingleMedia.id)}
+              onToggleWatchlist={handleToggleWatchlist}
+              onNotify={showToast}
+              watchlistIds={watchlistIds}
+            />
+          ) : null
+        )}
+
+        {view === 'not_found' && (
+          <div className="mx-auto max-w-xl px-4 pt-32 pb-20 text-center space-y-5">
+            <div className="mx-auto inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-[#f9c400]/15 border border-[#f9c400]/40 text-[#f9c400]">
+              <Compass className="w-8 h-8" />
+            </div>
+            <div className="space-y-2">
+              <p className="font-latin text-xs font-black tracking-widest text-[#f9c400]">404</p>
+              <h1 className="font-display text-2xl sm:text-3xl font-extrabold text-white">
+                الصفحة غير موجودة
+              </h1>
+              <p className="text-sm text-[#b7c9ef] leading-relaxed">
+                المسار المطلوب{notFoundPath ? ` (${notFoundPath})` : ''} غير متاح في الموقع.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center justify-center gap-3">
+              <button
+                type="button"
+                onClick={navigateHome}
+                className="inline-flex min-h-[44px] items-center gap-2 rounded-xl bg-[#E50914] hover:bg-[#f40612] px-5 py-2.5 text-xs font-extrabold text-white cursor-pointer"
+              >
+                <Home className="w-4 h-4" />
+                <span>العودة للرئيسية</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleApplyFilter({})}
+                className="inline-flex min-h-[44px] items-center gap-2 rounded-xl bg-[#181818] hover:bg-[#242424] border border-white/15 px-5 py-2.5 text-xs font-bold text-white cursor-pointer"
+              >
+                <span>تصفح الأقسام</span>
+              </button>
+            </div>
+          </div>
         )}
       </main>
 
@@ -1555,7 +2102,9 @@ export default function App() {
         tagline={siteSettings.tagline}
         branding={siteSettings.branding}
         siteName={effectiveBrandName}
-        onOpenTopic={(topic) => setFooterTopic(topic)}
+        onOpenTopic={(topic) =>
+          openOverlay('footer_topic', () => setFooterTopic(topic))
+        }
         onNavigateHome={navigateHome}
       />
 
@@ -1563,25 +2112,50 @@ export default function App() {
       <SearchDrawer
         catalog={activeCatalog}
         isOpen={searchOpen}
-        onClose={() => setSearchOpen(false)}
+        onClose={() => closeTopOverlay()}
         onSelectMedia={handleSelectMedia}
         onViewAllResults={(queryText, category) =>
           handleApplyFilter({ query: queryText, category })
         }
       />
 
+      <NotificationsDrawer
+        isOpen={notificationsOpen}
+        onClose={() => closeTopOverlay()}
+        notifications={notificationsList}
+        localReadIds={localReadNotificationIds}
+        uid={firebaseUser?.uid || null}
+        preferences={notificationPrefs}
+        onUpdatePreferences={(next) => {
+          setNotificationPrefs(saveNotificationPreferences(next));
+        }}
+        onMarkRead={(notifId) => {
+          setLocalReadNotificationIds(markNotificationReadLocally(notifId));
+        }}
+        onMarkAllRead={() => {
+          let next = localReadNotificationIds;
+          for (const n of notificationsList) {
+            next = markNotificationReadLocally(n.id);
+          }
+          setLocalReadNotificationIds(new Set(next));
+        }}
+        catalog={activeCatalog}
+        onSelectMedia={(item) => handleSelectMedia(item)}
+        onNotify={showToast}
+      />
+
       <WatchlistModal
         isOpen={watchlistOpen}
-        onClose={() => setWatchlistOpen(false)}
+        onClose={() => closeTopOverlay()}
         items={watchlistItems}
         onSelectMedia={handleSelectMedia}
         onRemove={handleToggleWatchlist}
-        onOpenWatchHistory={() => setWatchHistoryOpen(true)}
+        onOpenWatchHistory={() => openOverlay('watch_history')}
       />
 
       <WatchHistoryManagerModal
         isOpen={watchHistoryOpen}
-        onClose={() => setWatchHistoryOpen(false)}
+        onClose={() => closeTopOverlay()}
         items={recentlyWatchedAllItems}
         catalog={activeCatalog}
         isSignedIn={Boolean(firebaseUser)}
@@ -1591,15 +2165,17 @@ export default function App() {
         onOpenDetails={handleOpenRecentlyWatchedDetails}
         onRemoveItem={handleRemoveRecentlyWatched}
         onClearAll={handleClearAllRecentlyWatched}
-        onOpenLogin={() => setLoginOpen(true)}
+        onOpenLogin={() => openOverlay('login')}
       />
 
       <TrailerModal
         item={trailerItem}
         playerTheme={siteSettings.playerTheme}
         popupShieldConfig={siteSettings.popupShield}
-        onClose={() => setTrailerItem(null)}
-        onWatchFull={(item) => setPlayerState({ item, episode: 1 })}
+        onClose={() => closeTopOverlay()}
+        onWatchFull={(item) =>
+          openOverlay('player', () => setPlayerState({ item, episode: 1 }))
+        }
       />
 
       {playerState && (
@@ -1616,13 +2192,13 @@ export default function App() {
           isSignedIn={Boolean(firebaseUser)}
           onRecentlyWatchedUpdated={() => setRecentlyWatchedTick((t) => t + 1)}
           onNotify={showToast}
-          onClose={() => setPlayerState(null)}
+          onClose={() => closeTopOverlay()}
         />
       )}
 
       <LoginModal
         isOpen={loginOpen}
-        onClose={() => setLoginOpen(false)}
+        onClose={() => closeTopOverlay()}
         firebaseUser={firebaseUser}
         isGuest={isGuest}
         isAdmin={canAccessAdmin}
@@ -1630,17 +2206,18 @@ export default function App() {
         onLogout={handleLogout}
         onContinueAsGuest={handleContinueAsGuest}
         onExitGuest={handleExitGuest}
-        onOpenWatchHistory={() => setWatchHistoryOpen(true)}
+        onOpenWatchHistory={() => openOverlay('watch_history')}
+        onOpenNotifications={() => openOverlay('notifications')}
         onOpenAdmin={() => openAdminPage()}
         onNotify={showToast}
       />
 
       <FooterInfoModal
         topic={footerTopic}
-        onClose={() => setFooterTopic(null)}
+        onClose={() => closeTopOverlay()}
         firebaseUser={firebaseUser}
         isGuest={isGuest}
-        onOpenLogin={() => setLoginOpen(true)}
+        onOpenLogin={() => openOverlay('login')}
         requests={visitorRequests}
         onAddRequest={handleAddRequest}
       />

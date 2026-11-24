@@ -468,6 +468,7 @@ interface AdminDashboardViewProps {
   recentlyWatchedItems?: import('../types/media').RecentlyWatchedRecord[];
   onRecentlyWatchedUiChange?: (next: import('../types/media').RecentlyWatchedUiConfig) => void;
   requestedTab?: { tab: AdminTab; nonce: number };
+  onTabChange?: (tab: AdminTab) => void;
   onExitDashboard: () => void;
   onPreviewMedia: (item: MediaItem) => void;
   onDeleteStarterItems: (ids: string[]) => void;
@@ -766,6 +767,7 @@ export function AdminDashboardView({
   recentlyWatchedItems,
   onRecentlyWatchedUiChange,
   requestedTab,
+  onTabChange,
   onExitDashboard,
   onPreviewMedia,
   onDeleteStarterItems,
@@ -1020,8 +1022,13 @@ export function AdminDashboardView({
     [isOwner, activeActorUid]
   );
 
+  const onTabChangeRef = useRef(onTabChange);
+  useEffect(() => {
+    onTabChangeRef.current = onTabChange;
+  }, [onTabChange]);
+
   const navigateToTab = useCallback(
-    (target: AdminTab) => {
+    (target: AdminTab, options?: { skipRouterSync?: boolean }) => {
       if (!isTabAccessible(target, isOwner, workspacePrefs.moderatorSubPermissions)) {
         const sig = `${activeActorUid || 'anon'}:${target}`;
         if (!loggedUnauthorizedRef.current.has(sig)) {
@@ -1036,11 +1043,17 @@ export function AdminDashboardView({
         onNotifyRef.current('ليست لديك صلاحية للوصول إلى هذا القسم.');
         setActiveTab('catalog');
         setMobileDrawerOpen(false);
+        if (!options?.skipRouterSync) {
+          onTabChangeRef.current?.('catalog');
+        }
         return;
       }
       setActiveTab(target);
       setMobileDrawerOpen(false);
       updateWorkspacePrefs({ lastTab: target });
+      if (!options?.skipRouterSync) {
+        onTabChangeRef.current?.(target);
+      }
       const targetLayoutGroup = adminNavLayout.groups.find((g) =>
         g.items.some((entry) => entry.id === target)
       );
@@ -1076,7 +1089,7 @@ export function AdminDashboardView({
     const nonce = requestedTab?.nonce || 0;
     if (nonce > 0 && nonce !== lastHandledNonceRef.current && requestedTab?.tab) {
       lastHandledNonceRef.current = nonce;
-      navigateToTabRef.current(requestedTab.tab);
+      navigateToTabRef.current(requestedTab.tab, { skipRouterSync: true });
     }
   }, [requestedTab?.nonce, requestedTab?.tab]);
 
@@ -4490,6 +4503,7 @@ export function AdminDashboardView({
 
               {activeTab === 'notifications' && (
                 <AdminNotificationsPanel
+                  user={user}
                   catalog={catalog}
                   requests={requests}
                   isOwner={isOwner}
@@ -5206,7 +5220,7 @@ export function AdminDashboardView({
                                 بعض المواقع تضع السيرفرات في صفحة <span className="font-latin">/watch</span> منفصلة؛ فعّل{' '}
                                 <button
                                   type="button"
-                                  onClick={() => setActiveTab('settings')}
+                                  onClick={() => navigateToTab('settings')}
                                   className="underline font-bold cursor-pointer"
                                 >
                                   Cloudflare Worker المجاني
@@ -5528,7 +5542,7 @@ export function AdminDashboardView({
                     </span>
                     <button
                       type="button"
-                      onClick={() => setActiveTab('settings')}
+                      onClick={() => navigateToTab('settings')}
                       className="shrink-0 rounded-lg bg-[#1a242e] hover:bg-white/10 border border-white/10 px-3 py-1.5 text-[11px] font-bold text-white cursor-pointer"
                     >
                       إعداد بروكسي Cloudflare المجاني
@@ -5682,7 +5696,7 @@ export function AdminDashboardView({
                         )}
                         <button
                           type="button"
-                          onClick={() => setActiveTab('settings')}
+                          onClick={() => navigateToTab('settings')}
                           className="inline-flex items-center gap-1 rounded-lg bg-[#f9c400] hover:bg-[#dfb20b] px-3 py-1.5 text-[11px] font-black text-[#06131c] cursor-pointer"
                         >
                           <Settings className="w-3.5 h-3.5" />
@@ -5744,7 +5758,7 @@ export function AdminDashboardView({
                           </span>
                           <button
                             type="button"
-                            onClick={() => setActiveTab('settings')}
+                            onClick={() => navigateToTab('settings')}
                             className="shrink-0 inline-flex items-center gap-1.5 rounded-xl bg-[#f9c400] hover:bg-[#dfb20b] px-3.5 py-2 text-[11px] font-black text-[#06131c] cursor-pointer"
                           >
                             <Settings className="w-3.5 h-3.5" />
@@ -5936,7 +5950,7 @@ export function AdminDashboardView({
                 onOpenInSingleScraper={(targetUrl) => {
                   setScrapeMode('url');
                   setScrapeUrl(targetUrl);
-                  setActiveTab('scraper');
+                  navigateToTab('scraper');
                 }}
                 onNotify={onNotify}
               />

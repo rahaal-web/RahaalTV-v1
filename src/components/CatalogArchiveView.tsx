@@ -1,19 +1,37 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, Filter, Layers, RotateCcw, Search, SlidersHorizontal } from 'lucide-react';
+import {
+  ArrowRight,
+  ChevronLeft,
+  ChevronRight,
+  Filter,
+  Layers,
+  RotateCcw,
+  Search,
+  SlidersHorizontal,
+} from 'lucide-react';
 import {
   buildDynamicFilterOptions,
   filterAndSortCatalog,
   matchesCategoryFilter,
   normalizeArabicText,
 } from '../lib/mediaFilters';
+import type { ArchiveSortOption } from '../lib/router';
 import { CatalogFilterState, MediaItem } from '../types/media';
 import { MovieCard } from './MovieCard';
 
 interface CatalogArchiveViewProps {
   catalog: MediaItem[];
   filters: CatalogFilterState;
+  currentPage?: number;
+  pageSize?: number;
+  sortOverride?: ArchiveSortOption;
   onUpdateFilters: (next: CatalogFilterState) => void;
+  onSearchQueryChange?: (query: string) => void;
+  onChangePage?: (page: number) => void;
+  onChangePageSize?: (pageSize: number) => void;
+  onChangeSort?: (sort: ArchiveSortOption) => void;
   onResetFilters: () => void;
+  onNavigateBack?: () => void;
   onSelectMedia: (item: MediaItem, openDownloads?: boolean) => void;
   watchlistIds: string[];
   onToggleWatchlist: (item: MediaItem) => void;
@@ -50,26 +68,44 @@ function getPaginationNumbers(current: number, total: number): Array<number | 'e
 export function CatalogArchiveView({
   catalog,
   filters,
+  currentPage: controlledPage,
+  pageSize: controlledPageSize,
+  sortOverride: controlledSortOverride,
   onUpdateFilters,
+  onSearchQueryChange,
+  onChangePage,
+  onChangePageSize,
+  onChangeSort,
   onResetFilters,
+  onNavigateBack,
   onSelectMedia,
   watchlistIds,
   onToggleWatchlist,
 }: CatalogArchiveViewProps) {
-  const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState<number>(24);
-  const [sortOverride, setSortOverride] = useState<'latest' | 'year' | 'rating' | 'views' | 'likes' | 'pinned'>(
+  const [internalPage, setInternalPage] = useState(1);
+  const [internalPageSize, setInternalPageSize] = useState<number>(24);
+  const [internalSortOverride, setInternalSortOverride] = useState<ArchiveSortOption>(
     filters.preset || 'latest'
   );
 
-  useEffect(() => {
-    setSortOverride(filters.preset || 'latest');
-  }, [filters.preset]);
+  const isControlledPage = typeof controlledPage === 'number';
+  const currentPage = isControlledPage ? Math.max(1, controlledPage) : internalPage;
+  const pageSize = typeof controlledPageSize === 'number' ? controlledPageSize : internalPageSize;
+  const sortOverride = controlledSortOverride ?? internalSortOverride;
 
-  // Reset to page 1 whenever filter criteria or page size changes
   useEffect(() => {
-    setCurrentPage(1);
+    if (!controlledSortOverride) {
+      setInternalSortOverride(filters.preset || 'latest');
+    }
+  }, [filters.preset, controlledSortOverride]);
+
+  // Reset to page 1 only in uncontrolled mode (controlled mode tracks page in router history)
+  useEffect(() => {
+    if (!isControlledPage) {
+      setInternalPage(1);
+    }
   }, [
+    isControlledPage,
     filters.query,
     filters.category,
     filters.genre,
@@ -110,8 +146,36 @@ export function CatalogArchiveView({
 
   const goToPage = (page: number) => {
     const clamped = Math.max(1, Math.min(totalPages, page));
-    setCurrentPage(clamped);
+    if (onChangePage) {
+      onChangePage(clamped);
+    } else {
+      setInternalPage(clamped);
+    }
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handlePageSizeChange = (nextSize: number) => {
+    if (onChangePageSize) {
+      onChangePageSize(nextSize);
+    } else {
+      setInternalPageSize(nextSize);
+    }
+  };
+
+  const handleSortChange = (val: ArchiveSortOption) => {
+    if (onChangeSort) {
+      onChangeSort(val);
+      return;
+    }
+    setInternalSortOverride(val);
+    if (val === 'year') {
+      onUpdateFilters({ ...filters, preset: '' });
+    } else {
+      onUpdateFilters({
+        ...filters,
+        preset: val as CatalogFilterState['preset'],
+      });
+    }
   };
 
   const activeHeading =
@@ -128,9 +192,21 @@ export function CatalogArchiveView({
       {/* Header & Active Filter Summary */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-2xl sm:rounded-3xl bg-[#1a242e] border border-white/[0.08] p-4 sm:p-6">
         <div className="min-w-0">
-          <div className="inline-flex items-center gap-2 text-xs font-extrabold text-[#D92321] mb-1">
-            <SlidersHorizontal className="w-4 h-4 shrink-0" />
-            <span>محرك التصفية المتقدم (RahaL TV Filter)</span>
+          <div className="flex flex-wrap items-center gap-2.5 mb-1.5">
+            {onNavigateBack && (
+              <button
+                type="button"
+                onClick={onNavigateBack}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-[#0c1821] hover:bg-[#D92321] border border-white/10 px-3 py-1.5 text-xs font-extrabold text-white transition-colors cursor-pointer shrink-0"
+              >
+                <ArrowRight className="w-3.5 h-3.5" />
+                <span>رجوع</span>
+              </button>
+            )}
+            <div className="inline-flex items-center gap-2 text-xs font-extrabold text-[#D92321]">
+              <SlidersHorizontal className="w-4 h-4 shrink-0" />
+              <span>محرك التصفية المتقدم (RahaL TV Filter)</span>
+            </div>
           </div>
           <h1 className="font-display text-xl sm:text-3xl font-extrabold text-white leading-snug">
             {activeHeading}
@@ -155,7 +231,7 @@ export function CatalogArchiveView({
         <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2.5 w-full sm:w-auto sm:self-center">
           <select
             value={pageSize}
-            onChange={(e) => setPageSize(Number(e.target.value))}
+            onChange={(e) => handlePageSizeChange(Number(e.target.value))}
             aria-label="عدد العناصر في الصفحة"
             className="min-h-[44px] rounded-xl bg-[#0c1821] border border-white/10 px-3 py-2.5 text-xs font-bold text-white focus:border-[#D92321] focus:outline-none cursor-pointer"
           >
@@ -167,7 +243,7 @@ export function CatalogArchiveView({
           <button
             type="button"
             onClick={() => {
-              setSortOverride('latest');
+              if (!onChangeSort) setInternalSortOverride('latest');
               onResetFilters();
             }}
             className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-[#0c1821] hover:bg-[#D92321] border border-white/10 px-3.5 sm:px-4 py-2.5 text-xs font-extrabold text-white transition-colors cursor-pointer"
@@ -224,7 +300,10 @@ export function CatalogArchiveView({
             <input
               type="text"
               value={filters.query}
-              onChange={(e) => onUpdateFilters({ ...filters, query: e.target.value })}
+              onChange={(e) => {
+                if (onSearchQueryChange) onSearchQueryChange(e.target.value);
+                else onUpdateFilters({ ...filters, query: e.target.value });
+              }}
               placeholder="بحث بالكلمة..."
               className="w-full min-h-[44px] rounded-xl bg-[#1a242e] border border-white/10 pr-10 pl-3 py-2.5 text-xs font-bold text-white placeholder:text-[#b7c9ef]/50 focus:border-[#D92321] focus:outline-none"
             />
@@ -302,18 +381,7 @@ export function CatalogArchiveView({
 
           <select
             value={sortOverride}
-            onChange={(e) => {
-              const val = e.target.value as 'latest' | 'year' | 'rating' | 'views' | 'likes' | 'pinned';
-              setSortOverride(val);
-              if (val === 'year') {
-                onUpdateFilters({ ...filters, preset: '' });
-              } else {
-                onUpdateFilters({
-                  ...filters,
-                  preset: val as CatalogFilterState['preset'],
-                });
-              }
-            }}
+            onChange={(e) => handleSortChange(e.target.value as ArchiveSortOption)}
             aria-label="الترتيب"
             className="min-h-[44px] rounded-xl bg-[#1a242e] border border-white/10 px-3 py-2.5 text-xs font-bold text-white focus:border-[#D92321] focus:outline-none"
           >
@@ -336,7 +404,7 @@ export function CatalogArchiveView({
           <button
             type="button"
             onClick={() => {
-              setSortOverride('latest');
+              if (!onChangeSort) setInternalSortOverride('latest');
               onResetFilters();
             }}
             className="min-h-[44px] rounded-xl bg-[#D92321] px-5 py-2.5 text-xs font-extrabold text-white cursor-pointer"

@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, Loader2, Search, Star, X } from 'lucide-react';
+import { ArrowLeft, Search, Star, X } from 'lucide-react';
 import { FALLBACK_POSTER, matchesCategoryFilter, normalizeArabicText } from '../lib/mediaFilters';
 import { getPosterUrl } from '../lib/mediaImages';
 import { MediaItem } from '../types/media';
 import { OptimizedImage } from './OptimizedImage';
+import { RunningRabbitLoader } from './RunningRabbitLoader';
 
 interface SearchDrawerProps {
   catalog: MediaItem[];
@@ -147,10 +148,12 @@ export function SearchDrawer({
           <div className="flex items-center justify-between gap-2 mb-3.5 sm:mb-4">
             <span className="text-xs font-bold text-[#b7c9ef]">
               {isSearching ? (
-                <span className="inline-flex items-center gap-2 text-white">
-                  <Loader2 className="w-4 h-4 animate-spin text-[#D92321]" />
-                  جاري جلب النتائج...
-                </span>
+                <RunningRabbitLoader
+                  variant="inline"
+                  size="sm"
+                  delayMs={80}
+                  label="جاري جلب النتائج..."
+                />
               ) : (
                 `تم العثور على ${results.length} عمل`
               )}
@@ -159,10 +162,7 @@ export function SearchDrawer({
             {results.length > 0 && (
               <button
                 type="button"
-                onClick={() => {
-                  onViewAllResults(debouncedQuery, category);
-                  onClose();
-                }}
+                onClick={() => onViewAllResults(debouncedQuery, category)}
                 className="inline-flex min-h-[38px] items-center gap-1.5 text-xs font-extrabold text-[#D92321] hover:text-white transition-colors cursor-pointer"
               >
                 <span>عرض كل النتائج ({results.length})</span>
@@ -183,10 +183,7 @@ export function SearchDrawer({
                 <button
                   key={item.id}
                   type="button"
-                  onClick={() => {
-                    onSelectMedia(item);
-                    onClose();
-                  }}
+                  onClick={() => onSelectMedia(item)}
                   className="group flex items-center gap-3.5 rounded-2xl bg-[#1a242e]/80 border border-white/[0.07] p-2.5 text-right hover:border-[#D92321]/60 hover:bg-[#1a242e] transition-all cursor-pointer"
                 >
                   <OptimizedImage

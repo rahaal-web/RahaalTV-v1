@@ -1,6 +1,7 @@
 import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 import {
   AlertTriangle,
+  Bell,
   Bookmark,
   Captions,
   Check,
@@ -13,7 +14,6 @@ import {
   Globe,
   History,
   LayoutDashboard,
-  Loader2,
   LogOut,
   Maximize2,
   Minimize2,
@@ -94,6 +94,8 @@ import {
 } from '../types/media';
 import { FooterTopic } from './Footer';
 import { OptimizedImage } from './OptimizedImage';
+import { PushPermissionCard } from './PushPermissionCard';
+import { RunningRabbitLoader } from './RunningRabbitLoader';
 
 function useDialogAccessibility(
   active: boolean,
@@ -166,10 +168,7 @@ export function WatchlistModal({
             {onOpenWatchHistory && (
               <button
                 type="button"
-                onClick={() => {
-                  onClose();
-                  onOpenWatchHistory();
-                }}
+                onClick={onOpenWatchHistory}
                 className="inline-flex items-center gap-1.5 rounded-xl bg-white/[0.06] hover:bg-[#E50914] border border-white/10 px-2.5 py-1.5 text-[11px] font-bold text-white transition-colors cursor-pointer"
               >
                 <History className="w-3.5 h-3.5" />
@@ -205,10 +204,7 @@ export function WatchlistModal({
                 >
                   <button
                     type="button"
-                    onClick={() => {
-                      onSelectMedia(item);
-                      onClose();
-                    }}
+                    onClick={() => onSelectMedia(item)}
                     className="flex items-center gap-3 sm:gap-3.5 text-right flex-1 min-w-0 cursor-pointer group"
                   >
                     <OptimizedImage
@@ -420,10 +416,7 @@ export function TrailerModal({
             </a>
             <button
               type="button"
-              onClick={() => {
-                onClose();
-                onWatchFull(item);
-              }}
+              onClick={() => onWatchFull(item)}
               className="hidden sm:inline-flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-extrabold transition-opacity hover:opacity-90 cursor-pointer"
               style={{
                 backgroundColor: 'var(--pt-accent)',
@@ -480,11 +473,13 @@ export function TrailerModal({
                 imgClassName="object-cover"
               />
               <div className="relative z-10 flex flex-col items-center gap-3">
-                <Loader2 className="w-10 h-10 animate-spin" style={{ color: 'var(--pt-accent)' }} />
-                <p className="font-display text-base sm:text-lg font-extrabold text-white">
-                  جاري جلب الإعلان الرسمي...
-                </p>
-                <p className="text-xs text-[#b7c9ef]">{item.title}</p>
+                <RunningRabbitLoader
+                  variant="section"
+                  size="md"
+                  delayMs={100}
+                  label="جاري جلب الإعلان الرسمي..."
+                  sublabel={item.title}
+                />
               </div>
             </div>
           ) : (
@@ -2881,6 +2876,7 @@ interface LoginModalProps {
   onContinueAsGuest?: () => void;
   onExitGuest?: () => void;
   onOpenWatchHistory?: () => void;
+  onOpenNotifications?: () => void;
   onOpenAdmin: () => void;
   onNotify?: (msg: string) => void;
 }
@@ -2896,6 +2892,7 @@ export function LoginModal({
   onContinueAsGuest,
   onExitGuest,
   onOpenWatchHistory,
+  onOpenNotifications,
   onOpenAdmin,
   onNotify,
 }: LoginModalProps) {
@@ -3030,10 +3027,7 @@ export function LoginModal({
             {isAdmin && (
               <button
                 type="button"
-                onClick={() => {
-                  onClose();
-                  onOpenAdmin();
-                }}
+                onClick={onOpenAdmin}
                 className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-[#f9c400] hover:bg-[#dfb20b] py-3 text-xs font-black text-[#06131c] transition-colors cursor-pointer"
               >
                 <LayoutDashboard className="w-4 h-4" />
@@ -3044,16 +3038,26 @@ export function LoginModal({
             {onOpenWatchHistory && (
               <button
                 type="button"
-                onClick={() => {
-                  onClose();
-                  onOpenWatchHistory();
-                }}
+                onClick={onOpenWatchHistory}
                 className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-white/[0.06] hover:bg-white/15 border border-white/10 py-3 text-xs font-extrabold text-white transition-colors cursor-pointer"
               >
                 <History className="w-4 h-4 text-[#E50914]" />
                 <span>سجل المشاهدة (شاهدته مؤخراً)</span>
               </button>
             )}
+
+            {onOpenNotifications && (
+              <button
+                type="button"
+                onClick={onOpenNotifications}
+                className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-white/[0.06] hover:bg-white/15 border border-white/10 py-3 text-xs font-extrabold text-white transition-colors cursor-pointer"
+              >
+                <Bell className="w-4 h-4 text-[#f9c400]" />
+                <span>مركز الإشعارات</span>
+              </button>
+            )}
+
+            <PushPermissionCard compact onNotify={onNotify} />
 
             <button
               type="button"
@@ -3096,16 +3100,26 @@ export function LoginModal({
             {onOpenWatchHistory && (
               <button
                 type="button"
-                onClick={() => {
-                  onClose();
-                  onOpenWatchHistory();
-                }}
+                onClick={onOpenWatchHistory}
                 className="w-full min-h-[44px] inline-flex items-center justify-center gap-2 rounded-xl bg-white/[0.06] hover:bg-white/15 border border-white/10 py-3 text-xs font-extrabold text-white transition-colors cursor-pointer"
               >
                 <History className="w-4 h-4 text-[#E50914]" />
                 <span>سجل المشاهدة (شاهدته مؤخراً)</span>
               </button>
             )}
+
+            {onOpenNotifications && (
+              <button
+                type="button"
+                onClick={onOpenNotifications}
+                className="w-full min-h-[44px] inline-flex items-center justify-center gap-2 rounded-xl bg-white/[0.06] hover:bg-white/15 border border-white/10 py-3 text-xs font-extrabold text-white transition-colors cursor-pointer"
+              >
+                <Bell className="w-4 h-4 text-[#f9c400]" />
+                <span>مركز الإشعارات</span>
+              </button>
+            )}
+
+            <PushPermissionCard compact onNotify={onNotify} />
 
             {onExitGuest && (
               <button
@@ -3380,10 +3394,7 @@ export function FooterInfoModal({
                   </p>
                   <button
                     type="button"
-                    onClick={() => {
-                      onClose();
-                      onOpenLogin();
-                    }}
+                    onClick={onOpenLogin}
                     className="w-full sm:w-auto min-h-[44px] inline-flex items-center justify-center gap-2 rounded-xl bg-[#D92321] hover:bg-[#dc0e30] px-5 py-2.5 text-xs font-extrabold text-white cursor-pointer"
                   >
                     <ShieldCheck className="w-4 h-4" />
