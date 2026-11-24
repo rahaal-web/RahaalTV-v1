@@ -45,7 +45,25 @@ import {
   reorderPinnedTabsInLayout,
   togglePinnedTabInLayout,
 } from '../src/lib/adminNavLayout';
-import type { MediaItem, SiteSettings } from '../src/types/media';
+import {
+  MAIN_3D_CARD_STYLES,
+  MAIN_CARD_STYLE_CLEAN_META,
+  normalizeHomeCardStyle,
+  normalizeRecentlyWatchedCardStyle,
+  RECENTLY_WATCHED_3D_STYLES,
+} from '../src/lib/cardStyles';
+import {
+  buildSiteThemeCssVars,
+  normalizeSiteThemeId,
+  SITE_THEMES,
+} from '../src/lib/siteThemes';
+import {
+  HOME_CARD_STYLE_3D_IDS,
+  RECENTLY_WATCHED_CARD_STYLE_IDS,
+  SITE_THEME_IDS,
+  type MediaItem,
+  type SiteSettings,
+} from '../src/types/media';
 
 function makeSampleItem(overrides: Partial<MediaItem> = {}): MediaItem {
   return {
@@ -108,12 +126,12 @@ const SAMPLE_SETTINGS: SiteSettings = {
 };
 
 describe('RahaL TV Admin Navigation & RBAC', () => {
-  it('defines exactly 9 navigation groups and 31 unique admin tabs', () => {
+  it('defines exactly 9 navigation groups and 33 unique admin tabs', () => {
     assert.equal(ADMIN_NAV_GROUPS.length, 9);
     const items = getAllAdminNavItems();
-    assert.equal(items.length, 31);
+    assert.equal(items.length, 33);
     const uniqueIds = new Set(items.map((item) => item.id));
-    assert.equal(uniqueIds.size, 31);
+    assert.equal(uniqueIds.size, 33);
     assert.ok(ADMIN_NAV_GROUPS.every((g) => Boolean(g.accentColor) && Boolean(g.iconName)));
     assert.ok(items.every((i) => Boolean(i.iconName)));
   });
@@ -123,6 +141,8 @@ describe('RahaL TV Admin Navigation & RBAC', () => {
     assert.equal(isTabAccessible('overview', false, DEFAULT_MODERATOR_SUB_PERMS), false);
     assert.equal(isTabAccessible('website_branding', true, DEFAULT_MODERATOR_SUB_PERMS), true);
     assert.equal(isTabAccessible('website_branding', false, DEFAULT_MODERATOR_SUB_PERMS), false);
+    assert.equal(isTabAccessible('cards_themes', true, DEFAULT_MODERATOR_SUB_PERMS), true);
+    assert.equal(isTabAccessible('cards_themes', false, DEFAULT_MODERATOR_SUB_PERMS), false);
     assert.equal(isTabAccessible('slider_customization', true, DEFAULT_MODERATOR_SUB_PERMS), true);
     assert.equal(isTabAccessible('slider_customization', false, DEFAULT_MODERATOR_SUB_PERMS), false);
     assert.equal(isTabAccessible('admin_appearance', true, DEFAULT_MODERATOR_SUB_PERMS), true);
@@ -391,7 +411,7 @@ describe('Admin Eye Comfort Appearance & Sidebar Pinning/Reordering', () => {
     assert.equal(cssVars['--rtv-admin-brightness'], '94%');
   });
 
-  it('pins/unpins tabs, reorders pinned tabs, and reconciles all 31 canonical tabs', () => {
+  it('pins/unpins tabs, reorders pinned tabs, and reconciles all 33 canonical tabs', () => {
     let layout = buildDefaultAdminNavLayout();
     layout = togglePinnedTabInLayout(layout, 'website_branding');
     layout = togglePinnedTabInLayout(layout, 'slider_customization');
@@ -406,8 +426,62 @@ describe('Admin Eye Comfort Appearance & Sidebar Pinning/Reordering', () => {
       pinnedTabs: ['slider_customization'],
     });
     const reconciledTabs = reconciled.groups.flatMap((g) => g.items.map((i) => i.id));
-    assert.equal(reconciledTabs.length, 31);
+    assert.equal(reconciledTabs.length, 33);
     assert.deepEqual(reconciled.pinnedTabs, ['slider_customization']);
+  });
+});
+
+describe('20 Main 3D Card Styles, 7 RW 3D Styles & 25+1 Site Themes', () => {
+  it('defines 20 unique main 3D card styles plus clean fallback and normalizes them', () => {
+    assert.equal(HOME_CARD_STYLE_3D_IDS.length, 20);
+    assert.equal(MAIN_3D_CARD_STYLES.length, 20);
+    assert.equal(MAIN_CARD_STYLE_CLEAN_META.id, 'clean');
+    const uniqueMainIds = new Set(MAIN_3D_CARD_STYLES.map((s) => s.id));
+    assert.equal(uniqueMainIds.size, 20);
+    for (const id of HOME_CARD_STYLE_3D_IDS) {
+      assert.equal(normalizeHomeCardStyle(id), id);
+      assert.equal(normalizeHomeConfig({ cardStyle: id }).cardStyle, id);
+    }
+    assert.equal(normalizeHomeCardStyle('clean'), 'clean');
+    assert.equal(normalizeHomeCardStyle('nonexistent'), 'clean');
+  });
+
+  it('defines 7 unique Recently Watched 3D card styles and normalizes them safely', () => {
+    assert.equal(RECENTLY_WATCHED_CARD_STYLE_IDS.length, 7);
+    assert.equal(RECENTLY_WATCHED_3D_STYLES.length, 7);
+    const uniqueRwIds = new Set(RECENTLY_WATCHED_3D_STYLES.map((s) => s.id));
+    assert.equal(uniqueRwIds.size, 7);
+    for (const id of RECENTLY_WATCHED_CARD_STYLE_IDS) {
+      assert.equal(normalizeRecentlyWatchedCardStyle(id), id);
+    }
+    assert.equal(normalizeRecentlyWatchedCardStyle('unknown'), 'rw-3d-tilt');
+  });
+
+  it('defines default plus 25 distinct site themes and builds complete CSS variables', () => {
+    assert.equal(SITE_THEME_IDS.length, 26);
+    assert.equal(SITE_THEMES.length, 26);
+    assert.equal(SITE_THEMES[0].id, 'default');
+    const uniqueThemes = new Set(SITE_THEMES.map((t) => t.id));
+    assert.equal(uniqueThemes.size, 26);
+    for (const id of SITE_THEME_IDS) {
+      assert.equal(normalizeSiteThemeId(id), id);
+      const vars = buildSiteThemeCssVars(id);
+      assert.ok(vars['--rtv-site-bg']);
+      assert.ok(vars['--rtv-site-accent']);
+      assert.ok(vars['--rtv-site-text']);
+    }
+    assert.equal(normalizeSiteThemeId('invalid-theme'), 'default');
+
+    const rulesText = fs.readFileSync(path.resolve(process.cwd(), 'firestore.rules'), 'utf8');
+    for (const id of HOME_CARD_STYLE_3D_IDS) {
+      assert.ok(rulesText.includes(`'${id}'`), `Missing main card style "${id}" in firestore.rules`);
+    }
+    for (const id of RECENTLY_WATCHED_CARD_STYLE_IDS) {
+      assert.ok(rulesText.includes(`'${id}'`), `Missing RW card style "${id}" in firestore.rules`);
+    }
+    for (const id of SITE_THEME_IDS) {
+      assert.ok(rulesText.includes(`'${id}'`), `Missing site theme "${id}" in firestore.rules`);
+    }
   });
 });
 

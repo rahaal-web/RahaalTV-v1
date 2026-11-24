@@ -325,7 +325,17 @@
         "showFullLibrary": { "type": "boolean" },
         "showRequestBanner": { "type": "boolean" },
         "cardsPerRow": { "type": "number" },
-        "cardStyle": { "type": "string", "enum": ["clean", "classic", "showcase"] },
+        "cardStyle": {
+          "type": "string",
+          "enum": [
+            "clean", "classic", "showcase",
+            "3d-obsidian-tilt", "3d-cinema-stage", "3d-neon-prism", "3d-glass-float",
+            "3d-gold-bevel", "3d-stacked-deck", "3d-hologram-edge", "3d-theater-curtain",
+            "3d-poster-lift", "3d-dual-flip", "3d-corner-fold", "3d-cyber-frame",
+            "3d-velvet-depth", "3d-chrome-plate", "3d-spotlight-arc", "3d-polaroid-slab",
+            "3d-split-slice", "3d-metallic-crest"
+          ]
+        },
         "sections": { "type": "array" },
         "updatedBy": { "type": "string", "minLength": 1, "maxLength": 128 },
         "updatedAt": { "type": "string", "format": "date-time" }
@@ -449,6 +459,13 @@
         "autoScrollIntervalSec": { "type": "number" },
         "scrollDirection": { "type": "string", "enum": ["rtl", "ltr"] },
         "enableWheelScroll": { "type": "boolean" },
+        "cardStyle": {
+          "type": "string",
+          "enum": [
+            "rw-3d-tilt", "rw-3d-glass", "rw-3d-stacked", "rw-3d-neon-bevel",
+            "rw-3d-floating-stage", "rw-3d-prism", "rw-3d-velvet-arch"
+          ]
+        },
         "cardSizePreset": { "type": "string", "enum": ["small", "medium", "large", "custom"] },
         "cardWidthPx": { "type": "number" },
         "cardGapPx": { "type": "number" },
@@ -516,6 +533,29 @@
         "year", "quality", "slug", "englishTitle", "positionSec", "durationSec",
         "progressPct", "completed", "lastWatchedAtMs", "createdAtMs", "updatedAt"
       ]
+    },
+    "SiteThemeSettings": {
+      "title": "SiteThemeSettings",
+      "description": "Active visual site theme (default + 25 distinct site themes) stored in /settings/site_theme.",
+      "type": "object",
+      "properties": {
+        "siteThemeId": {
+          "type": "string",
+          "enum": [
+            "default",
+            "cyber-crimson", "royal-gold", "midnight-sapphire", "emerald-noir",
+            "sunset-amber", "velvet-plum", "ocean-teal", "volcanic-copper",
+            "arctic-frost", "ivory-editorial", "espresso-noir", "nordic-slate",
+            "cherry-obsidian", "neon-mint", "titanium-steel", "champagne-luxe",
+            "electric-indigo", "forest-sage", "desert-dune", "monochrome-silver",
+            "crimson-velvet", "aurora-violet", "cobalt-storm", "rose-quartz-dark",
+            "golden-pharaoh"
+          ]
+        },
+        "updatedBy": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["siteThemeId", "updatedBy", "updatedAt"]
     }
   },
   "firestore": {
@@ -557,7 +597,11 @@
     },
     "/settings/recently_watched_ui": {
       "schema": { "$ref": "#/entities/RecentlyWatchedUiSettings" },
-      "description": "Dedicated settings document storing horizontal carousel configuration and per-device sizing for Recently Watched."
+      "description": "Dedicated settings document storing horizontal carousel configuration, 3D card style, and per-device sizing for Recently Watched."
+    },
+    "/settings/site_theme": {
+      "schema": { "$ref": "#/entities/SiteThemeSettings" },
+      "description": "Dedicated settings document storing the active site visual theme across default and 25 alternative themes."
     },
     "/settings/{settingId}": {
       "schema": { "$ref": "#/entities/SiteSettings" },

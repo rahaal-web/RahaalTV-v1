@@ -42,6 +42,10 @@ export type AppRoute =
       openDownloads?: boolean;
     }
   | {
+      view: 'actor';
+      actorName: string;
+    }
+  | {
       view: 'admin';
       adminTab?: AdminTab;
     }
@@ -122,6 +126,11 @@ export function buildRouteHash(route: AppRoute): string {
     }
     const qs = params.toString();
     return qs ? `#/watch/${cleanKey}?${qs}` : `#/watch/${cleanKey}`;
+  }
+
+  if (route.view === 'actor') {
+    const cleanActor = encodeURIComponent(route.actorName.trim() || 'actor');
+    return `#/actor/${cleanActor}`;
   }
 
   if (route.view === 'admin') {
@@ -234,6 +243,23 @@ export function parseRouteFromLocationParts(input: {
       };
     }
 
+    const actorMatch = hashPath.match(/^\/actor\/([^/]+)$/i);
+    if (actorMatch?.[1]) {
+      let actorName = actorMatch[1];
+      try {
+        actorName = decodeURIComponent(actorName);
+      } catch {
+        // Keep raw actor segment if malformed
+      }
+      return {
+        route: {
+          view: 'actor',
+          actorName: actorName.trim() || 'actor',
+        },
+        needsCanonicalReplace: false,
+      };
+    }
+
     if (hashPath === '/admin' || hashPath.startsWith('/admin/')) {
       const tabPart = hashPath.slice('/admin'.length).replace(/^\/+/, '');
       let adminTab: AdminTab | undefined;
@@ -288,6 +314,23 @@ export function parseRouteFromLocationParts(input: {
         view: 'single',
         watchKey,
         ...(episode && episode > 1 ? { episode } : {}),
+      },
+      needsCanonicalReplace: true,
+    };
+  }
+
+  const pathActorMatch = normalizedRelPath.match(/^\/actor\/([^/]+)$/i);
+  if (pathActorMatch?.[1]) {
+    let actorName = pathActorMatch[1];
+    try {
+      actorName = decodeURIComponent(actorName);
+    } catch {
+      // Keep raw actor segment
+    }
+    return {
+      route: {
+        view: 'actor',
+        actorName: actorName.trim() || 'actor',
       },
       needsCanonicalReplace: true,
     };

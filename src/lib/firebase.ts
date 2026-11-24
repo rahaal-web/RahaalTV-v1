@@ -49,11 +49,13 @@ import {
   RequestStatus,
   ServerHealthRecord,
   SiteSettings,
+  SiteThemeId,
   StreamServer,
   UserSubProfile,
   VisitorRequest,
   WatchProgressRecord,
 } from '../types/media';
+import { normalizeSiteThemeId } from './siteThemes';
 import {
   loadStoredPlaceholderConfig,
   normalizeImagePlaceholderConfig,
@@ -2051,6 +2053,20 @@ export async function saveRecentlyWatchedUiConfigToFirestore(
     });
     return { ok: true, projectId, databaseId };
   } catch (error) {
+    if (isPermissionDeniedError(error)) {
+      const legacyPayload: Record<string, unknown> = { ...cleanCfg };
+      delete legacyPayload.cardStyle;
+      try {
+        await setDoc(doc(activeDb, 'settings', 'recently_watched_ui'), {
+          ...legacyPayload,
+          updatedBy: actorUid,
+          updatedAt: serverTimestamp(),
+        });
+        return { ok: true, projectId, databaseId };
+      } catch {
+        // Fall through to report original error below
+      }
+    }
     const { code, message } = getFirebaseErrorCodeAndMessage(error);
     reportClientError({
       source: 'firestore.settings.recently_watched_ui',
@@ -2060,6 +2076,44 @@ export async function saveRecentlyWatchedUiConfigToFirestore(
     });
     if (!isPermissionDeniedError(error)) {
       handleFirestoreError(error, OperationType.WRITE, 'settings/recently_watched_ui');
+    }
+    return {
+      ok: false,
+      projectId,
+      databaseId,
+      errorCode: code || 'permission-denied',
+      errorMessage: message,
+    };
+  }
+}
+
+export async function saveSiteThemeToFirestore(
+  siteThemeId: SiteThemeId,
+  uid: string
+): Promise<SaveImagePlaceholdersResult> {
+  const activeDb = getActiveDatabase();
+  const activeCfg = getActiveFirebaseConfig();
+  const projectId = activeCfg.projectId;
+  const databaseId = activeCfg.firestoreDatabaseId || '(default)';
+  const actorUid = getActiveAuth().currentUser?.uid || uid;
+  const normalizedThemeId = normalizeSiteThemeId(siteThemeId);
+  try {
+    await setDoc(doc(activeDb, 'settings', 'site_theme'), {
+      siteThemeId: normalizedThemeId,
+      updatedBy: actorUid,
+      updatedAt: serverTimestamp(),
+    });
+    return { ok: true, projectId, databaseId };
+  } catch (error) {
+    const { code, message } = getFirebaseErrorCodeAndMessage(error);
+    reportClientError({
+      source: 'firestore.settings.site_theme',
+      level: 'warn',
+      message: `Write to settings/site_theme on ${projectId}/${databaseId} failed (${code || 'unknown'}): ${message}`,
+      context: { projectId, databaseId, actorUid },
+    });
+    if (!isPermissionDeniedError(error)) {
+      handleFirestoreError(error, OperationType.WRITE, 'settings/site_theme');
     }
     return {
       ok: false,

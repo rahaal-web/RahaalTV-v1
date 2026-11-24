@@ -2,11 +2,13 @@ import type {
   ImageSlotType,
   RecentlyWatchedAspectRatio,
   RecentlyWatchedCardSizePreset,
+  RecentlyWatchedCardStyle,
   RecentlyWatchedDeviceKey,
   RecentlyWatchedDeviceLayoutConfig,
   RecentlyWatchedSortOrder,
   RecentlyWatchedUiConfig,
 } from '../types/media';
+import { normalizeRecentlyWatchedCardStyle } from './cardStyles';
 
 export const RECENTLY_WATCHED_UI_STORAGE_KEY = 'rahaltv_recently_watched_ui_v1';
 
@@ -63,6 +65,7 @@ export const DEFAULT_RECENTLY_WATCHED_UI_CONFIG: RecentlyWatchedUiConfig = {
   scrollDirection: 'rtl',
   enableWheelScroll: true,
 
+  cardStyle: 'rw-3d-tilt',
   cardSizePreset: 'medium',
   cardWidthPx: CARD_SIZE_PRESET_WIDTHS.medium,
   cardGapPx: 14,
@@ -217,6 +220,7 @@ export function normalizeRecentlyWatchedUiConfig(
     scrollDirection,
     enableWheelScroll: raw.enableWheelScroll !== false,
 
+    cardStyle: normalizeRecentlyWatchedCardStyle(raw.cardStyle) as RecentlyWatchedCardStyle,
     cardSizePreset,
     cardWidthPx,
     cardGapPx: clampInt(raw.cardGapPx, 4, 40, def.cardGapPx),
@@ -265,6 +269,7 @@ export function sanitizeRecentlyWatchedUiForFirestore(
     autoScrollIntervalSec: n.autoScrollIntervalSec,
     scrollDirection: n.scrollDirection,
     enableWheelScroll: Boolean(n.enableWheelScroll),
+    cardStyle: normalizeRecentlyWatchedCardStyle(n.cardStyle),
     cardSizePreset: n.cardSizePreset,
     cardWidthPx: n.cardWidthPx,
     cardGapPx: n.cardGapPx,

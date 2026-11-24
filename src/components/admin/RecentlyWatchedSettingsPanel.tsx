@@ -19,11 +19,13 @@ import type {
   MediaItem,
   RecentlyWatchedAspectRatio,
   RecentlyWatchedCardSizePreset,
+  RecentlyWatchedCardStyle,
   RecentlyWatchedDeviceKey,
   RecentlyWatchedRecord,
   RecentlyWatchedSortOrder,
   RecentlyWatchedUiConfig,
 } from '../../types/media';
+import { RECENTLY_WATCHED_3D_STYLES } from '../../lib/cardStyles';
 import {
   CARD_SIZE_PRESET_WIDTHS,
   DEFAULT_RECENTLY_WATCHED_UI_CONFIG,
@@ -376,6 +378,35 @@ export function RecentlyWatchedSettingsPanel({
           <h4 className="font-display text-sm font-extrabold text-[#f9c400] border-b border-white/10 pb-2">
             ثانياً: حجم البطاقات وعناصرها
           </h4>
+
+          <div>
+            <span className="block text-[11px] font-bold text-[#b7c9ef] mb-1.5">
+              تصميم البطاقة ثلاثي الأبعاد (7 أشكال احترافية)
+            </span>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+              {RECENTLY_WATCHED_3D_STYLES.map((styleMeta, idx) => (
+                <button
+                  key={styleMeta.id}
+                  type="button"
+                  onClick={() =>
+                    updateCfg({ cardStyle: styleMeta.id as RecentlyWatchedCardStyle })
+                  }
+                  className={`rounded-xl border py-2 px-2 text-right transition-colors cursor-pointer ${
+                    cfg.cardStyle === styleMeta.id
+                      ? 'bg-[#D92321] border-[#D92321] text-white shadow-md'
+                      : 'bg-[#0c1821] border-white/10 text-[#b7c9ef] hover:text-white'
+                  }`}
+                >
+                  <span className="block text-[10px] font-black opacity-75">
+                    0{idx + 1} • 3D
+                  </span>
+                  <span className="block text-[11px] font-extrabold truncate">
+                    {styleMeta.name}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
 
           <div>
             <span className="block text-[11px] font-bold text-[#b7c9ef] mb-1.5">

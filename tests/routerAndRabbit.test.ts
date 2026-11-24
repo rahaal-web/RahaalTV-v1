@@ -77,6 +77,15 @@ test('Hash Router: parses and builds home, archive, single, admin, and not_found
   });
   assert.deepEqual(parsedAdmin.route, { view: 'admin', adminTab: 'notifications' });
 
+  const actorHash = buildRouteHash({ view: 'actor', actorName: 'توم كروز' });
+  assert.equal(actorHash.startsWith('#/actor/'), true);
+  const parsedActor = parseRouteFromLocationParts({
+    pathname: '/',
+    search: '',
+    hash: actorHash,
+  });
+  assert.deepEqual(parsedActor.route, { view: 'actor', actorName: 'توم كروز' });
+
   const notFoundHash = parseRouteFromLocationParts({
     pathname: '/',
     search: '',

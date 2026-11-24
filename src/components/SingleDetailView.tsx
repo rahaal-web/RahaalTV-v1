@@ -57,6 +57,7 @@ interface SingleDetailViewProps {
   onNavigateHome: () => void;
   onNavigateBack?: () => void;
   onSelectEpisode?: (episode: number) => void;
+  onSelectActor?: (actorName: string) => void;
   onOpenTrailer: (item: MediaItem) => void;
   onOpenPlayer: (item: MediaItem, episodeNumber?: number, serverIndex?: number) => void;
   isInWatchlist: boolean;
@@ -89,6 +90,7 @@ export function SingleDetailView({
   onNavigateHome,
   onNavigateBack,
   onSelectEpisode,
+  onSelectActor,
   onOpenTrailer,
   onOpenPlayer,
   isInWatchlist,
@@ -539,12 +541,65 @@ export function SingleDetailView({
           {/* Center Column: Story & Symmetrical 8-Tile Details */}
           <div className="md:col-span-8 lg:col-span-6 order-3 lg:order-2 flex flex-col gap-4">
             {/* Story Block (.single-story) */}
-            <div className="rounded-3xl bg-[#0c1821] border border-white/[0.08] p-5 shadow-xl">
-              <h2 className="font-display text-lg font-extrabold text-white mb-2.5 flex items-center gap-2">
-                <span className="h-5 w-1.5 rounded-full bg-[#D92321]" />
-                قصة العرض
-              </h2>
-              <p className="text-sm sm:text-base leading-relaxed text-[#b7c9ef]">{item.story}</p>
+            <div className="rounded-3xl bg-[#0c1821] border border-white/[0.08] p-5 shadow-xl space-y-3.5">
+              <div>
+                <h2 className="font-display text-lg font-extrabold text-white mb-2.5 flex items-center gap-2">
+                  <span className="h-5 w-1.5 rounded-full bg-[#D92321]" />
+                  قصة العرض
+                </h2>
+                <p className="text-sm sm:text-base leading-relaxed text-[#b7c9ef]">{item.story}</p>
+              </div>
+
+              {item.cast && item.cast.length > 0 && item.cast.some((c) => c.name && c.name !== 'طاقم العمل') && (
+                <div className="pt-3 border-t border-white/[0.07] space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="flex items-center gap-1.5 text-xs font-extrabold text-white">
+                      <Users className="w-3.5 h-3.5 text-[#f9c400]" />
+                      <span>أبطال العمل</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('cast')}
+                      className="text-[11px] font-bold text-[#f9c400] hover:underline cursor-pointer"
+                    >
+                      عرض الكل ({item.cast.length})
+                    </button>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {item.cast
+                      .filter((actor) => actor.name && actor.name !== 'طاقم العمل')
+                      .slice(0, 8)
+                      .map((actor) => (
+                        <button
+                          key={`quick-cast-${actor.name}`}
+                          type="button"
+                          onClick={() => onSelectActor?.(actor.name)}
+                          className="group inline-flex items-center gap-2 rounded-xl bg-[#15222d] hover:bg-[#D92321]/20 border border-white/10 hover:border-[#D92321]/60 px-2.5 py-1.5 text-xs font-bold text-white transition-all cursor-pointer"
+                        >
+                          {actor.avatarUrl ? (
+                            <span className="h-6 w-6 rounded-full overflow-hidden border border-white/20 shrink-0">
+                              <OptimizedImage
+                                src={actor.avatarUrl}
+                                alt={actor.name}
+                                slot="cast_avatar"
+                                loading="lazy"
+                                className="h-full w-full"
+                                imgClassName="object-cover object-top"
+                              />
+                            </span>
+                          ) : (
+                            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#D92321]/25 text-[10px] font-black text-white shrink-0">
+                              {actor.initials}
+                            </span>
+                          )}
+                          <span className="truncate max-w-[140px] group-hover:text-[#f9c400] transition-colors">
+                            {actor.name}
+                          </span>
+                        </button>
+                      ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Clickable Details Grid (.single-details) - Collapsible on mobile, full grid on md+ */}
@@ -1391,12 +1446,14 @@ export function SingleDetailView({
             {activeTab === 'cast' && (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4">
                 {item.cast.map((actor) => (
-                  <div
+                  <button
                     key={actor.name}
-                    className="flex flex-col items-center rounded-2xl bg-[#1a242e]/70 border border-white/[0.07] p-3.5 sm:p-4 text-center"
+                    type="button"
+                    onClick={() => onSelectActor?.(actor.name)}
+                    className="group flex flex-col items-center rounded-2xl bg-[#1a242e]/70 hover:bg-[#1a242e] border border-white/[0.07] hover:border-[#D92321]/65 p-3.5 sm:p-4 text-center transition-all hover:-translate-y-0.5 cursor-pointer"
                   >
                     {actor.avatarUrl ? (
-                      <div className="mb-3 h-14 w-14 sm:h-16 sm:w-16 rounded-full overflow-hidden border-2 border-white/20 shadow-lg shrink-0">
+                      <div className="mb-3 h-14 w-14 sm:h-16 sm:w-16 rounded-full overflow-hidden border-2 border-white/20 group-hover:border-[#f9c400] shadow-lg shrink-0 transition-colors">
                         <OptimizedImage
                           src={actor.avatarUrl}
                           alt={actor.name}
@@ -1407,13 +1464,18 @@ export function SingleDetailView({
                         />
                       </div>
                     ) : (
-                      <div className="mb-3 flex h-14 w-14 sm:h-16 sm:w-16 items-center justify-center rounded-full bg-gradient-to-br from-[#D92321] to-[#1a242e] border-2 border-white/20 text-base sm:text-lg font-black text-white shadow-lg">
+                      <div className="mb-3 flex h-14 w-14 sm:h-16 sm:w-16 items-center justify-center rounded-full bg-gradient-to-br from-[#D92321] to-[#1a242e] border-2 border-white/20 group-hover:border-[#f9c400] text-base sm:text-lg font-black text-white shadow-lg transition-colors">
                         {actor.initials}
                       </div>
                     )}
-                    <p className="text-xs sm:text-sm font-extrabold text-white leading-snug">{actor.name}</p>
+                    <p className="text-xs sm:text-sm font-extrabold text-white group-hover:text-[#f9c400] leading-snug transition-colors">
+                      {actor.name}
+                    </p>
                     <p className="text-[11px] sm:text-xs text-[#b7c9ef] mt-1">{actor.role}</p>
-                  </div>
+                    <span className="mt-2 text-[10px] font-bold text-[#f9c400]/80 group-hover:text-[#f9c400]">
+                      عرض كل أعماله ←
+                    </span>
+                  </button>
                 ))}
               </div>
             )}

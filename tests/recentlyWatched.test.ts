@@ -240,7 +240,8 @@ test('RecentlyWatchedUiConfig normalizes presets, clamps values, and resolves pe
   assert.equal(resolveRecentlyWatchedLayoutForViewport(normalized, 1920).cardWidthPx, 240);
 
   const sanitized = sanitizeRecentlyWatchedUiForFirestore(DEFAULT_RECENTLY_WATCHED_UI_CONFIG);
-  assert.equal(Object.keys(sanitized).length, 27);
+  assert.equal(Object.keys(sanitized).length, 28);
+  assert.equal(sanitized.cardStyle, 'rw-3d-tilt');
 });
 
 test('RecentlyWatchedSection renders strictly as single-row horizontal carousel with lazy loading & firestore rules', () => {

@@ -8,6 +8,7 @@ import {
   Film,
   LayoutGrid,
   Monitor,
+  Palette,
   Plus,
   RotateCcw,
   Search,
@@ -17,6 +18,11 @@ import {
   Type,
   X,
 } from 'lucide-react';
+import {
+  getMainCardStyleMeta,
+  MAIN_3D_CARD_STYLES,
+  MAIN_CARD_STYLE_CLEAN_META,
+} from '../lib/cardStyles';
 import {
   DEFAULT_HOME_CONFIG,
   normalizeHomeConfig,
@@ -53,6 +59,7 @@ interface HomeBuilderPanelProps {
   onPreviewHome: () => void;
   onOpenTypographyTab?: () => void;
   onOpenSliderCustomization?: () => void;
+  onOpenCardsAndThemesTab?: () => void;
   onNotify: (msg: string) => void;
 }
 
@@ -83,6 +90,7 @@ export function HomeBuilderPanel({
   onPreviewHome,
   onOpenTypographyTab,
   onOpenSliderCustomization,
+  onOpenCardsAndThemesTab,
   onNotify,
 }: HomeBuilderPanelProps) {
   const cfg = useMemo(() => normalizeHomeConfig(homeConfig), [homeConfig]);
@@ -785,8 +793,13 @@ export function HomeBuilderPanel({
             </h3>
           </div>
 
-          <div>
-            <span className="block text-xs font-bold text-[#b7c9ef] mb-2">تصميم البطاقة</span>
+          <div className="space-y-2.5">
+            <div className="flex items-center justify-between gap-2">
+              <span className="block text-xs font-bold text-[#b7c9ef]">تصميم البطاقة</span>
+              <span className="inline-flex items-center gap-1 rounded-lg bg-[#1a242e] border border-white/10 px-2 py-0.5 text-[10px] font-extrabold text-[#f9c400]">
+                {getMainCardStyleMeta(cfg.cardStyle).name}
+              </span>
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               <button
                 type="button"
@@ -824,6 +837,36 @@ export function HomeBuilderPanel({
                 <span className="block text-xs font-extrabold">عرض سينمائي 3D</span>
                 <span className="block text-[10px] opacity-80 mt-0.5">عمق ثلاثي الأبعاد + قلب</span>
               </button>
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pt-1">
+              <select
+                aria-label="اختيار شكل البطاقة من 20 نمطاً ثلاثي الأبعاد"
+                value={cfg.cardStyle}
+                onChange={(e) =>
+                  updateCfg({ cardStyle: e.target.value as HomeLayoutConfig['cardStyle'] })
+                }
+                className="flex-1 rounded-xl bg-[#1a242e] border border-white/10 px-3 py-2 text-xs font-bold text-white"
+              >
+                <option value={MAIN_CARD_STYLE_CLEAN_META.id}>
+                  00 — {MAIN_CARD_STYLE_CLEAN_META.name} (Netflix)
+                </option>
+                {MAIN_3D_CARD_STYLES.map((styleMeta, idx) => (
+                  <option key={styleMeta.id} value={styleMeta.id}>
+                    {String(idx + 1).padStart(2, '0')} — {styleMeta.name}
+                  </option>
+                ))}
+              </select>
+              {onOpenCardsAndThemesTab && (
+                <button
+                  type="button"
+                  onClick={onOpenCardsAndThemesTab}
+                  className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-[#1a242e] hover:bg-white/10 border border-[#f9c400]/35 px-3 py-2 text-[11px] font-extrabold text-[#f9c400] cursor-pointer whitespace-nowrap"
+                >
+                  <Palette className="w-3.5 h-3.5" />
+                  <span>استوديو البطاقات (20 شكل 3D)</span>
+                </button>
+              )}
             </div>
           </div>
 

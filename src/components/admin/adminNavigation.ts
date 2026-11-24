@@ -19,6 +19,7 @@ export type AdminTab =
   | 'scraper_adapters'
   | 'crawl_operations'
   | 'website_branding'
+  | 'cards_themes'
   | 'image_placeholders'
   | 'slider_customization'
   | 'home_builder'
@@ -270,6 +271,16 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
         description: 'إدارة الشعار، اسم الموقع وخطه ولونه، وأيقونة المتصفح Favicon مع معاينة فورية',
         keywords: ['branding', 'logo', 'favicon', 'identity', 'site name', 'هوية', 'لوجو', 'شعار', 'اسم الموقع', 'ايقونة'],
         iconName: 'BadgeCheck',
+        ownerOnly: true,
+      },
+      {
+        id: 'cards_themes',
+        groupId: 'design',
+        label: 'استوديو البطاقات وأشكال الموقع',
+        shortLabel: 'البطاقات والثيمات',
+        description: '20 شكل 3D للبطاقات الرئيسية، 7 أشكال 3D لشاهدته مؤخراً، و25 مظهراً مختلفاً للموقع',
+        keywords: ['cards', '3d', 'themes', 'styles', 'recently watched', 'بطاقات', 'ثيمات', 'اشكال', 'شاهدته'],
+        iconName: 'Palette',
         ownerOnly: true,
       },
       {

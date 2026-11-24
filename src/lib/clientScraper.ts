@@ -862,16 +862,21 @@ export function parseHtmlToMediaWithHintsBrowser(
           if (!Number.isNaN(val) && val > 0 && val <= 10) jsonLdImdb = val;
         }
         if (Array.isArray(obj.actor)) {
-          for (const act of obj.actor.slice(0, 10)) {
+          for (const act of obj.actor.slice(0, 16)) {
             const actObj = act as Record<string, unknown> | null;
             const nm = cleanText(
               typeof act === 'string' ? act : String(actObj?.name || '')
             );
+            const rawImg = actObj?.image ? extractJsonLdImageUrl(actObj.image) : '';
+            const resolvedAvatar = rawImg
+              ? upgradeKnownImageUrlScraper(resolveUrl(sourceUrl, rawImg))
+              : '';
             if (nm) {
               jsonLdCast.push({
                 name: nm,
                 role: 'ممثل',
                 initials: nm.slice(0, 2).toUpperCase(),
+                ...(resolvedAvatar ? { avatarUrl: resolvedAvatar } : {}),
               });
             }
           }
@@ -1686,21 +1691,70 @@ export function parseHtmlToMediaWithHintsBrowser(
     }))
     .filter((s) => s.episodes.length > 0);
 
-  // 9. Cast fallback
-  if (jsonLdCast.length === 0) {
-    doc
-      .querySelectorAll('.single-actor-name, [itemprop="actor"] [itemprop="name"]')
-      .forEach((el) => {
-        const nm = cleanText(el.textContent);
-        if (nm && jsonLdCast.length < 10) {
-          jsonLdCast.push({
-            name: nm,
-            role: 'فريق العمل',
-            initials: nm.slice(0, 2).toUpperCase(),
+  // 9. Cast DOM Extraction & Merge
+  const domCast: CastMember[] = [];
+  doc
+    .querySelectorAll(
+      '.single-actor-name, [itemprop="actor"] [itemprop="name"], [itemprop="actor"], .cast-list a, .actors-list a, .actors a, .stars a, .single-cast a, a[href*="/actor"], a[href*="/actors/"], a[href*="/person/"], a[href*="/star/"]'
+    )
+    .forEach((el) => {
+      if (el.closest('header, nav, footer')) return;
+      const nm = cleanText(
+        el.querySelector('.name, .actor-name, [itemprop="name"]')?.textContent || el.textContent
+      );
+      if (!nm || nm.length < 2 || nm.length > 70) return;
+      if (/^(?:المزيد|عرض الكل|الكل|النجوم|الممثلين|طاقم العمل|actors|cast)$/i.test(nm)) return;
+      const imgEl = el.querySelector('img') || el.parentElement?.querySelector('img');
+      const avatarRaw = imgEl ? extractBestImageFromElementBrowser(imgEl, sourceUrl) : '';
+      domCast.push({
+        name: nm,
+        role: 'ممثل',
+        initials: nm.slice(0, 2).toUpperCase(),
+        ...(avatarRaw && !isJunkImageCandidate(avatarRaw) ? { avatarUrl: avatarRaw } : {}),
+      });
+    });
+
+  if (jsonLdCast.length + domCast.length < 3) {
+    doc.querySelectorAll('.single-info li, .single-details li, .movie-info li, .info-list li, tr, p').forEach((el) => {
+      const txt = cleanText(el.textContent);
+      if (!txt || txt.length > 260) return;
+      const m = txt.match(/^(?:بطولة|الممثلين|الممثلون|طاقم العمل|النجوم|تمثيل|Starring|Cast|Actors)\s*[:：]\s*(.+)$/i);
+      if (m?.[1]) {
+        const parts = m[1]
+          .split(/[،,\/|•]+/)
+          .map((s) => cleanText(s))
+          .filter((s) => s.length >= 2 && s.length <= 60);
+        for (const actorName of parts.slice(0, 12)) {
+          domCast.push({
+            name: actorName,
+            role: 'ممثل',
+            initials: actorName.slice(0, 2).toUpperCase(),
           });
         }
-      });
+      }
+    });
   }
+
+  const mergedCastMap = new Map<string, CastMember>();
+  for (const c of [...jsonLdCast, ...domCast]) {
+    const cleanName = cleanText(c.name).slice(0, 80);
+    if (!cleanName || /^(?:طاقم العمل|فريق العمل|نجم العمل)$/i.test(cleanName)) continue;
+    const key = cleanName.toLowerCase();
+    const existing = mergedCastMap.get(key);
+    if (existing) {
+      if (!existing.avatarUrl && c.avatarUrl) existing.avatarUrl = c.avatarUrl;
+      continue;
+    }
+    if (mergedCastMap.size < 20) {
+      mergedCastMap.set(key, {
+        name: cleanName,
+        role: c.role || 'ممثل',
+        initials: c.initials || cleanName.slice(0, 2).toUpperCase(),
+        ...(c.avatarUrl ? { avatarUrl: c.avatarUrl } : {}),
+      });
+    }
+  }
+  const mergedCast = Array.from(mergedCastMap.values());
 
   const normalizedServers = Array.from(serversMap.values())
     .slice(0, 12)
@@ -1740,7 +1794,7 @@ export function parseHtmlToMediaWithHintsBrowser(
       imdbId: extractedImdbId || '',
       shortUrl: '',
       trailerUrl,
-      cast: jsonLdCast,
+      cast: mergedCast,
       servers: normalizedServers,
       downloads: Array.from(downloadsMap.values()).slice(0, 12),
       seasons: parsedSeasons,
@@ -2646,46 +2700,56 @@ async function scrapeFullItemInBrowser(
     // ignore
   }
 
-  const [filteredServers, fallbackTrailer, resolvedImages, resolvedRating] = await Promise.all([
-    verifyScrapedServersInBrowser(media.servers, mainOrigin),
-    media.trailerUrl || options?.skipEpisodeCrawl
-      ? Promise.resolve(media.trailerUrl)
-      : findTrailerInBrowser({
-          title: media.title,
-          englishTitle: media.englishTitle,
-          year: media.year,
-          kind: media.kind,
-        }),
-    options?.skipEpisodeCrawl
-      ? Promise.resolve(null)
-      : import('./mediaImages')
-          .then(({ resolveHighResImagesClient }) =>
-            resolveHighResImagesClient({
-              title: media.title,
-              englishTitle: media.englishTitle,
-              year: media.year,
-              kind: media.kind,
-              imdbId: media.imdbId,
-              currentPoster: media.poster,
-              currentBackdrop: media.backdrop,
-              preferOfficial: true,
-            })
-          )
-          .catch(() => null),
-    options?.skipEpisodeCrawl || (hints.hasExplicitImdbRating && media.imdb !== 7.8)
-      ? Promise.resolve(null)
-      : import('./mediaRatings')
-          .then(({ resolveSingleMediaRating }) =>
-            resolveSingleMediaRating({
-              title: media.title,
-              englishTitle: media.englishTitle,
-              year: media.year,
-              kind: media.kind,
-              imdbId: media.imdbId,
-            })
-          )
-          .catch(() => null),
-  ]);
+  const [filteredServers, fallbackTrailer, resolvedImages, resolvedRating, resolvedCast] =
+    await Promise.all([
+      verifyScrapedServersInBrowser(media.servers, mainOrigin),
+      media.trailerUrl || options?.skipEpisodeCrawl
+        ? Promise.resolve(media.trailerUrl)
+        : findTrailerInBrowser({
+            title: media.title,
+            englishTitle: media.englishTitle,
+            year: media.year,
+            kind: media.kind,
+          }),
+      options?.skipEpisodeCrawl
+        ? Promise.resolve(null)
+        : import('./mediaImages')
+            .then(({ resolveHighResImagesClient }) =>
+              resolveHighResImagesClient({
+                title: media.title,
+                englishTitle: media.englishTitle,
+                year: media.year,
+                kind: media.kind,
+                imdbId: media.imdbId,
+                currentPoster: media.poster,
+                currentBackdrop: media.backdrop,
+                preferOfficial: true,
+              })
+            )
+            .catch(() => null),
+      options?.skipEpisodeCrawl || (hints.hasExplicitImdbRating && media.imdb !== 7.8)
+        ? Promise.resolve(null)
+        : import('./mediaRatings')
+            .then(({ resolveSingleMediaRating }) =>
+              resolveSingleMediaRating({
+                title: media.title,
+                englishTitle: media.englishTitle,
+                year: media.year,
+                kind: media.kind,
+                imdbId: media.imdbId,
+              })
+            )
+            .catch(() => null),
+      options?.skipEpisodeCrawl || media.cast.length >= 4
+        ? Promise.resolve(null)
+        : resolveCastInBrowser({
+            title: media.title,
+            englishTitle: media.englishTitle,
+            year: media.year,
+            kind: media.kind,
+            imdbId: media.imdbId,
+          }).catch(() => null),
+    ]);
 
   media.servers = filteredServers;
   media.trailerUrl = fallbackTrailer || '';
@@ -2703,6 +2767,23 @@ async function scrapeFullItemInBrowser(
       /^(?:19|20)\d{2}$/.test(resolvedRating.year)
     ) {
       media.year = resolvedRating.year;
+    }
+  }
+  if (resolvedCast?.cast?.length) {
+    media.cast = mergeCastMembersClient(media.cast, resolvedCast.cast);
+    if (!media.imdbId && resolvedCast.imdbId) {
+      media.imdbId = resolvedCast.imdbId;
+    }
+  } else if (!options?.skipEpisodeCrawl && media.cast.length < 4 && media.imdbId) {
+    const retryCast = await resolveCastInBrowser({
+      title: media.title,
+      englishTitle: media.englishTitle,
+      year: media.year,
+      kind: media.kind,
+      imdbId: media.imdbId,
+    }).catch(() => null);
+    if (retryCast?.cast?.length) {
+      media.cast = mergeCastMembersClient(media.cast, retryCast.cast);
     }
   }
   if (resolvedImages) {
@@ -2961,6 +3042,123 @@ async function tryWordPressSinglePostBrowser(
   }
 }
 
+function mergeCastMembersClient(
+  existing: CastMember[],
+  incoming: CastMember[],
+  maxCount = 20
+): CastMember[] {
+  const map = new Map<string, CastMember>();
+  for (const item of [...(existing || []), ...(incoming || [])]) {
+    const nm = cleanText(item?.name).slice(0, 80);
+    if (!nm || /^(?:طاقم العمل|فريق العمل|نجم العمل)$/i.test(nm)) continue;
+    const key = nm.toLowerCase();
+    const prev = map.get(key);
+    if (prev) {
+      if (!prev.avatarUrl && item.avatarUrl) prev.avatarUrl = item.avatarUrl;
+      continue;
+    }
+    if (map.size < maxCount) {
+      map.set(key, {
+        name: nm,
+        role: cleanText(item.role || 'ممثل').slice(0, 60) || 'ممثل',
+        initials: cleanText(item.initials) || nm.slice(0, 2).toUpperCase(),
+        ...(item.avatarUrl ? { avatarUrl: item.avatarUrl } : {}),
+      });
+    }
+  }
+  return Array.from(map.values());
+}
+
+export async function resolveCastInBrowser(params: {
+  title: string;
+  englishTitle?: string;
+  year?: string;
+  kind?: MediaKind | string;
+  imdbId?: string;
+}): Promise<{ cast: CastMember[]; imdbId?: string }> {
+  const { title, englishTitle = '', year = '', kind = 'movie', imdbId = '' } = params;
+  if (!shouldSkipBackendApiCalls()) {
+    try {
+      const endpoint = resolveApiEndpoint('/api/cast/resolve');
+      const resp = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, englishTitle, year, kind, imdbId }),
+        signal: AbortSignal.timeout(7000),
+      });
+      if (resp.ok) {
+        const data = (await resp.json()) as {
+          ok?: boolean;
+          cast?: CastMember[];
+          imdbId?: string;
+        };
+        if (data.ok && Array.isArray(data.cast) && data.cast.length > 0) {
+          return { cast: data.cast, ...(data.imdbId ? { imdbId: data.imdbId } : {}) };
+        }
+      }
+    } catch {
+      // Fall through to Cinemeta browser lookup
+    }
+  }
+
+  let resolvedTt = /^tt\d{6,10}$/i.test(imdbId.trim()) ? imdbId.trim() : '';
+  const cmType = kind === 'series' ? 'series' : 'movie';
+  if (!resolvedTt) {
+    const q = (englishTitle || title || '').trim();
+    if (q && /[A-Za-z]/.test(q)) {
+      try {
+        const sRes = await fetch(
+          `https://v3-cinemeta.strem.io/catalog/${cmType}/top/search=${encodeURIComponent(q)}.json`,
+          { signal: AbortSignal.timeout(5000) }
+        );
+        if (sRes.ok) {
+          const sJson = (await sRes.json()) as { metas?: Array<{ id?: string }> };
+          const cand = sJson.metas?.[0]?.id;
+          if (cand && /^tt\d+$/i.test(cand)) resolvedTt = cand;
+        }
+      } catch {
+        // ignore
+      }
+    }
+  }
+
+  if (resolvedTt) {
+    try {
+      const mRes = await fetch(
+        `https://v3-cinemeta.strem.io/meta/${cmType}/${encodeURIComponent(resolvedTt)}.json`,
+        { signal: AbortSignal.timeout(5000) }
+      );
+      if (mRes.ok) {
+        const mJson = (await mRes.json()) as {
+          meta?: { cast?: Array<string | { name?: string; character?: string }> };
+        };
+        const rawCast = mJson.meta?.cast || [];
+        const mapped = rawCast
+          .slice(0, 16)
+          .map((c) => {
+            const nm = cleanText(typeof c === 'string' ? c : String(c?.name || ''));
+            const rl =
+              typeof c === 'string'
+                ? 'ممثل'
+                : cleanText(String(c?.character || 'ممثل')) || 'ممثل';
+            return {
+              name: nm,
+              role: rl.slice(0, 60),
+              initials: nm.slice(0, 2).toUpperCase(),
+            };
+          })
+          .filter((c) => c.name.length >= 2);
+        if (mapped.length > 0) {
+          return { cast: mapped, imdbId: resolvedTt };
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }
+  return { cast: [] };
+}
+
 export async function scrapeSingleInBrowser(params: {
   url?: string;
   rawHtml?: string;
@@ -2991,7 +3189,7 @@ export async function scrapeSingleInBrowser(params: {
     const parsedHtml = parseHtmlToMediaWithHintsBrowser(rawHtml, effectiveUrl);
     const extracted = parsedHtml.media;
     extracted.servers = extracted.servers.filter((s) => s.url && !isLikelyNonVideoWebsiteUrl(s.url));
-    const [trailer, resolvedImgs, resolvedRating] = await Promise.all([
+    const [trailer, resolvedImgs, resolvedRating, resolvedCast] = await Promise.all([
       extracted.trailerUrl
         ? Promise.resolve(extracted.trailerUrl)
         : findTrailerInBrowser({
@@ -3027,6 +3225,15 @@ export async function scrapeSingleInBrowser(params: {
               })
             )
             .catch(() => null),
+      extracted.cast.length >= 4
+        ? Promise.resolve(null)
+        : resolveCastInBrowser({
+            title: extracted.title,
+            englishTitle: extracted.englishTitle,
+            year: extracted.year,
+            kind: extracted.kind,
+            imdbId: extracted.imdbId,
+          }),
     ]);
     extracted.trailerUrl = trailer || '';
     if (resolvedRating && resolvedRating.imdb > 0) {
@@ -3043,6 +3250,20 @@ export async function scrapeSingleInBrowser(params: {
         /^(?:19|20)\d{2}$/.test(resolvedRating.year)
       ) {
         extracted.year = resolvedRating.year;
+      }
+    }
+    if (resolvedCast?.cast && resolvedCast.cast.length > 0) {
+      extracted.cast = mergeCastMembersClient(extracted.cast, resolvedCast.cast);
+    } else if (extracted.cast.length < 2 && extracted.imdbId) {
+      const retryCast = await resolveCastInBrowser({
+        title: extracted.title,
+        englishTitle: extracted.englishTitle,
+        year: extracted.year,
+        kind: extracted.kind,
+        imdbId: extracted.imdbId,
+      }).catch(() => null);
+      if (retryCast?.cast?.length) {
+        extracted.cast = mergeCastMembersClient(extracted.cast, retryCast.cast);
       }
     }
     if (resolvedImgs) {

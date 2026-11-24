@@ -1222,6 +1222,282 @@ async function queryTmdbRatingServer(params: {
   return null;
 }
 
+export interface ServerCastMember {
+  name: string;
+  role: string;
+  initials: string;
+  avatarUrl?: string;
+}
+
+function makeActorInitialsServer(name: string): string {
+  const clean = cleanText(name);
+  if (!clean) return 'AC';
+  const parts = clean.split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) {
+    return `${parts[0].charAt(0)}${parts[1].charAt(0)}`.toUpperCase().slice(0, 6);
+  }
+  return clean.slice(0, 2).toUpperCase();
+}
+
+function mergeCastMembersServer(
+  existing: ServerCastMember[],
+  incoming: ServerCastMember[],
+  maxCount = 20
+): ServerCastMember[] {
+  const out: ServerCastMember[] = [];
+  const byKey = new Map<string, ServerCastMember>();
+  const pushItem = (raw: ServerCastMember) => {
+    const nm = cleanText(raw?.name).slice(0, 80);
+    if (!nm || nm.length < 2) return;
+    if (/^(?:طاقم العمل|فريق العمل|نجم العمل|غير متاح|unknown|n\/a)$/i.test(nm)) return;
+    const key = nm.toLowerCase();
+    const avatar =
+      typeof raw.avatarUrl === 'string' && /^https?:\/\//i.test(raw.avatarUrl.trim())
+        ? raw.avatarUrl.trim().slice(0, 500)
+        : '';
+    const role = cleanText(raw.role || 'ممثل').slice(0, 60) || 'ممثل';
+    const hit = byKey.get(key);
+    if (hit) {
+      if (!hit.avatarUrl && avatar) hit.avatarUrl = avatar;
+      if ((hit.role === 'ممثل' || hit.role === 'فريق العمل') && role !== 'ممثل' && role !== 'فريق العمل') {
+        hit.role = role;
+      }
+      return;
+    }
+    if (out.length >= maxCount) return;
+    const entry: ServerCastMember = {
+      name: nm,
+      role,
+      initials: cleanText(raw.initials) || makeActorInitialsServer(nm),
+      ...(avatar ? { avatarUrl: avatar } : {}),
+    };
+    byKey.set(key, entry);
+    out.push(entry);
+  };
+  for (const c of existing || []) pushItem(c);
+  for (const c of incoming || []) pushItem(c);
+  return out;
+}
+
+export async function resolveCastMembersServer(params: {
+  title: string;
+  englishTitle?: string;
+  year?: string;
+  kind?: string;
+  imdbId?: string;
+}): Promise<{ cast: ServerCastMember[]; imdbId?: string }> {
+  const { title, englishTitle = '', year = '', kind = 'movie', imdbId: rawImdbId = '' } = params;
+  const cleanImdbId = /^tt\d{6,10}$/i.test(rawImdbId.trim()) ? rawImdbId.trim() : '';
+  const queries = buildCandidateSearchQueriesServer(title, englishTitle).slice(0, 3);
+  const isSeries = kind === 'series' || kind === 'tv' || kind === 'wrestling';
+
+  const tmdbKey = (process.env.TMDB_API_KEY || '').trim();
+  const tmdbBearer = (process.env.TMDB_READ_ACCESS_TOKEN || '').trim();
+  if (tmdbKey || tmdbBearer) {
+    const headers: Record<string, string> = { Accept: 'application/json' };
+    if (tmdbBearer) headers.Authorization = `Bearer ${tmdbBearer}`;
+    const buildUrl = (pathAndQuery: string) => {
+      const sep = pathAndQuery.includes('?') ? '&' : '?';
+      return tmdbBearer
+        ? `https://api.themoviedb.org/3${pathAndQuery}`
+        : `https://api.themoviedb.org/3${pathAndQuery}${sep}api_key=${encodeURIComponent(tmdbKey)}`;
+    };
+
+    try {
+      let tmdbId: number | null = null;
+      let tmdbType: 'movie' | 'tv' = isSeries ? 'tv' : 'movie';
+
+      if (cleanImdbId) {
+        const findRes = await fetch(
+          buildUrl(`/find/${encodeURIComponent(cleanImdbId)}?external_source=imdb_id`),
+          { headers, signal: AbortSignal.timeout(5500) }
+        );
+        if (findRes.ok) {
+          const findJson = (await findRes.json()) as {
+            movie_results?: Array<{ id?: number }>;
+            tv_results?: Array<{ id?: number }>;
+          };
+          if (isSeries && findJson.tv_results?.[0]?.id) {
+            tmdbId = findJson.tv_results[0].id;
+            tmdbType = 'tv';
+          } else if (!isSeries && findJson.movie_results?.[0]?.id) {
+            tmdbId = findJson.movie_results[0].id;
+            tmdbType = 'movie';
+          } else if (findJson.tv_results?.[0]?.id) {
+            tmdbId = findJson.tv_results[0].id;
+            tmdbType = 'tv';
+          } else if (findJson.movie_results?.[0]?.id) {
+            tmdbId = findJson.movie_results[0].id;
+            tmdbType = 'movie';
+          }
+        }
+      }
+
+      if (!tmdbId) {
+        const yearExplicit = Boolean(year && /^\d{4}$/.test(year) && year !== '2026');
+        for (const q of queries) {
+          const searchRes = await fetch(
+            buildUrl(`/search/${tmdbType}?query=${encodeURIComponent(q)}&include_adult=false`),
+            { headers, signal: AbortSignal.timeout(5500) }
+          );
+          if (!searchRes.ok) continue;
+          const searchJson = (await searchRes.json()) as {
+            results?: Array<{
+              id: number;
+              title?: string;
+              original_title?: string;
+              name?: string;
+              original_name?: string;
+              release_date?: string;
+              first_air_date?: string;
+            }>;
+          };
+          let bestScore = 0;
+          for (const item of (searchJson.results || []).slice(0, 8)) {
+            if (!item?.id) continue;
+            const candYear = (item.release_date || item.first_air_date || '').slice(0, 4);
+            const check = scoreExternalTitleMatch({
+              queryTitle: title,
+              englishTitle,
+              expectedYear: year,
+              expectedYearExplicit: yearExplicit,
+              kind,
+              candidateTitles: [item.title, item.original_title, item.name, item.original_name],
+              candidateYear: candYear,
+            });
+            if (check.matched && check.score > bestScore) {
+              bestScore = check.score;
+              tmdbId = item.id;
+            }
+          }
+          if (tmdbId) break;
+        }
+      }
+
+      if (tmdbId) {
+        const credRes = await fetch(buildUrl(`/${tmdbType}/${tmdbId}/credits`), {
+          headers,
+          signal: AbortSignal.timeout(6000),
+        });
+        if (credRes.ok) {
+          const credJson = (await credRes.json()) as {
+            cast?: Array<{ name?: string; character?: string; profile_path?: string | null }>;
+          };
+          const mapped = (credJson.cast || [])
+            .filter((c) => c?.name)
+            .slice(0, 16)
+            .map((c) => ({
+              name: String(c.name).trim(),
+              role: String(c.character || 'ممثل').trim().slice(0, 60) || 'ممثل',
+              initials: makeActorInitialsServer(String(c.name)),
+              ...(c.profile_path
+                ? { avatarUrl: `https://image.tmdb.org/t/p/w185${c.profile_path}` }
+                : {}),
+            }));
+          if (mapped.length > 0) {
+            return { cast: mapped, ...(cleanImdbId ? { imdbId: cleanImdbId } : {}) };
+          }
+        }
+      }
+    } catch {
+      // Fall through to Cinemeta/IMDb keyless fallback
+    }
+  }
+
+  let resolvedImdbId = cleanImdbId;
+  if (!resolvedImdbId && queries.length > 0) {
+    const yearExplicit = Boolean(year && /^\d{4}$/.test(year) && year !== '2026');
+    resolvedImdbId =
+      (await queryImdbSuggestionIdServer({
+        queries,
+        title,
+        englishTitle,
+        year,
+        yearExplicit,
+        kind,
+      }).catch(() => null)) || '';
+  }
+
+  if (resolvedImdbId) {
+    const cmTypes = isSeries ? ['series', 'movie'] : ['movie', 'series'];
+    for (const cmType of cmTypes) {
+      try {
+        const cmRes = await fetch(
+          `https://v3-cinemeta.strem.io/meta/${cmType}/${encodeURIComponent(resolvedImdbId)}.json`,
+          { signal: AbortSignal.timeout(5500) }
+        );
+        if (!cmRes.ok) continue;
+        const cmJson = (await cmRes.json()) as {
+          meta?: {
+            cast?: Array<string | { name?: string; character?: string; role?: string }>;
+          };
+        };
+        const rawCast = cmJson.meta?.cast;
+        if (Array.isArray(rawCast) && rawCast.length > 0) {
+          const mapped: ServerCastMember[] = rawCast
+            .slice(0, 16)
+            .map((entry) => {
+              const nm = cleanText(typeof entry === 'string' ? entry : String(entry?.name || ''));
+              const rl =
+                typeof entry === 'string'
+                  ? 'ممثل'
+                  : cleanText(String(entry?.character || entry?.role || 'ممثل')) || 'ممثل';
+              return {
+                name: nm,
+                role: rl.slice(0, 60),
+                initials: makeActorInitialsServer(nm),
+              };
+            })
+            .filter((m) => m.name.length >= 2);
+          if (mapped.length > 0) {
+            return { cast: mapped, imdbId: resolvedImdbId };
+          }
+        }
+      } catch {
+        // ignore Cinemeta cast error
+      }
+    }
+
+    try {
+      const imdbHtmlRes = await fetchRemoteText(
+        `https://www.imdb.com/title/${encodeURIComponent(resolvedImdbId)}/`,
+        6500
+      );
+      if (imdbHtmlRes.ok && imdbHtmlRes.text.length > 200) {
+        const $imdb = cheerio.load(imdbHtmlRes.text);
+        const imdbCast: ServerCastMember[] = [];
+        $imdb('script[type="application/ld+json"]').each((_, el) => {
+          const nodes = extractJsonLdNodes($imdb(el).text());
+          for (const node of nodes) {
+            if (Array.isArray(node.actor)) {
+              for (const act of node.actor.slice(0, 16)) {
+                const actObj = act as Record<string, unknown> | null;
+                const nm = cleanText(typeof act === 'string' ? act : String(actObj?.name || ''));
+                const imgUrl = actObj?.image ? extractJsonLdImageUrl(actObj.image) : '';
+                if (nm) {
+                  imdbCast.push({
+                    name: nm,
+                    role: 'ممثل',
+                    initials: makeActorInitialsServer(nm),
+                    ...(imgUrl ? { avatarUrl: upgradeKnownImageUrlServer(imgUrl) } : {}),
+                  });
+                }
+              }
+            }
+          }
+        });
+        if (imdbCast.length > 0) {
+          return { cast: mergeCastMembersServer([], imdbCast, 16), imdbId: resolvedImdbId };
+        }
+      }
+    } catch {
+      // ignore IMDb HTML cast fallback failure
+    }
+  }
+
+  return { cast: [], ...(resolvedImdbId ? { imdbId: resolvedImdbId } : {}) };
+}
+
 async function queryImdbSuggestionIdServer(params: {
   queries: string[];
   title: string;
@@ -2155,7 +2431,7 @@ export function parseHtmlToMediaWithHints(
   let jsonLdImdb = 0;
   let jsonLdType = '';
   let jsonLdImdbId = '';
-  const jsonLdCast: { name: string; role: string; initials: string }[] = [];
+  const jsonLdCast: ServerCastMember[] = [];
 
   $('script[type="application/ld+json"]').each((_, el) => {
     const nodes = extractJsonLdNodes($(el).text());
@@ -2189,16 +2465,19 @@ export function parseHtmlToMediaWithHints(
           if (!Number.isNaN(val) && val > 0 && val <= 10) jsonLdImdb = val;
         }
         if (Array.isArray(obj.actor)) {
-          for (const act of obj.actor.slice(0, 10)) {
+          for (const act of obj.actor.slice(0, 16)) {
             const actObj = act as Record<string, unknown> | null;
             const nm = cleanText(
               typeof act === 'string' ? act : String(actObj?.name || '')
             );
+            const rawImg = actObj?.image ? extractJsonLdImageUrl(actObj.image) : '';
+            const resolvedAvatar = rawImg ? upgradeKnownImageUrlServer(resolveUrl(sourceUrl, rawImg)) : '';
             if (nm) {
               jsonLdCast.push({
                 name: nm,
                 role: 'ممثل',
-                initials: nm.slice(0, 2).toUpperCase(),
+                initials: makeActorInitialsServer(nm),
+                ...(resolvedAvatar ? { avatarUrl: resolvedAvatar } : {}),
               });
             }
           }
@@ -3078,19 +3357,52 @@ export function parseHtmlToMediaWithHints(
     }))
     .filter((s) => s.episodes.length > 0);
 
-  // 9. Cast fallback
-  if (jsonLdCast.length === 0) {
-    $('.single-actor-name, [itemprop="actor"] [itemprop="name"]').each((_, el) => {
-      const nm = cleanText($(el).text());
-      if (nm && jsonLdCast.length < 10) {
-        jsonLdCast.push({
-          name: nm,
-          role: 'فريق العمل',
-          initials: nm.slice(0, 2).toUpperCase(),
-        });
+  // 9. Cast DOM Extraction (always enrich with DOM actor cards/links/info-rows)
+  const domCast: ServerCastMember[] = [];
+  $(
+    '.single-actor-name, [itemprop="actor"] [itemprop="name"], [itemprop="actor"], .cast-list a, .actors-list a, .actors a, .stars a, .single-cast a, a[href*="/actor"], a[href*="/actors/"], a[href*="/person/"], a[href*="/star/"]'
+  ).each((_, el) => {
+    const $el = $(el);
+    if ($el.closest('header, nav, footer').length > 0) return;
+    const rawName = cleanText($el.find('.name, .actor-name, [itemprop="name"]').first().text() || $el.text());
+    if (!rawName || rawName.length < 2 || rawName.length > 70) return;
+    if (/^(?:المزيد|عرض الكل|الكل|النجوم|الممثلين|طاقم العمل|actors|cast)$/i.test(rawName)) return;
+    const imgNode = $el.find('img').first().length
+      ? $el.find('img').first()
+      : $el.parent().find('img').first();
+    const avatarRaw = imgNode.length
+      ? extractBestImageFromElementServer($, imgNode, sourceUrl)
+      : '';
+    domCast.push({
+      name: rawName,
+      role: 'ممثل',
+      initials: makeActorInitialsServer(rawName),
+      ...(avatarRaw && !isJunkImageCandidate(avatarRaw) ? { avatarUrl: avatarRaw } : {}),
+    });
+  });
+
+  if (jsonLdCast.length + domCast.length < 3) {
+    $('.single-info li, .single-details li, .movie-info li, .info-list li, tr, p').each((_, el) => {
+      const txt = cleanText($(el).text());
+      if (!txt || txt.length > 260) return;
+      const m = txt.match(/^(?:بطولة|الممثلين|الممثلون|طاقم العمل|النجوم|تمثيل|Starring|Cast|Actors)\s*[:：]\s*(.+)$/i);
+      if (m?.[1]) {
+        const parts = m[1]
+          .split(/[،,\/|•]+/)
+          .map((s) => cleanText(s))
+          .filter((s) => s.length >= 2 && s.length <= 60);
+        for (const actorName of parts.slice(0, 12)) {
+          domCast.push({
+            name: actorName,
+            role: 'ممثل',
+            initials: makeActorInitialsServer(actorName),
+          });
+        }
       }
     });
   }
+
+  const mergedInitialCast = mergeCastMembersServer(jsonLdCast, domCast, 20);
 
   const normalizedServers = Array.from(serversMap.values())
     .slice(0, 12)
@@ -3129,7 +3441,7 @@ export function parseHtmlToMediaWithHints(
     imdbId: extractedImdbId || '',
     shortUrl: '',
     trailerUrl,
-    cast: jsonLdCast,
+    cast: mergedInitialCast,
     servers: normalizedServers,
     downloads: Array.from(downloadsMap.values()).slice(0, 12),
     seasons: parsedSeasons,
@@ -3677,33 +3989,43 @@ export async function scrapeFullItemWithSubpages(
 
   // Step 4: Verify scraped servers aren't website homepages / broken while preserving real names & qualities
   // Step 5: Fallback trailer search + independent High-Res Poster (2:3) & Backdrop (16:9) enrichment + real IMDb/TMDb rating
-  const [filteredServers, fallbackTrailer, resolvedImages, resolvedRating] = await Promise.all([
-    verifyScrapedServers(media.servers, mainOrigin),
-    media.trailerUrl || options?.skipEpisodeCrawl
-      ? Promise.resolve(media.trailerUrl)
-      : findYoutubeTrailerFallback(media.title, media.englishTitle, media.year, media.kind),
-    options?.skipEpisodeCrawl
-      ? Promise.resolve(null)
-      : resolveHighResImagesServer({
-          title: media.title,
-          englishTitle: media.englishTitle,
-          year: media.year,
-          kind: media.kind,
-          imdbId: media.imdbId,
-          currentPoster: media.poster,
-          currentBackdrop: media.backdrop,
-          preferOfficial: true,
-        }),
-    options?.skipEpisodeCrawl || (hints.hasExplicitImdbRating && media.imdb !== 7.8)
-      ? Promise.resolve(null)
-      : resolveMediaRatingServer({
-          title: media.title,
-          englishTitle: media.englishTitle,
-          year: media.year,
-          kind: media.kind,
-          imdbId: media.imdbId,
-        }),
-  ]);
+  const [filteredServers, fallbackTrailer, resolvedImages, resolvedRating, resolvedCast] =
+    await Promise.all([
+      verifyScrapedServers(media.servers, mainOrigin),
+      media.trailerUrl || options?.skipEpisodeCrawl
+        ? Promise.resolve(media.trailerUrl)
+        : findYoutubeTrailerFallback(media.title, media.englishTitle, media.year, media.kind),
+      options?.skipEpisodeCrawl
+        ? Promise.resolve(null)
+        : resolveHighResImagesServer({
+            title: media.title,
+            englishTitle: media.englishTitle,
+            year: media.year,
+            kind: media.kind,
+            imdbId: media.imdbId,
+            currentPoster: media.poster,
+            currentBackdrop: media.backdrop,
+            preferOfficial: true,
+          }),
+      options?.skipEpisodeCrawl || (hints.hasExplicitImdbRating && media.imdb !== 7.8)
+        ? Promise.resolve(null)
+        : resolveMediaRatingServer({
+            title: media.title,
+            englishTitle: media.englishTitle,
+            year: media.year,
+            kind: media.kind,
+            imdbId: media.imdbId,
+          }),
+      options?.skipEpisodeCrawl || media.cast.length >= 4
+        ? Promise.resolve(null)
+        : resolveCastMembersServer({
+            title: media.title,
+            englishTitle: media.englishTitle,
+            year: media.year,
+            kind: media.kind,
+            imdbId: media.imdbId,
+          }),
+    ]);
 
   media.servers = filteredServers;
   media.trailerUrl = fallbackTrailer || '';
@@ -3721,6 +4043,23 @@ export async function scrapeFullItemWithSubpages(
       /^(?:19|20)\d{2}$/.test(resolvedRating.year)
     ) {
       media.year = resolvedRating.year;
+    }
+  }
+  if (resolvedCast?.imdbId && !media.imdbId) {
+    media.imdbId = resolvedCast.imdbId;
+  }
+  if (resolvedCast?.cast && resolvedCast.cast.length > 0) {
+    media.cast = mergeCastMembersServer(media.cast, resolvedCast.cast, 20);
+  } else if (!options?.skipEpisodeCrawl && media.cast.length < 2 && media.imdbId) {
+    const retryCast = await resolveCastMembersServer({
+      title: media.title,
+      englishTitle: media.englishTitle,
+      year: media.year,
+      kind: media.kind,
+      imdbId: media.imdbId,
+    }).catch(() => null);
+    if (retryCast?.cast?.length) {
+      media.cast = mergeCastMembersServer(media.cast, retryCast.cast, 20);
     }
   }
   if (resolvedImages) {
@@ -4070,7 +4409,7 @@ async function enrichScrapedMediaFromAdapter(
     imdbId: baseMedia.imdbId || '',
   };
 
-  const [fallbackTrailer, resolvedImages, resolvedRating] = await Promise.all([
+  const [fallbackTrailer, resolvedImages, resolvedRating, resolvedCast] = await Promise.all([
     full.trailerUrl
       ? Promise.resolve(full.trailerUrl)
       : findYoutubeTrailerFallback(full.title, full.englishTitle, full.year, full.kind),
@@ -4093,6 +4432,15 @@ async function enrichScrapedMediaFromAdapter(
           imdbId: full.imdbId,
         })
       : Promise.resolve(null),
+    (full.cast || []).length >= 4
+      ? Promise.resolve(null)
+      : resolveCastMembersServer({
+          title: full.title,
+          englishTitle: full.englishTitle,
+          year: full.year,
+          kind: full.kind,
+          imdbId: full.imdbId,
+        }),
   ]);
 
   full.trailerUrl = fallbackTrailer || '';
@@ -4111,6 +4459,12 @@ async function enrichScrapedMediaFromAdapter(
     ) {
       full.year = resolvedRating.year;
     }
+  }
+  if (resolvedCast?.imdbId && !full.imdbId) {
+    full.imdbId = resolvedCast.imdbId;
+  }
+  if (resolvedCast?.cast && resolvedCast.cast.length > 0) {
+    full.cast = mergeCastMembersServer(full.cast || [], resolvedCast.cast, 20);
   }
   if (resolvedImages) {
     if (resolvedImages.poster_url) {
@@ -5822,6 +6176,35 @@ async function startServer() {
         ok: false,
         error: err instanceof Error ? err.message : 'تعذر الوصول إلى النقطة.',
         latencyMs: Date.now() - start,
+      });
+    }
+  });
+
+  app.post('/api/cast/resolve', async (req, res) => {
+    try {
+      const { title = '', englishTitle = '', year = '', kind = 'movie', imdbId = '' } = (req.body ||
+        {}) as {
+        title?: string;
+        englishTitle?: string;
+        year?: string;
+        kind?: string;
+        imdbId?: string;
+      };
+      if (!String(title).trim() && !String(englishTitle).trim() && !String(imdbId).trim()) {
+        return res.status(400).json({ ok: false, error: 'عنوان العمل أو معرف IMDb مطلوب.' });
+      }
+      const resolved = await resolveCastMembersServer({
+        title: String(title),
+        englishTitle: String(englishTitle),
+        year: String(year),
+        kind: String(kind),
+        imdbId: String(imdbId),
+      });
+      return res.json({ ok: true, cast: resolved.cast, imdbId: resolved.imdbId || '' });
+    } catch (err) {
+      return res.status(500).json({
+        ok: false,
+        error: err instanceof Error ? err.message : 'تعذر جلب طاقم التمثيل.',
       });
     }
   });

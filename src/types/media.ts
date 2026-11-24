@@ -202,7 +202,74 @@ export type HeroInfoPosition =
   | 'middle-center'
   | 'middle-left';
 
-export type HomeCardStyle = 'clean' | 'classic' | 'showcase';
+export const HOME_CARD_STYLE_3D_IDS = [
+  'classic',
+  'showcase',
+  '3d-obsidian-tilt',
+  '3d-cinema-stage',
+  '3d-neon-prism',
+  '3d-glass-float',
+  '3d-gold-bevel',
+  '3d-stacked-deck',
+  '3d-hologram-edge',
+  '3d-theater-curtain',
+  '3d-poster-lift',
+  '3d-dual-flip',
+  '3d-corner-fold',
+  '3d-cyber-frame',
+  '3d-velvet-depth',
+  '3d-chrome-plate',
+  '3d-spotlight-arc',
+  '3d-polaroid-slab',
+  '3d-split-slice',
+  '3d-metallic-crest',
+] as const;
+
+export type HomeCardStyle3D = (typeof HOME_CARD_STYLE_3D_IDS)[number];
+export type HomeCardStyle = 'clean' | HomeCardStyle3D;
+
+export const SITE_THEME_IDS = [
+  'default',
+  'cyber-crimson',
+  'royal-gold',
+  'midnight-sapphire',
+  'emerald-noir',
+  'sunset-amber',
+  'velvet-plum',
+  'ocean-teal',
+  'volcanic-copper',
+  'arctic-frost',
+  'ivory-editorial',
+  'espresso-noir',
+  'nordic-slate',
+  'cherry-obsidian',
+  'neon-mint',
+  'titanium-steel',
+  'champagne-luxe',
+  'electric-indigo',
+  'forest-sage',
+  'desert-dune',
+  'monochrome-silver',
+  'crimson-velvet',
+  'aurora-violet',
+  'cobalt-storm',
+  'rose-quartz-dark',
+  'golden-pharaoh',
+] as const;
+
+export type SiteThemeId = (typeof SITE_THEME_IDS)[number];
+
+export const RECENTLY_WATCHED_CARD_STYLE_IDS = [
+  'rw-3d-tilt',
+  'rw-3d-glass',
+  'rw-3d-stacked',
+  'rw-3d-neon-bevel',
+  'rw-3d-floating-stage',
+  'rw-3d-prism',
+  'rw-3d-velvet-arch',
+] as const;
+
+export type RecentlyWatchedCardStyle = (typeof RECENTLY_WATCHED_CARD_STYLE_IDS)[number];
 
 export interface HomeLayoutConfig {
   showHero: boolean;
@@ -371,6 +438,7 @@ export interface SiteSettings {
   featuredLimit: number;
   maintenanceMode: boolean;
   maintenanceMessage: string;
+  siteThemeId?: SiteThemeId;
   playerTheme?: PlayerThemeConfig;
   homeConfig?: HomeLayoutConfig;
   typography?: TypographyConfig;
@@ -625,6 +693,7 @@ export interface RecentlyWatchedUiConfig {
   autoScrollIntervalSec: number;
   scrollDirection: 'rtl' | 'ltr';
   enableWheelScroll: boolean;
+  cardStyle?: RecentlyWatchedCardStyle;
   cardSizePreset: RecentlyWatchedCardSizePreset;
   cardWidthPx: number;
   cardGapPx: number;

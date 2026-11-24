@@ -28,6 +28,7 @@ import type {
 import { FALLBACK_BACKDROP, FALLBACK_POSTER } from '../lib/mediaFilters';
 import { optimizeTmdbUrl } from '../lib/mediaImages';
 import { formatRelativeArabicTime } from '../lib/recentlyWatched';
+import { normalizeRecentlyWatchedCardStyle } from '../lib/cardStyles';
 import {
   DEFAULT_RECENTLY_WATCHED_UI_CONFIG,
   normalizeRecentlyWatchedUiConfig,
@@ -420,6 +421,7 @@ export function RecentlyWatchedSection({
   const aspectRatioCss = resolveAspectRatioCssValue(uiConfig.aspectRatio);
   const imgSpec = resolveImageSlotForCarouselCard(uiConfig.aspectRatio, layout.cardWidthPx);
   const showHeaderBar = uiConfig.showTitle || uiConfig.showViewAllButton;
+  const activeCardStyle = normalizeRecentlyWatchedCardStyle(uiConfig.cardStyle);
 
   return (
     <section
@@ -563,7 +565,7 @@ export function RecentlyWatchedSection({
             gap: `${layout.cardGapPx}px`,
             touchAction: 'pan-y pan-x',
           }}
-          className={`flex flex-nowrap overflow-x-auto no-scrollbar py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#E50914]/75 rounded-2xl ${
+          className={`flex flex-nowrap overflow-x-auto no-scrollbar pt-2 pb-3 px-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#E50914]/75 rounded-2xl ${
             isDragging
               ? 'cursor-grabbing select-none snap-none'
               : uiConfig.enableDrag
@@ -591,6 +593,10 @@ export function RecentlyWatchedSection({
             const pct = Math.min(100, Math.max(0, rec.progressPct || 0));
             const hasMetaFooter =
               uiConfig.showMediaTitle || uiConfig.showWatchedAt || uiConfig.showEpisodeInfo;
+            const isGlassOverlay = activeCardStyle === 'rw-3d-glass';
+            const isNeonBevel = activeCardStyle === 'rw-3d-neon-bevel';
+            const isFloatingStage = activeCardStyle === 'rw-3d-floating-stage';
+            const isVelvetArch = activeCardStyle === 'rw-3d-velvet-arch';
 
             return (
               <article
@@ -600,134 +606,160 @@ export function RecentlyWatchedSection({
                   minWidth: `${layout.cardWidthPx}px`,
                   flex: '0 0 auto',
                 }}
-                className="group snap-start relative flex flex-col rounded-2xl bg-[#181818] border border-white/[0.08] overflow-hidden transition-transform duration-300 hover:-translate-y-1 hover:border-white/25 hover:bg-[#202020] shadow-lg"
+                className={`rtv-rw-3d-card rtv-rw-3d--${activeCardStyle} group snap-start relative flex flex-col`}
               >
-                {/* Fixed-Aspect Media Image (Zero CLS) */}
-                <div
-                  onClick={() => onResumeItem(rec, matchedMedia)}
-                  style={{ aspectRatio: aspectRatioCss }}
-                  className="relative w-full overflow-hidden bg-[#111] cursor-pointer"
-                >
-                  <OptimizedImage
-                    src={posterSrc}
-                    fallbackSrc={imgSpec.preferBackdrop ? FALLBACK_BACKDROP : FALLBACK_POSTER}
-                    alt={title}
-                    slot={imgSpec.slot}
-                    loading="lazy"
-                    className="h-full w-full"
-                    imgClassName="object-cover object-top transition-transform duration-500 group-hover:scale-105 pointer-events-none"
-                  />
-
-                  <div className="pointer-events-none absolute inset-0 z-10 bg-gradient-to-t from-[#181818] via-black/15 to-black/45" />
-
-                  {/* Episode / Completion Badge */}
-                  {uiConfig.showEpisodeInfo && (
-                    <div className="absolute top-2 right-2 z-20 flex flex-col items-end gap-1">
-                      {rec.completed ? (
-                        <span className="inline-flex items-center gap-1 rounded-lg bg-[#4CAF50]/90 px-2 py-0.5 text-[10px] font-black text-white shadow">
-                          <CheckCircle2 className="w-2.5 h-2.5" />
-                          <span>مكتمل</span>
-                        </span>
-                      ) : rec.episodeNumber ? (
-                        <span className="font-latin rounded-lg bg-[#E50914]/90 px-2 py-0.5 text-[10px] font-black text-white shadow">
-                          {rec.seasonNumber ? `S${rec.seasonNumber} · ` : ''}E{rec.episodeNumber}
-                        </span>
-                      ) : (
-                        <span className="font-latin rounded-lg bg-black/75 border border-white/15 px-2 py-0.5 text-[10px] font-bold text-white">
-                          {rec.quality || matchedMedia?.quality || 'HD'}
-                        </span>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Quick Remove Button */}
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onRemoveItem(rec);
-                    }}
-                    aria-label={`إزالة ${title} من سجل المشاهدة`}
-                    title="إزالة من السجل"
-                    className="absolute top-2 left-2 z-20 inline-flex h-8 w-8 items-center justify-center rounded-lg bg-black/70 border border-white/15 text-white/80 hover:bg-[#D92321] hover:border-[#D92321] hover:text-white opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all cursor-pointer"
+                <div className="rtv-rw-3d-shell relative flex flex-1 flex-col overflow-hidden">
+                  {/* Fixed-Aspect Media Image (Zero CLS) */}
+                  <div
+                    onClick={() => onResumeItem(rec, matchedMedia)}
+                    style={{ aspectRatio: aspectRatioCss }}
+                    className={`relative w-full overflow-hidden bg-[#111] cursor-pointer ${
+                      isFloatingStage ? 'rounded-xl' : isVelvetArch ? 'rounded-t-[24px]' : ''
+                    }`}
                   >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
+                    <OptimizedImage
+                      src={posterSrc}
+                      fallbackSrc={imgSpec.preferBackdrop ? FALLBACK_BACKDROP : FALLBACK_POSTER}
+                      alt={title}
+                      slot={imgSpec.slot}
+                      loading="lazy"
+                      className="h-full w-full"
+                      imgClassName="object-cover object-top transition-transform duration-500 group-hover:scale-105 pointer-events-none"
+                    />
 
-                  {/* Center Resume Play Icon */}
-                  <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center">
-                    <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#E50914]/95 text-white shadow-[0_8px_24px_rgba(229,9,20,0.5)] scale-95 sm:scale-90 sm:opacity-0 transition-all duration-200 group-hover:scale-100 group-hover:opacity-100">
-                      <Play className="w-4.5 h-4.5 fill-current mr-[-2px]" />
+                    <div className="pointer-events-none absolute inset-0 z-10 bg-gradient-to-t from-black/90 via-black/15 to-black/45" />
+
+                    {/* Top-Right 3D Elevated Episode / Completion Badge */}
+                    {uiConfig.showEpisodeInfo && (
+                      <div className="rtv-card-3d-z-md absolute top-2 right-2 z-20 flex flex-col items-end gap-1">
+                        {rec.completed ? (
+                          <span className="inline-flex items-center gap-1 rounded-lg bg-[#4CAF50]/95 px-2 py-0.5 text-[10px] font-black text-white shadow-lg">
+                            <CheckCircle2 className="w-2.5 h-2.5" />
+                            <span>مكتمل</span>
+                          </span>
+                        ) : rec.episodeNumber ? (
+                          <span
+                            className={`font-latin rounded-lg px-2 py-0.5 text-[10px] font-black text-white shadow-lg ${
+                              isNeonBevel ? 'bg-purple-600/95' : 'bg-[#E50914]/95'
+                            }`}
+                          >
+                            {rec.seasonNumber ? `S${rec.seasonNumber} · ` : ''}E{rec.episodeNumber}
+                          </span>
+                        ) : (
+                          <span className="font-latin rounded-lg bg-black/75 border border-white/15 px-2 py-0.5 text-[10px] font-bold text-white shadow">
+                            {rec.quality || matchedMedia?.quality || 'HD'}
+                          </span>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Quick Remove Button */}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onRemoveItem(rec);
+                      }}
+                      aria-label={`إزالة ${title} من سجل المشاهدة`}
+                      title="إزالة من السجل"
+                      className="rtv-card-3d-z-lg absolute top-2 left-2 z-20 inline-flex h-8 w-8 items-center justify-center rounded-lg bg-black/75 border border-white/15 text-white/85 hover:bg-[#D92321] hover:border-[#D92321] hover:text-white opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all cursor-pointer"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+
+                    {/* Center Resume Play Icon (Elevated in Z-Space) */}
+                    <div className="rtv-card-3d-z-lg pointer-events-none absolute inset-0 z-20 flex items-center justify-center">
+                      <div
+                        className={`flex h-11 w-11 items-center justify-center rounded-full text-white shadow-[0_10px_24px_rgba(229,9,20,0.55)] scale-95 sm:scale-90 sm:opacity-0 transition-all duration-200 group-hover:scale-100 group-hover:opacity-100 ${
+                          isNeonBevel ? 'bg-purple-600' : 'bg-[#E50914]/95'
+                        }`}
+                      >
+                        <Play className="w-4.5 h-4.5 fill-current mr-[-2px]" />
+                      </div>
                     </div>
+
+                    {/* Bottom Progress Bar */}
+                    {uiConfig.showProgressBar && (
+                      <div className="absolute inset-x-0 bottom-0 z-20 h-1.5 bg-white/15">
+                        <div
+                          className={`h-full transition-all duration-300 ${
+                            rec.completed
+                              ? 'bg-[#4CAF50]'
+                              : isNeonBevel
+                                ? 'bg-gradient-to-l from-purple-400 to-fuchsia-500 shadow-[0_0_8px_rgba(192,38,211,0.8)]'
+                                : 'bg-[#E50914]'
+                          }`}
+                          style={{ width: `${Math.max(pct, 6)}%` }}
+                        />
+                      </div>
+                    )}
                   </div>
 
-                  {/* Bottom Progress Bar */}
-                  {uiConfig.showProgressBar && (
-                    <div className="absolute inset-x-0 bottom-0 z-20 h-1 bg-white/15">
+                  {/* Card Footer */}
+                  <div
+                    className={`rtv-card-3d-z-sm flex flex-1 flex-col justify-between gap-2 p-2.5 text-right ${
+                      isGlassOverlay
+                        ? '-mt-5 mx-2 mb-2 rounded-xl bg-black/65 backdrop-blur-md border border-sky-300/25 shadow-lg'
+                        : ''
+                    }`}
+                  >
+                    {hasMetaFooter && (
                       <div
-                        className={`h-full transition-all duration-300 ${
-                          rec.completed ? 'bg-[#4CAF50]' : 'bg-[#E50914]'
+                        onClick={() => onResumeItem(rec, matchedMedia)}
+                        className="cursor-pointer min-w-0"
+                      >
+                        {uiConfig.showMediaTitle && (
+                          <h3
+                            style={{ fontSize: 'var(--rtv-card-title-size, 13px)' }}
+                            className="font-display font-bold text-white leading-snug line-clamp-1 group-hover:text-[#E50914] transition-colors"
+                          >
+                            {title}
+                          </h3>
+                        )}
+                        {(uiConfig.showEpisodeInfo || uiConfig.showWatchedAt) && (
+                          <div className="mt-1 flex items-center justify-between gap-1 text-[10.5px] font-medium text-[#a3a3a3]">
+                            {uiConfig.showEpisodeInfo ? (
+                              <span className="truncate">
+                                {rec.episodeNumber
+                                  ? `الحلقة ${rec.episodeNumber}`
+                                  : rec.year || matchedMedia?.year || '2026'}
+                              </span>
+                            ) : (
+                              <span />
+                            )}
+                            {uiConfig.showWatchedAt && (
+                              <span className="shrink-0 text-[#b7c9ef]/80">
+                                {formatRelativeArabicTime(rec.lastWatchedAtMs)}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    <div className="flex items-center gap-1.5 pt-1 border-t border-white/[0.06]">
+                      <button
+                        type="button"
+                        onClick={() => onResumeItem(rec, matchedMedia)}
+                        className={`flex-1 inline-flex min-h-[34px] items-center justify-center gap-1 rounded-xl border py-1.5 text-[11px] font-extrabold text-white transition-colors cursor-pointer ${
+                          isVelvetArch
+                            ? 'bg-pink-600/25 hover:bg-pink-600 border-pink-400/40'
+                            : 'bg-[#E50914]/20 hover:bg-[#E50914] border-[#E50914]/40'
                         }`}
-                        style={{ width: `${Math.max(pct, 6)}%` }}
-                      />
+                      >
+                        <Play className="w-3 h-3 fill-current" />
+                        <span>{rec.completed ? 'إعادة' : 'متابعة'}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onOpenDetails(rec, matchedMedia)}
+                        aria-label={`تفاصيل ${title}`}
+                        title="صفحة التفاصيل"
+                        className="inline-flex h-[34px] w-[34px] items-center justify-center rounded-xl bg-white/[0.06] hover:bg-white/15 border border-white/10 text-[#b7c9ef] hover:text-white transition-colors cursor-pointer shrink-0"
+                      >
+                        <Info className="w-3.5 h-3.5" />
+                      </button>
                     </div>
-                  )}
-                </div>
-
-                {/* Card Footer */}
-                <div className="flex flex-1 flex-col justify-between gap-2 p-2.5 text-right">
-                  {hasMetaFooter && (
-                    <div
-                      onClick={() => onResumeItem(rec, matchedMedia)}
-                      className="cursor-pointer min-w-0"
-                    >
-                      {uiConfig.showMediaTitle && (
-                        <h3
-                          style={{ fontSize: 'var(--rtv-card-title-size, 13px)' }}
-                          className="font-display font-bold text-white leading-snug line-clamp-1 group-hover:text-[#E50914] transition-colors"
-                        >
-                          {title}
-                        </h3>
-                      )}
-                      {(uiConfig.showEpisodeInfo || uiConfig.showWatchedAt) && (
-                        <div className="mt-1 flex items-center justify-between gap-1 text-[10.5px] font-medium text-[#a3a3a3]">
-                          {uiConfig.showEpisodeInfo ? (
-                            <span className="truncate">
-                              {rec.episodeNumber
-                                ? `الحلقة ${rec.episodeNumber}`
-                                : rec.year || matchedMedia?.year || '2026'}
-                            </span>
-                          ) : (
-                            <span />
-                          )}
-                          {uiConfig.showWatchedAt && (
-                            <span className="shrink-0 text-[#b7c9ef]/80">
-                              {formatRelativeArabicTime(rec.lastWatchedAtMs)}
-                            </span>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  <div className="flex items-center gap-1.5 pt-1 border-t border-white/[0.06]">
-                    <button
-                      type="button"
-                      onClick={() => onResumeItem(rec, matchedMedia)}
-                      className="flex-1 inline-flex items-center justify-center gap-1 rounded-lg bg-[#E50914]/15 hover:bg-[#E50914] border border-[#E50914]/35 py-1.5 text-[11px] font-extrabold text-white transition-colors cursor-pointer"
-                    >
-                      <Play className="w-3 h-3 fill-current" />
-                      <span>{rec.completed ? 'إعادة' : 'متابعة'}</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => onOpenDetails(rec, matchedMedia)}
-                      aria-label={`تفاصيل ${title}`}
-                      title="صفحة التفاصيل"
-                      className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-white/[0.06] hover:bg-white/15 border border-white/10 text-[#b7c9ef] hover:text-white transition-colors cursor-pointer shrink-0"
-                    >
-                      <Info className="w-3.5 h-3.5" />
-                    </button>
                   </div>
                 </div>
               </article>

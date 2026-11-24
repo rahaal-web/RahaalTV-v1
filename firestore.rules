@@ -213,7 +213,14 @@ service cloud.firestore {
         && cfg.showFullLibrary is bool
         && cfg.showRequestBanner is bool
         && cfg.cardsPerRow in [4, 5, 6]
-        && cfg.cardStyle in ['clean', 'classic', 'showcase']
+        && cfg.cardStyle in [
+          'clean', 'classic', 'showcase',
+          '3d-obsidian-tilt', '3d-cinema-stage', '3d-neon-prism', '3d-glass-float',
+          '3d-gold-bevel', '3d-stacked-deck', '3d-hologram-edge', '3d-theater-curtain',
+          '3d-poster-lift', '3d-dual-flip', '3d-corner-fold', '3d-cyber-frame',
+          '3d-velvet-depth', '3d-chrome-plate', '3d-spotlight-arc', '3d-polaroid-slab',
+          '3d-split-slice', '3d-metallic-crest'
+        ]
         && cfg.sections is list && cfg.sections.size() >= 1 && cfg.sections.size() <= 12
         && cfg.sections[0] is map;
     }
@@ -490,7 +497,20 @@ service cloud.firestore {
         'customOrderIds', 'hideCompleted', 'deduplicateItems',
         'deviceMode', 'deviceSettings', 'updatedBy', 'updatedAt'
       ])
-      && data.keys().size() == 29
+      && data.keys().hasOnly([
+        'enabled', 'showTitle', 'showViewAllButton', 'showArrows',
+        'enableDrag', 'autoScroll', 'autoScrollIntervalSec', 'scrollDirection',
+        'enableWheelScroll', 'cardStyle', 'cardSizePreset', 'cardWidthPx', 'cardGapPx',
+        'aspectRatio', 'showMediaTitle', 'showWatchedAt', 'showProgressBar',
+        'showEpisodeInfo', 'maxStoredItems', 'initialVisibleCount',
+        'loadMoreOnScrollEnd', 'loadMoreBatchSize', 'sortOrder',
+        'customOrderIds', 'hideCompleted', 'deduplicateItems',
+        'deviceMode', 'deviceSettings', 'updatedBy', 'updatedAt'
+      ])
+      && (!('cardStyle' in data) || data.cardStyle in [
+        'rw-3d-tilt', 'rw-3d-glass', 'rw-3d-stacked', 'rw-3d-neon-bevel',
+        'rw-3d-floating-stage', 'rw-3d-prism', 'rw-3d-velvet-arch'
+      ])
       && data.enabled is bool
       && data.showTitle is bool
       && data.showViewAllButton is bool
@@ -581,6 +601,23 @@ service cloud.firestore {
         'faviconMode', 'faviconUrl', 'faviconMimeType', 'updatedBy', 'updatedAt'
       ])
       && isValidWebsiteBrandingFields(data)
+      && data.updatedBy is string && data.updatedBy.size() >= 1 && data.updatedBy.size() <= 128
+      && data.updatedAt is timestamp;
+    }
+
+    function isValidSiteThemeDoc(data) {
+      return data.keys().hasAll(['siteThemeId', 'updatedBy', 'updatedAt'])
+      && data.keys().hasOnly(['siteThemeId', 'updatedBy', 'updatedAt'])
+      && data.siteThemeId in [
+        'default',
+        'cyber-crimson', 'royal-gold', 'midnight-sapphire', 'emerald-noir',
+        'sunset-amber', 'velvet-plum', 'ocean-teal', 'volcanic-copper',
+        'arctic-frost', 'ivory-editorial', 'espresso-noir', 'nordic-slate',
+        'cherry-obsidian', 'neon-mint', 'titanium-steel', 'champagne-luxe',
+        'electric-indigo', 'forest-sage', 'desert-dune', 'monochrome-silver',
+        'crimson-velvet', 'aurora-violet', 'cobalt-storm', 'rose-quartz-dark',
+        'golden-pharaoh'
+      ]
       && data.updatedBy is string && data.updatedBy.size() >= 1 && data.updatedBy.size() <= 128
       && data.updatedAt is timestamp;
     }
@@ -999,12 +1036,22 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    match /settings/site_theme {
+      allow get: if true;
+      allow list: if isOwnerAdmin();
+      allow create, update: if isOwnerAdmin()
+        && isValidSiteThemeDoc(incoming())
+        && incoming().updatedBy == request.auth.uid
+        && incoming().updatedAt == request.time;
+      allow delete: if false;
+    }
+
     match /settings/{settingId} {
       allow get: if isValidId(settingId);
       allow list: if isOwnerAdmin();
       allow create, update: if isOwnerAdmin()
         && isValidId(settingId)
-        && !(settingId in ['home_layout', 'slider_style', 'site_branding', 'image_placeholders', 'recently_watched_ui'])
+        && !(settingId in ['home_layout', 'slider_style', 'site_branding', 'image_placeholders', 'recently_watched_ui', 'site_theme'])
         && isValidSiteSettings(incoming())
         && incoming().updatedBy == request.auth.uid
         && incoming().updatedAt == request.time;

@@ -2,13 +2,13 @@ import {
   HeroImageFitMode,
   HeroInfoPosition,
   HeroTextAlign,
-  HomeCardStyle,
   HomeHeroMode,
   HomeLayoutConfig,
   HomeSectionConfig,
   HomeSectionSource,
   MediaItem,
 } from '../types/media';
+import { normalizeHomeCardStyle } from './cardStyles';
 import { matchesCategoryFilter } from './categoryMatcher';
 
 export const HOME_CONFIG_STORAGE_KEY = 'rahaltv_home_config_v1';
@@ -294,9 +294,7 @@ export function normalizeHomeConfig(
     showFullLibrary: Boolean(raw.showFullLibrary ?? false),
     showRequestBanner: Boolean(raw.showRequestBanner ?? true),
     cardsPerRow,
-    cardStyle: (
-      raw.cardStyle === 'classic' || raw.cardStyle === 'showcase' ? raw.cardStyle : 'clean'
-    ) as HomeCardStyle,
+    cardStyle: normalizeHomeCardStyle(raw.cardStyle),
     sections: rawSections,
   };
 }

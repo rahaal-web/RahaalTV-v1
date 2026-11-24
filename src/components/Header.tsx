@@ -38,7 +38,7 @@ interface HeaderProps {
   isGuest?: boolean;
   isAdmin: boolean;
   activeCategory: string;
-  currentView: 'home' | 'archive' | 'single' | 'admin' | 'not_found';
+  currentView: 'home' | 'archive' | 'single' | 'actor' | 'admin' | 'not_found';
   branding?: WebsiteBrandingConfig;
   siteName?: string;
   mobileMenuOpen?: boolean;

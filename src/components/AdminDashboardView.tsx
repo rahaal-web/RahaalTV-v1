@@ -172,6 +172,11 @@ const AdminImagePlaceholderPanel = lazy(() =>
     default: m.AdminImagePlaceholderPanel,
   }))
 );
+const AdminCardsAndThemesPanel = lazy(() =>
+  import('./admin/AdminCardsAndThemesPanel').then((m) => ({
+    default: m.AdminCardsAndThemesPanel,
+  }))
+);
 
 import {
   optimizeTmdbUrl,
@@ -205,6 +210,7 @@ import {
   saveMediaToFirestore,
   saveRecentlyWatchedUiConfigToFirestore,
   saveSiteSettingsToFirestore,
+  saveSiteThemeToFirestore,
   seedCatalogToFirestore,
   signInWithEmailPassword,
   signInWithGoogle,
@@ -242,6 +248,7 @@ import {
   normalizeHomeConfig,
   saveStoredHomeConfig,
 } from '../lib/homeConfig';
+import { loadStoredRecentlyWatchedUiConfig } from '../lib/recentlyWatchedConfig';
 import {
   applyTypographyToDocument,
   loadStoredCustomFonts,
@@ -326,6 +333,12 @@ import {
   saveStoredPlaceholderConfig,
 } from '../lib/placeholderConfig';
 import {
+  getSiteThemeDefinition,
+  loadStoredSiteThemeId,
+  normalizeSiteThemeId,
+  saveStoredSiteThemeId,
+} from '../lib/siteThemes';
+import {
   AdminPrivilegeRole,
   AdminRoleRecord,
   CastMember,
@@ -343,6 +356,7 @@ import {
   ScraperAdapter,
   SeasonItem,
   SiteSettings,
+  SiteThemeId,
   StreamServer,
   TypographyConfig,
   UserProfileRecord,
@@ -464,6 +478,8 @@ interface AdminDashboardViewProps {
   onCustomFontsChange?: (next: Partial<Record<CustomFontSlot, CustomFontRecord>>) => void;
   onPopupShieldChange?: (next: PopupShieldConfig) => void;
   imagePlaceholderConfig?: ImagePlaceholderConfig;
+  siteThemeId?: SiteThemeId;
+  onSiteThemeChange?: (next: SiteThemeId) => void;
   recentlyWatchedUiConfig?: import('../types/media').RecentlyWatchedUiConfig;
   recentlyWatchedItems?: import('../types/media').RecentlyWatchedRecord[];
   onRecentlyWatchedUiChange?: (next: import('../types/media').RecentlyWatchedUiConfig) => void;
@@ -763,6 +779,8 @@ export function AdminDashboardView({
   onCustomFontsChange,
   onPopupShieldChange,
   imagePlaceholderConfig,
+  siteThemeId,
+  onSiteThemeChange,
   recentlyWatchedUiConfig,
   recentlyWatchedItems,
   onRecentlyWatchedUiChange,
@@ -884,6 +902,14 @@ export function AdminDashboardView({
 
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
+  const [localSiteThemeId, setLocalSiteThemeId] = useState<SiteThemeId>(() =>
+    normalizeSiteThemeId(siteThemeId || loadStoredSiteThemeId())
+  );
+  useEffect(() => {
+    if (siteThemeId) {
+      setLocalSiteThemeId(normalizeSiteThemeId(siteThemeId));
+    }
+  }, [siteThemeId]);
   const [unreadNotificationsCount, setUnreadNotificationsCount] = useState<number>(() =>
     loadAdminNotifications().filter((n) => !n.read).length
   );
@@ -2719,6 +2745,30 @@ export function AdminDashboardView({
     }
   };
 
+  const handleSaveSiteTheme = async (nextThemeId: SiteThemeId) => {
+    const clean = saveStoredSiteThemeId(nextThemeId);
+    setLocalSiteThemeId(clean);
+    onSiteThemeChange?.(clean);
+    const themeMeta = getSiteThemeDefinition(clean);
+    if (!hasActor) {
+      onNotify(`تم تطبيق ثيم «${themeMeta.name}» محلياً — سجّل الدخول كمشرف للمزامنة`);
+      return;
+    }
+    setBusyAction(true);
+    try {
+      const res = await saveSiteThemeToFirestore(clean, activeActorUid);
+      onNotify(
+        res.ok
+          ? `تم تفعيل ثيم «${themeMeta.name}» ومزامنته لجميع الزوار على (${res.projectId} / ${res.databaseId}) بنجاح!`
+          : `تم تطبيق ثيم «${themeMeta.name}» محلياً — قواعد (${res.projectId} / ${res.databaseId}) رفضت الكتابة إلى settings/site_theme (${res.errorCode || 'permission-denied'}). حدّث وانشر firestore.rules.`
+      );
+    } catch {
+      onNotify('تم تطبيق الثيم محلياً — تعذرت المزامنة السحابية مع Firestore');
+    } finally {
+      setBusyAction(false);
+    }
+  };
+
   const handleSaveHomeConfig = async (nextHome: HomeLayoutConfig) => {
     const cleanHome = saveStoredHomeConfig(nextHome);
     setSettingsForm((prev) => ({ ...prev, homeConfig: cleanHome }));
@@ -3631,6 +3681,7 @@ export function AdminDashboardView({
     if (
       tabId === 'settings' ||
       tabId === 'home_builder' ||
+      tabId === 'cards_themes' ||
       tabId === 'typography' ||
       tabId === 'popup_shield' ||
       tabId === 'player_theme' ||
@@ -4277,6 +4328,81 @@ export function AdminDashboardView({
         </div>
       </header>
 
+      {/* Mobile Compact Quick Navigation Strip (< 1024px) — eliminates excessive scrolling on phones */}
+      <div className="lg:hidden shrink-0 border-b border-white/10 bg-[#09131c]/95 backdrop-blur-md">
+        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar px-2.5 pt-2 pb-1.5">
+          {resolvedSidebarGroups.map((group) => {
+            const isActiveGroup = currentNavMeta.group.id === group.id;
+            const firstItem = group.items[0];
+            return (
+              <button
+                key={`mob-grp-${group.id}`}
+                type="button"
+                onClick={() => {
+                  if (!isActiveGroup && firstItem) {
+                    handleSelectSidebarTab(firstItem.id);
+                  } else if (firstItem) {
+                    setOpenGroupIds([group.id]);
+                  }
+                }}
+                style={
+                  isActiveGroup
+                    ? {
+                        backgroundColor: `color-mix(in srgb, ${group.accentColor} 18%, transparent)`,
+                        borderColor: group.accentColor,
+                      }
+                    : undefined
+                }
+                className={`inline-flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 text-[11px] font-extrabold whitespace-nowrap shrink-0 cursor-pointer transition-colors ${
+                  isActiveGroup
+                    ? 'text-white shadow-sm'
+                    : 'bg-[#121e28] border-white/10 text-[#b7c9ef]'
+                }`}
+              >
+                <span
+                  className="h-2 w-2 rounded-full shrink-0"
+                  style={{ backgroundColor: group.accentColor }}
+                />
+                <span>{group.label}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {(() => {
+          const activeMobGroup =
+            resolvedSidebarGroups.find((g) => g.id === currentNavMeta.group.id) ||
+            resolvedSidebarGroups[0];
+          if (!activeMobGroup) return null;
+          return (
+            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar px-2.5 pb-2">
+              {activeMobGroup.items.map((item) => {
+                const isItemActive = activeTab === item.id;
+                return (
+                  <button
+                    key={`mob-tab-${item.id}`}
+                    type="button"
+                    onClick={() => handleSelectSidebarTab(item.id)}
+                    className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[11px] font-bold whitespace-nowrap shrink-0 border cursor-pointer transition-colors ${
+                      isItemActive
+                        ? 'rtv-admin-accent-bg border-transparent text-white shadow'
+                        : 'bg-[#17232e] border-white/[0.08] text-[#b7c9ef]'
+                    }`}
+                  >
+                    {renderAdminSidebarIcon(
+                      item.iconName,
+                      'w-3.5 h-3.5 shrink-0',
+                      isItemActive ? '#ffffff' : activeMobGroup.accentColor
+                    )}
+                    <span>{item.shortLabel}</span>
+                  </button>
+                );
+              })}
+            </div>
+          );
+        })()}
+      </div>
+
       {/* Mobile Slide-Over Sidebar Drawer */}
       {mobileDrawerOpen && (
         <div
@@ -4290,14 +4416,14 @@ export function AdminDashboardView({
             className="fixed inset-0 bg-black/75 backdrop-blur-sm"
             onClick={() => setMobileDrawerOpen(false)}
           />
-          <aside className="rtv-admin-sidebar-shell rtv-admin-sidebar-scroll relative z-10 w-80 max-w-[88vw] h-full bg-[#0c1821] border-l border-white/10 p-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] overflow-y-auto space-y-4 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+          <aside className="rtv-admin-sidebar-shell rtv-admin-sidebar-scroll relative z-10 w-80 max-w-[88vw] h-full bg-[#0c1821] border-l border-white/10 p-3 pb-[max(1.25rem,env(safe-area-inset-bottom))] overflow-y-auto space-y-3 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-white/10 pb-2.5">
               <span className="font-display text-sm font-extrabold text-white">أقسام RahaL TV</span>
               <button
                 type="button"
                 onClick={() => setMobileDrawerOpen(false)}
                 aria-label="إغلاق القائمة"
-                className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-white/10 text-white hover:bg-[#D92321] cursor-pointer"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-white/10 text-white hover:bg-[#D92321] cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -4309,7 +4435,7 @@ export function AdminDashboardView({
 
       {/* Main Split App-Shell Workspace (Independent Sidebar Scroll + Independent Main Scroll) */}
       <div className="flex-1 min-h-0 w-full overflow-hidden">
-        <div className="mx-auto h-full w-full max-w-[1600px] px-3 sm:px-6 flex flex-col lg:flex-row gap-4 lg:gap-6 items-stretch">
+        <div className="mx-auto h-full w-full max-w-[1600px] px-2.5 sm:px-6 flex flex-col lg:flex-row gap-3 lg:gap-6 items-stretch">
           {/* Desktop 9-Group Collapsible Sidebar (Independent Scroll) */}
           <aside className="hidden lg:flex lg:flex-col shrink-0 h-full py-4">
             <div
@@ -4324,7 +4450,7 @@ export function AdminDashboardView({
           {/* Active Tab Workspace (Independent Scroll, Always Resets to Top on Tab Switch) */}
           <main
             ref={mainScrollRef}
-            className="rtv-admin-main-scroll flex-1 min-w-0 min-h-0 h-full overflow-y-auto overflow-x-hidden py-4 sm:py-6 space-y-6"
+            className="rtv-admin-main-scroll flex-1 min-w-0 min-h-0 h-full overflow-y-auto overflow-x-hidden py-2.5 sm:py-6 space-y-4 sm:space-y-6"
           >
             {dbConnectionStatus && dbConnectionStatus !== 'connected' && (() => {
               const activeFirebaseConfig = getActiveFirebaseConfig();
@@ -4716,6 +4842,30 @@ export function AdminDashboardView({
                 />
               )}
 
+              {isOwner && activeTab === 'cards_themes' && (
+                <AdminCardsAndThemesPanel
+                  catalog={catalog}
+                  homeConfig={activeHomeConfig}
+                  recentlyWatchedUiConfig={
+                    localRwUiConfig || recentlyWatchedUiConfig || loadStoredRecentlyWatchedUiConfig()
+                  }
+                  siteThemeId={localSiteThemeId}
+                  busyAction={busyAction}
+                  onChangeHomeConfig={(next) =>
+                    setSettingsForm((prev) => ({ ...prev, homeConfig: next }))
+                  }
+                  onSaveHomeConfig={handleSaveHomeConfig}
+                  onChangeRecentlyWatchedUiConfig={(next) => {
+                    setLocalRwUiConfig(next);
+                    onRecentlyWatchedUiChange?.(next);
+                  }}
+                  onSaveRecentlyWatchedUiConfig={handleSaveRecentlyWatchedUiConfig}
+                  onSaveSiteTheme={handleSaveSiteTheme}
+                  onPreviewOnSite={onExitDashboard}
+                  onNotify={onNotify}
+                />
+              )}
+
               {isOwner && activeTab === 'home_builder' && (
                 <HomeBuilderPanel
                   catalog={catalog}
@@ -4739,6 +4889,7 @@ export function AdminDashboardView({
                   onPreviewHome={onExitDashboard}
                   onOpenTypographyTab={() => navigateToTab('typography')}
                   onOpenSliderCustomization={() => navigateToTab('slider_customization')}
+                  onOpenCardsAndThemesTab={() => navigateToTab('cards_themes')}
                   onNotify={onNotify}
                 />
               )}
@@ -5422,6 +5573,30 @@ export function AdminDashboardView({
                             ممثلون:{' '}
                             <strong className="text-white">{scrapedResult.cast.length}</strong>
                           </p>
+                          {scrapedResult.cast.length > 0 && (
+                            <div className="flex flex-wrap gap-1.5 pt-1">
+                              {scrapedResult.cast.slice(0, 12).map((actor, cIdx) => (
+                                <span
+                                  key={`${actor.name}-${cIdx}`}
+                                  className="inline-flex items-center gap-1 rounded-lg bg-[#0c1821] border border-white/10 px-2 py-0.5 text-[10px] font-bold text-white"
+                                >
+                                  {actor.avatarUrl ? (
+                                    <img
+                                      src={actor.avatarUrl}
+                                      alt={actor.name}
+                                      className="w-3.5 h-3.5 rounded-full object-cover"
+                                    />
+                                  ) : null}
+                                  <span>{actor.name}</span>
+                                </span>
+                              ))}
+                              {scrapedResult.cast.length > 12 && (
+                                <span className="text-[10px] font-bold text-[#f9c400]">
+                                  +{scrapedResult.cast.length - 12}
+                                </span>
+                              )}
+                            </div>
+                          )}
                           {(scrapedResult.seasons || []).some((s) => (s.episodes?.length || 0) > 0) && (
                             <div className="max-h-40 overflow-y-auto space-y-1.5 pt-1 border-t border-white/10">
                               {(scrapedResult.seasons || []).map((season) => (

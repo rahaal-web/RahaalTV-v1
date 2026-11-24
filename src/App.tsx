@@ -1,9 +1,10 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { CSSProperties, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Compass, Home, Wrench, X } from 'lucide-react';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { collection, doc, onSnapshot, orderBy, query, where } from 'firebase/firestore';
 import type { AdminTab } from './components/AdminDashboardView';
 import { isTabAccessible } from './components/admin/adminNavigation';
+import { ActorProfileView } from './components/ActorProfileView';
 import { CatalogArchiveView } from './components/CatalogArchiveView';
 import { Footer, FooterTopic } from './components/Footer';
 import { Header } from './components/Header';
@@ -81,6 +82,13 @@ import {
   saveStoredWebsiteBranding,
 } from './lib/websiteBranding';
 import {
+  buildSiteThemeCssVars,
+  getSiteThemeDefinition,
+  loadStoredSiteThemeId,
+  normalizeSiteThemeId,
+  saveStoredSiteThemeId,
+} from './lib/siteThemes';
+import {
   findMediaByRouteKey,
   getAppBasePrefix,
 } from './lib/permalink';
@@ -148,6 +156,7 @@ import {
   RecentlyWatchedRecord,
   RecentlyWatchedUiConfig,
   SiteSettings,
+  SiteThemeId,
   UserProfileRecord,
   VisitorRequest,
   WebsiteBrandingConfig,
@@ -197,8 +206,11 @@ export default function App() {
   const initialRouteParsed = useMemo(() => readInitialRouteFromWindow(), []);
   const initialRoute = initialRouteParsed.route;
 
-  const [view, setView] = useState<'home' | 'archive' | 'single' | 'admin' | 'not_found'>(
+  const [view, setView] = useState<'home' | 'archive' | 'single' | 'actor' | 'admin' | 'not_found'>(
     initialRoute.view
+  );
+  const [actorName, setActorName] = useState<string>(
+    initialRoute.view === 'actor' ? initialRoute.actorName : ''
   );
   const [notFoundPath, setNotFoundPath] = useState<string>(
     initialRoute.view === 'not_found' ? initialRoute.rawPath || '' : ''
@@ -285,6 +297,15 @@ export default function App() {
     });
   }, []);
   const [siteSettings, setSiteSettings] = useState<SiteSettings>(DEFAULT_SETTINGS);
+  const [siteThemeId, setSiteThemeId] = useState<SiteThemeId>(() => loadStoredSiteThemeId());
+  const siteThemeDef = useMemo(() => getSiteThemeDefinition(siteThemeId), [siteThemeId]);
+  const siteThemeVars = useMemo(
+    () =>
+      siteThemeId !== 'default'
+        ? (buildSiteThemeCssVars(siteThemeId) as CSSProperties)
+        : undefined,
+    [siteThemeId]
+  );
   const [imagePlaceholderConfig, setImagePlaceholderConfig] = useState<ImagePlaceholderConfig>(() =>
     loadStoredPlaceholderConfig()
   );
@@ -392,6 +413,7 @@ export default function App() {
   const applyParsedRouteToState = useCallback((route: AppRoute) => {
     if (route.view === 'home') {
       setView('home');
+      setActorName('');
       setNotFoundPath('');
       setRequestedWatchKey(null);
       setRouteEpisode(undefined);
@@ -405,6 +427,7 @@ export default function App() {
 
     if (route.view === 'archive') {
       setView('archive');
+      setActorName('');
       setNotFoundPath('');
       setRequestedWatchKey(null);
       setRouteEpisode(undefined);
@@ -418,6 +441,7 @@ export default function App() {
 
     if (route.view === 'single') {
       setView('single');
+      setActorName('');
       setNotFoundPath('');
       setRequestedWatchKey(route.watchKey);
       setRouteEpisode(route.episode);
@@ -429,8 +453,17 @@ export default function App() {
       return;
     }
 
+    if (route.view === 'actor') {
+      setView('actor');
+      setActorName(route.actorName);
+      setNotFoundPath('');
+      setRequestedWatchKey(null);
+      return;
+    }
+
     if (route.view === 'admin') {
       setView('admin');
+      setActorName('');
       setNotFoundPath('');
       setRequestedWatchKey(null);
       if (route.adminTab) {
@@ -440,6 +473,7 @@ export default function App() {
     }
 
     setView('not_found');
+    setActorName('');
     setNotFoundPath(route.rawPath || '');
     setRequestedWatchKey(null);
   }, [activeCatalog]);
@@ -696,12 +730,14 @@ export default function App() {
       document.title = `إدارة ${effectiveBrandName} — لوحة التحكم`;
     } else if (view === 'not_found') {
       document.title = `الصفحة غير موجودة — ${effectiveBrandName}`;
+    } else if (view === 'actor' && actorName) {
+      document.title = `${actorName} — أعماله على ${effectiveBrandName}`;
     } else if (view === 'single' && matchedSingleMedia) {
       document.title = `${matchedSingleMedia.title} — ${effectiveBrandName}`;
     } else {
       document.title = effectiveBrandName;
     }
-  }, [view, matchedSingleMedia, effectiveBrandName]);
+  }, [view, actorName, matchedSingleMedia, effectiveBrandName]);
 
   useEffect(() => {
     applyTypographyToDocument(siteSettings.typography, customFonts);
@@ -1065,6 +1101,19 @@ export default function App() {
       }
     );
 
+    const unsubSiteTheme = onSnapshot(
+      doc(activeDb, 'settings', 'site_theme'),
+      (snap) => {
+        if (!snap.exists()) return;
+        const raw = snap.data() as { siteThemeId?: unknown };
+        const synced = saveStoredSiteThemeId(normalizeSiteThemeId(raw?.siteThemeId));
+        setSiteThemeId(synced);
+      },
+      () => {
+        // Ignore if settings/site_theme rule is not yet deployed
+      }
+    );
+
     const fontsPath = 'fonts';
     const unsubFonts = onSnapshot(
       collection(activeDb, fontsPath),
@@ -1142,6 +1191,7 @@ export default function App() {
       unsubSiteBranding();
       unsubImagePlaceholders();
       unsubRecentlyWatchedUi();
+      unsubSiteTheme();
       unsubFonts();
       unsubRatings();
     };
@@ -1387,6 +1437,15 @@ export default function App() {
         },
         { scrollTop: !openDownloads }
       );
+    },
+    [navigateToRoute]
+  );
+
+  const handleSelectActor = useCallback(
+    (name: string) => {
+      const clean = String(name || '').trim();
+      if (!clean) return;
+      navigateToRoute({ view: 'actor', actorName: clean });
     },
     [navigateToRoute]
   );
@@ -1725,6 +1784,8 @@ export default function App() {
             adminsList={adminsList}
             siteSettings={siteSettings}
             imagePlaceholderConfig={imagePlaceholderConfig}
+            siteThemeId={siteThemeId}
+            onSiteThemeChange={(next) => setSiteThemeId(saveStoredSiteThemeId(next))}
             recentlyWatchedUiConfig={effectiveRecentlyWatchedUiConfig}
             recentlyWatchedItems={recentlyWatchedAllItems}
             onRecentlyWatchedUiChange={(next) => {
@@ -1777,7 +1838,13 @@ export default function App() {
       );
     }
     return (
-      <div data-rtv-scope="site" className="rtv-site-root min-h-screen bg-[#0f0f0f] text-white">
+      <div
+        data-rtv-scope="site"
+        data-site-theme={siteThemeId}
+        data-site-light={siteThemeDef.isLight ? 'true' : undefined}
+        style={siteThemeVars}
+        className="rtv-site-root min-h-screen bg-[#0f0f0f] text-white"
+      >
         <MaintenanceScreen
           siteName={effectiveBrandName}
           tagline={siteSettings.tagline}
@@ -1803,7 +1870,13 @@ export default function App() {
   }
 
   return (
-    <div data-rtv-scope="site" className="rtv-site-root min-h-screen flex flex-col bg-[#0f0f0f] text-white overflow-x-clip">
+    <div
+      data-rtv-scope="site"
+      data-site-theme={siteThemeId}
+      data-site-light={siteThemeDef.isLight ? 'true' : undefined}
+      style={siteThemeVars}
+      className="rtv-site-root min-h-screen flex flex-col bg-[#0f0f0f] text-white overflow-x-clip"
+    >
       {!clientCapabilities.baselineSupported && !compatBannerDismissed && (
         <div
           role="status"
@@ -2007,6 +2080,7 @@ export default function App() {
               isGuest={isGuest}
               onOpenLogin={() => openOverlay('login')}
               onSelectMedia={handleSelectMedia}
+              onSelectActor={handleSelectActor}
               onApplyFilter={handleApplyFilter}
               onNavigateHome={navigateHome}
               onNavigateBack={navigateBackFromUI}
@@ -2025,6 +2099,19 @@ export default function App() {
               watchlistIds={watchlistIds}
             />
           ) : null
+        )}
+
+        {view === 'actor' && (
+          <ActorProfileView
+            actorName={actorName}
+            catalog={activeCatalog}
+            cardStyle={siteSettings.homeConfig?.cardStyle || 'clean'}
+            watchlistIds={watchlistIds}
+            onToggleWatchlist={handleToggleWatchlist}
+            onSelectMedia={handleSelectMedia}
+            onNavigateBack={navigateBackFromUI}
+            onNavigateHome={navigateHome}
+          />
         )}
 
         {view === 'not_found' && (

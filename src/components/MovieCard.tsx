@@ -470,6 +470,185 @@ export function MovieCard({
     );
   }
 
+  /* Remaining 18 Professional 3D Styles (3d-obsidian-tilt .. 3d-metallic-crest) */
+  if (variant !== 'clean') {
+    const ratingText =
+      viewerAvg || (item.imdb && item.imdb > 0 ? item.imdb.toFixed(1) : null);
+    const hasCustomFlip = variant === '3d-dual-flip';
+    const card3dStyle = {
+      '--rtv-flip': hasCustomFlip && isShowcaseFlipped ? '180deg' : '0deg',
+    } as CSSProperties;
+
+    const isGlassFloat = variant === '3d-glass-float';
+    const isCinemaStage = variant === '3d-cinema-stage';
+    const isCornerFold = variant === '3d-corner-fold';
+    const isCyberFrame = variant === '3d-cyber-frame';
+    const isPosterLift = variant === '3d-poster-lift';
+    const isSplitSlice = variant === '3d-split-slice';
+    const isPolaroidSlab = variant === '3d-polaroid-slab';
+    const isGoldOrMetallic = variant === '3d-gold-bevel' || variant === '3d-metallic-crest';
+
+    return (
+      <article
+        ref={showcaseCardRef}
+        style={card3dStyle}
+        onPointerMove={handleShowcasePointerMove}
+        onPointerLeave={resetShowcaseTilt}
+        className={`rtv-card-3d-wrap rtv-card-3d--${variant} group relative h-full w-full select-none`}
+      >
+        <div
+          className="rtv-card-3d-inner flex h-full w-full flex-col overflow-hidden"
+          style={
+            hasCustomFlip
+              ? {
+                  transform: `rotateX(var(--rtv-rx, 0deg)) rotateY(calc(var(--rtv-ry, 0deg) + ${
+                    isShowcaseFlipped ? '180deg' : '0deg'
+                  }))`,
+                }
+              : undefined
+          }
+        >
+          {/* Specular 3D Light Glare */}
+          <div className="pointer-events-none absolute inset-0 z-30 rounded-[inherit] overflow-hidden">
+            <div className="rtv-card-3d-sheen absolute inset-0" />
+          </div>
+
+          {/* Cyber HUD Corners */}
+          {isCyberFrame && (
+            <div className="pointer-events-none absolute inset-1.5 z-30 rounded-lg border border-teal-400/25" />
+          )}
+
+          {/* Top Poster Area */}
+          <div
+            onClick={() => onSelect(item)}
+            className={`relative aspect-[2/3] w-full overflow-hidden bg-[#0e121a] cursor-pointer ${
+              isPolaroidSlab ? 'rounded-xl' : ''
+            } ${isPosterLift ? 'rtv-card-3d-poster-pop transition-transform duration-300' : ''}`}
+          >
+            <OptimizedImage
+              src={posterSrc}
+              fallbackSrc={FALLBACK_POSTER}
+              alt={item.title}
+              slot="card_grid"
+              priority={priority}
+              loading={priority ? 'eager' : 'lazy'}
+              className="h-full w-full"
+              imgClassName="object-cover object-top transition-transform duration-500 ease-out group-hover:scale-105"
+            />
+
+            <div className="pointer-events-none absolute inset-0 z-10 bg-gradient-to-t from-black/90 via-black/20 to-black/45" />
+
+            {/* Diagonal Split Slice Cut */}
+            {isSplitSlice && (
+              <div
+                className="pointer-events-none absolute -bottom-3 inset-x-0 z-20 h-7 bg-[#141221]"
+                style={{ clipPath: 'polygon(0 55%, 100% 0%, 100% 100%, 0% 100%)' }}
+              />
+            )}
+
+            {/* Corner Fold Ribbon */}
+            {isCornerFold && (
+              <div className="pointer-events-none absolute top-0 right-0 z-30 h-8 w-8 bg-gradient-to-bl from-orange-400 to-amber-600/80 shadow-md"
+                   style={{ clipPath: 'polygon(0 0, 100% 0, 100% 100%)' }}
+              />
+            )}
+
+            {/* Top-Right 3D Elevated Quality & Year Badges */}
+            <div className="rtv-card-3d-z-md absolute top-2.5 right-2.5 z-20 flex flex-col items-end gap-1">
+              <span
+                className={`font-latin rounded-lg px-2 py-0.5 text-[10px] font-black shadow-lg border ${
+                  isGoldOrMetallic
+                    ? 'bg-amber-400 text-[#110d07] border-amber-200/60'
+                    : 'bg-[#E50914] text-white border-white/20'
+                }`}
+              >
+                {item.quality || 'HD'}
+              </span>
+              {ratingText && (
+                <span
+                  dir="ltr"
+                  className="font-latin inline-flex items-center gap-1 rounded-lg bg-black/75 backdrop-blur-sm px-2 py-0.5 text-[10px] font-extrabold text-[#f9c400] border border-white/15 tabular-nums"
+                >
+                  ★ {ratingText}
+                </span>
+              )}
+            </div>
+
+            {/* Top-Left 3D Floating Watchlist Action */}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleWatchlist(item);
+              }}
+              aria-label={isInWatchlist ? 'إزالة من قائمتي' : 'إضافة إلى قائمتي'}
+              className={`rtv-card-3d-z-lg absolute top-2.5 left-2.5 z-30 inline-flex h-9 w-9 sm:h-8 sm:w-8 items-center justify-center rounded-xl border shadow-lg transition-all cursor-pointer ${
+                isInWatchlist
+                  ? 'bg-[#f9c400] border-[#f9c400] text-[#0b0f17]'
+                  : 'bg-black/65 border-white/20 text-white hover:bg-[#E50914] hover:border-[#E50914]'
+              }`}
+            >
+              {isInWatchlist ? <Check className="w-4 h-4 stroke-[2.4]" /> : <Bookmark className="w-4 h-4" />}
+            </button>
+
+            {/* Center 3D Pop Play Icon */}
+            <div className="rtv-card-3d-z-lg pointer-events-none absolute inset-0 z-20 flex items-center justify-center">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#E50914]/95 text-white shadow-[0_10px_28px_rgba(229,9,20,0.55)] scale-90 opacity-0 transition-all duration-200 group-hover:scale-100 group-hover:opacity-100">
+                <Play className="w-5 h-5 fill-current mr-[-2px]" />
+              </div>
+            </div>
+          </div>
+
+          {/* 3D Floating Footer Panel */}
+          <div
+            onClick={() => onSelect(item)}
+            className={`rtv-card-3d-z-sm relative z-20 flex flex-1 flex-col justify-between p-2.5 sm:p-3 text-right cursor-pointer ${
+              isGlassFloat
+                ? '-mt-6 mx-2 mb-2 rounded-2xl bg-black/65 backdrop-blur-md border border-white/15 shadow-xl'
+                : ''
+            }`}
+          >
+            <div>
+              <h3
+                style={{ fontSize: 'var(--rtv-card-title-size, 13px)' }}
+                className="font-display font-extrabold text-white leading-snug line-clamp-1 group-hover:text-[#f9c400] transition-colors"
+              >
+                {item.title}
+              </h3>
+              <div className="mt-1 flex items-center justify-between gap-1.5 text-[10.5px] font-medium text-[#b7c9ef]/85 truncate tabular-nums">
+                <span className="truncate">{primaryCat}</span>
+                <span className="font-latin text-white/85 shrink-0">{item.year || '2026'}</span>
+              </div>
+            </div>
+
+            {isCinemaStage && (
+              <div className="mt-2 flex items-center justify-between rounded-xl bg-amber-500/15 border border-amber-400/25 px-2.5 py-1 text-[10px] font-extrabold text-amber-300">
+                <span>تشغيل 3D</span>
+                <Play className="w-3 h-3 fill-current" />
+              </div>
+            )}
+
+            {hasCustomFlip && (
+              <div className="mt-2 flex items-center justify-between gap-1.5 pt-1.5 border-t border-white/10">
+                <span className="text-[10px] text-sky-300 font-bold truncate">{genresText}</span>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onSelect(item, true);
+                  }}
+                  className="rounded-lg bg-sky-500/20 hover:bg-sky-500 px-2 py-0.5 text-[10px] font-extrabold text-white transition-colors cursor-pointer"
+                >
+                  تحميل
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </article>
+    );
+  }
+
   /* Default: Modern Clean Dark Card (Netflix / YouTube inspired, zero clutter) */
   return (
     <article className="group relative flex flex-col rounded-2xl bg-[#181818] border border-white/[0.07] overflow-hidden transition-all duration-300 ease-out hover:-translate-y-1 hover:border-white/20 hover:bg-[#202020] hover:shadow-[0_20px_42px_rgba(0,0,0,0.72)]">
