@@ -169,7 +169,7 @@ test('ScrollPositionStore & HistoryState: saves, restores, and bounds to 50 entr
   assert.equal(readRouterHistoryState({ foo: 'bar' }), null);
 });
 
-test('RunningRabbitLoader: renders accessible animated SVG rabbit, hides on error with retry, and supports reduced motion', () => {
+test('RunningRabbitLoader: renders clean accessible spinner without rabbit animation, hides on error with retry, and supports reduced motion', () => {
   const loadingHtml = renderToStaticMarkup(
     React.createElement(RunningRabbitLoader, {
       variant: 'section',
@@ -179,9 +179,10 @@ test('RunningRabbitLoader: renders accessible animated SVG rabbit, hides on erro
   );
   assert.ok(loadingHtml.includes('role="status"'));
   assert.ok(loadingHtml.includes('جاري التحميل'));
-  assert.ok(loadingHtml.includes('<svg'));
-  assert.ok(loadingHtml.includes('rtv-rabbit-body'));
-  assert.ok(loadingHtml.includes('--rtv-rabbit-delay:120ms'));
+  assert.ok(loadingHtml.includes('data-rtv-loader="spinner"'));
+  assert.ok(!loadingHtml.includes('rtv-rabbit-body'));
+  assert.ok(!loadingHtml.includes('<svg'));
+  assert.ok(loadingHtml.includes('--rtv-loader-delay:120ms'));
 
   const errorHtml = renderToStaticMarkup(
     React.createElement(RunningRabbitLoader, {
@@ -198,5 +199,5 @@ test('RunningRabbitLoader: renders accessible animated SVG rabbit, hides on erro
 
   const indexCss = fs.readFileSync(path.join(process.cwd(), 'src/index.css'), 'utf8');
   assert.ok(indexCss.includes('prefers-reduced-motion: reduce'));
-  assert.ok(indexCss.includes('.rtv-rabbit-delayed'));
+  assert.ok(indexCss.includes('.rtv-loader-delayed'));
 });
