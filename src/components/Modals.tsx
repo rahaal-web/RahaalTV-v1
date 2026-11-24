@@ -1,4 +1,4 @@
-import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
+import { CSSProperties, FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 import {
   AlertTriangle,
   Bookmark,
@@ -367,7 +367,7 @@ export function TrailerModal({
     >
       <div className="fixed inset-0 bg-black/85 backdrop-blur-md" onClick={onClose} />
       <div
-        className="relative z-10 w-full max-w-4xl border overflow-hidden"
+        className="relative z-10 w-full max-w-4xl max-h-[94vh] max-h-[94dvh] flex flex-col border overflow-hidden"
         style={{
           backgroundColor: 'var(--pt-frame)',
           borderColor: 'var(--pt-accent-35)',
@@ -376,7 +376,7 @@ export function TrailerModal({
         }}
       >
         <div
-          className="flex items-center justify-between gap-2 px-4 sm:px-5 py-3 border-b border-white/[0.08]"
+          className="flex items-center justify-between gap-2 px-4 sm:px-5 py-3 border-b border-white/[0.08] shrink-0"
           style={{ backgroundColor: 'var(--pt-modal)' }}
         >
           <div className="flex items-center gap-2.5 min-w-0">
@@ -436,7 +436,8 @@ export function TrailerModal({
         </div>
 
         {/* Clean Cinema 16:9 Trailer Stage */}
-        <div className="relative aspect-video w-full bg-black overflow-hidden">
+        <div className="w-full bg-black overflow-hidden">
+          <div className="rtv-trailer-stage relative aspect-video w-full bg-black overflow-hidden">
           {parsedTrailer ? (
             parsedTrailer.kind === 'video' ? (
               <video
@@ -557,6 +558,7 @@ export function TrailerModal({
               </div>
             </>
           )}
+          </div>
         </div>
       </div>
     </div>
@@ -1723,6 +1725,15 @@ export function PlayerModal({
 
   const theme = normalizePlayerTheme(playerTheme || loadStoredPlayerTheme());
   const themeVars = buildPlayerThemeVars(theme);
+  const playerChromeOffsetPx =
+    108 + (theme.showHeaderBar ? 46 : 0) + (theme.showFooterBar ? 42 : 0);
+  const playerFullscreenOffsetPx =
+    12 + (theme.showHeaderBar ? 46 : 0) + (theme.showFooterBar ? 42 : 0);
+  const playerModalStyle = {
+    ...themeVars,
+    '--rtv-player-chrome-offset': `${playerChromeOffsetPx}px`,
+    '--rtv-player-fs-offset': `${playerFullscreenOffsetPx}px`,
+  } as CSSProperties;
 
   const healthyNextIdx = serversList.findIndex(
     (_, idx) => idx !== safeServerIndex && filterMap[idx]?.ok !== false
@@ -1740,12 +1751,12 @@ export function PlayerModal({
       aria-modal="true"
       aria-label={`مشغل ${item.title}`}
       data-rtv-focus-trap="true"
-      className="fixed inset-0 z-[55] flex items-stretch lg:items-center justify-center p-0 lg:p-4 overflow-x-hidden"
-      style={themeVars}
+      className="fixed inset-0 z-[55] flex items-stretch lg:items-center justify-center p-0 lg:p-3 overflow-x-hidden"
+      style={playerModalStyle}
     >
       <div className="fixed inset-0 bg-black/95 lg:bg-black/90 lg:backdrop-blur-md" onClick={onClose} />
       <div
-        className="rtv-mobile-watch-modal relative z-10 w-full lg:w-[96vw] lg:max-w-[1340px] border-0 lg:border border-white/[0.09] shadow-2xl overflow-hidden lg:max-h-[95vh] flex flex-col"
+        className="rtv-mobile-watch-modal relative z-10 w-full lg:w-[96vw] lg:max-w-[1340px] border-0 lg:border border-white/[0.09] shadow-2xl overflow-hidden flex flex-col"
         style={{
           backgroundColor: 'var(--pt-modal)',
           borderRadius: 'var(--pt-radius)',
@@ -1809,7 +1820,7 @@ export function PlayerModal({
 
         {/* Desktop & TV Unified Modal Top Bar (>= 1024px) */}
         <div
-          className="hidden lg:flex items-center justify-between gap-3 px-4 py-2.5 border-b border-white/[0.08]"
+          className="hidden lg:flex items-center justify-between gap-3 px-4 py-2 border-b border-white/[0.08] shrink-0"
           style={{ backgroundColor: 'var(--pt-frame)' }}
         >
           <div className="flex items-center gap-2.5 min-w-0">
@@ -1846,7 +1857,7 @@ export function PlayerModal({
         </div>
 
         {/* Main Body: Mobile Edge-to-Edge Watch First | Desktop Server Rail + Video Stage */}
-        <div className="rtv-mobile-watch-scroll flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-0 lg:p-4">
+        <div className="rtv-mobile-watch-scroll flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-0 lg:p-3">
           <div
             className={`flex flex-col lg:grid gap-0 lg:gap-3.5 lg:items-start ${
               isTheaterMode ? 'lg:grid-cols-1' : 'lg:grid-cols-[200px_minmax(0,1fr)]'
@@ -1871,7 +1882,7 @@ export function PlayerModal({
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 min-[480px]:grid-cols-3 lg:grid-cols-1 gap-2 lg:gap-1.5 lg:max-h-[580px] lg:overflow-y-auto">
+                <div className="grid grid-cols-2 min-[480px]:grid-cols-3 lg:grid-cols-1 gap-2 lg:gap-1.5 lg:max-h-[calc(100dvh-200px)] lg:overflow-y-auto">
                   {serversList.map((srv, idx) => {
                     const isActive = safeServerIndex === idx;
                     const srvFilter = filterMap[idx];
