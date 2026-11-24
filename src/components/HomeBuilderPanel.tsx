@@ -821,8 +821,8 @@ export function HomeBuilderPanel({
                     : 'bg-[#1a242e] border-white/10 text-[#b7c9ef] hover:text-white'
                 }`}
               >
-                <span className="block text-xs font-extrabold">عرض سينمائي</span>
-                <span className="block text-[10px] opacity-80 mt-0.5">تقييم + شريط مشاهدة</span>
+                <span className="block text-xs font-extrabold">عرض سينمائي 3D</span>
+                <span className="block text-[10px] opacity-80 mt-0.5">عمق ثلاثي الأبعاد + قلب</span>
               </button>
             </div>
           </div>

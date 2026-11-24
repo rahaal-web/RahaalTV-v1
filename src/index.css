@@ -931,3 +931,75 @@ html[data-rtv-low-spec="true"] .rtv-placeholder-shimmer {
     animation: none !important;
   }
 }
+
+/* ============================================================
+   3D Showcase Movie Card (Perspective Tilt + Z-Depth + 3D Flip)
+   ============================================================ */
+.rtv-showcase-3d-wrap {
+  perspective: 1100px;
+}
+
+.rtv-showcase-3d-inner {
+  transform-style: preserve-3d;
+  transform: rotateX(var(--rtv-rx, 0deg)) rotateY(calc(var(--rtv-ry, 0deg) + var(--rtv-flip, 0deg))) translateZ(0);
+  transition: transform 0.55s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.35s ease;
+  will-change: transform;
+}
+
+.rtv-showcase-3d-wrap[data-tilting="true"] .rtv-showcase-3d-inner {
+  transition: transform 0.08s linear, box-shadow 0.25s ease;
+}
+
+.rtv-showcase-3d-face {
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  transform-style: preserve-3d;
+}
+
+.rtv-showcase-3d-back {
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  transform: rotateY(180deg);
+}
+
+.rtv-showcase-3d-layer-sm {
+  transform: translateZ(16px);
+}
+
+.rtv-showcase-3d-layer-md {
+  transform: translateZ(24px);
+}
+
+.rtv-showcase-3d-layer-lg {
+  transform: translateZ(34px);
+}
+
+.rtv-showcase-3d-glare {
+  background: radial-gradient(
+    circle at var(--rtv-gx, 50%) var(--rtv-gy, 30%),
+    rgba(255, 255, 255, 0.2) 0%,
+    rgba(255, 255, 255, 0.05) 34%,
+    transparent 68%
+  );
+  opacity: 0;
+  transition: opacity 0.28s ease;
+}
+
+.rtv-showcase-3d-wrap:hover .rtv-showcase-3d-glare {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rtv-showcase-3d-inner {
+    transition: transform 0.15s ease !important;
+    transform: rotateY(var(--rtv-flip, 0deg)) !important;
+  }
+  .rtv-showcase-3d-layer-sm,
+  .rtv-showcase-3d-layer-md,
+  .rtv-showcase-3d-layer-lg {
+    transform: none !important;
+  }
+  .rtv-showcase-3d-glare {
+    display: none;
+  }
+}
