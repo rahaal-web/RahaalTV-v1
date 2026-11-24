@@ -265,6 +265,19 @@ export function createWebPushService(options: WebPushServiceOptions = {}) {
   const verifyStaffAdminFn = options.verifyStaffAdminFn || defaultVerifyStaffAdmin;
   const isBlockedHostFn = options.isBlockedHostFn || defaultIsBlockedHost;
 
+  function normalizeVapidSubject(rawSub: string): string {
+    const trimmed = String(rawSub || '').trim();
+    if (!trimmed) return 'mailto:admin@rahaltv.com';
+    const mailtoMatch = trimmed.match(/^mailto:\s*<?([^\s<>]+@[^\s<>]+\.[^\s<>]+)>?$/i);
+    if (mailtoMatch?.[1]) {
+      return `mailto:${mailtoMatch[1]}`;
+    }
+    if (/^https:\/\/[^\s]+$/i.test(trimmed)) {
+      return trimmed;
+    }
+    return 'mailto:admin@rahaltv.com';
+  }
+
   function resolveVapidKeys(): {
     publicKey: string;
     privateKey: string;
@@ -273,11 +286,9 @@ export function createWebPushService(options: WebPushServiceOptions = {}) {
   } {
     const envPub = String(options.vapidPublicKey ?? process.env.VAPID_PUBLIC_KEY ?? '').trim();
     const envPriv = String(options.vapidPrivateKey ?? process.env.VAPID_PRIVATE_KEY ?? '').trim();
-    const rawSub = String(options.vapidSubject ?? process.env.VAPID_SUBJECT ?? '').trim();
-    const subject =
-      rawSub && (/^mailto:.+@.+\..+$/i.test(rawSub) || /^https:\/\/.+/i.test(rawSub))
-        ? rawSub
-        : 'mailto:admin@rahaltv.com';
+    const subject = normalizeVapidSubject(
+      String(options.vapidSubject ?? process.env.VAPID_SUBJECT ?? '')
+    );
 
     if (envPub && envPriv) {
       return { publicKey: envPub, privateKey: envPriv, subject, source: 'env' };

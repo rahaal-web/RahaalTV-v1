@@ -298,3 +298,17 @@ test('Service Worker push-sw.js & Vite PWA integration audit', () => {
   const viteCfg = fs.readFileSync(path.join(process.cwd(), 'vite.config.ts'), 'utf8');
   assert.ok(viteCfg.includes("importScripts: ['push-sw.js']"));
 });
+
+test('VAPID config resolves env keys and normalizes bracketed mailto subject', async () => {
+  const { generateVAPIDKeys } = await import('web-push');
+  const keys = generateVAPIDKeys();
+  const customService = createWebPushService({
+    vapidPublicKey: keys.publicKey,
+    vapidPrivateKey: keys.privateKey,
+    vapidSubject: 'mailto: <admin@example.com>',
+  });
+  const cfg = customService.getPublicConfig();
+  assert.equal(cfg.vapidSource, 'env');
+  assert.equal(cfg.publicKey, keys.publicKey);
+  assert.equal('privateKey' in cfg, false);
+});
