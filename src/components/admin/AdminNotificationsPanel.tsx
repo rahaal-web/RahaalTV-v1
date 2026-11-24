@@ -87,6 +87,7 @@ export function AdminNotificationsPanel({
   const [sendingTest, setSendingTest] = useState(false);
   const [sendingBroadcast, setSendingBroadcast] = useState(false);
   const [confirmBroadcastOpen, setConfirmBroadcastOpen] = useState(false);
+  const [composerError, setComposerError] = useState<string | null>(null);
   const [lastSendResult, setLastSendResult] = useState<AdminPushSendResponse | null>(null);
 
   const sanitizedPreviewUrl = useMemo(() => sanitizeInternalRouteUrl(pushUrl), [pushUrl]);
@@ -223,18 +224,20 @@ export function AdminNotificationsPanel({
   const handleSendTestToMyDevice = async () => {
     const errMsg = validateComposerFields();
     if (errMsg || !user || !sanitizedPreviewUrl) {
-      onNotify(errMsg || 'أكمل بيانات الإشعار أولاً.');
+      setComposerError(errMsg || 'أكمل بيانات الإشعار أولاً.');
       return;
     }
+    setComposerError(null);
     setSendingTest(true);
     setLastSendResult(null);
     try {
-      let status = await inspectWebPushStatus();
+      const status = await inspectWebPushStatus();
       let endpoint = status.endpoint;
       if (!status.subscribed || !endpoint) {
         const subRes = await subscribeDeviceToWebPush();
         if (!subRes.ok || !subRes.endpoint) {
-          onNotify(subRes.message);
+          setComposerError(subRes.message);
+          setLastSendResult({ ok: false, error: subRes.message });
           return;
         }
         endpoint = subRes.endpoint;
@@ -249,10 +252,11 @@ export function AdminNotificationsPanel({
       });
       setLastSendResult(res);
       if (res.ok) {
+        setComposerError(null);
         onNotify('تم إرسال إشعار تجربة لجهازك الحالي فقط (لم يُرسل لبقية المشتركين).');
         void loadStats();
       } else {
-        onNotify(res.error || 'تعذر إرسال إشعار التجربة.');
+        setComposerError(res.error || 'تعذر إرسال إشعار التجربة.');
       }
     } finally {
       setSendingTest(false);
@@ -262,10 +266,11 @@ export function AdminNotificationsPanel({
   const handleConfirmBroadcast = async () => {
     const errMsg = validateComposerFields();
     if (errMsg || !user || !sanitizedPreviewUrl) {
-      onNotify(errMsg || 'أكمل بيانات الإشعار أولاً.');
+      setComposerError(errMsg || 'أكمل بيانات الإشعار أولاً.');
       setConfirmBroadcastOpen(false);
       return;
     }
+    setComposerError(null);
     setSendingBroadcast(true);
     try {
       const res = await sendAdminBroadcastPush({
@@ -278,10 +283,11 @@ export function AdminNotificationsPanel({
       setLastSendResult(res);
       setConfirmBroadcastOpen(false);
       if (res.ok) {
+        setComposerError(null);
         onNotify(`تمت معالجة الإرسال إلى ${res.totalTargeted || 0} مشترك.`);
         void loadStats();
       } else {
-        onNotify(res.error || 'فشل إرسال الإشعار لجميع المشتركين.');
+        setComposerError(res.error || 'فشل إرسال الإشعار لجميع المشتركين.');
       }
     } finally {
       setSendingBroadcast(false);
@@ -427,7 +433,17 @@ export function AdminNotificationsPanel({
               )}
             </div>
 
-            <div className="flex flex-wrap items-center gap-2.5 pt-1">
+              {composerError && (
+                <div
+                  role="alert"
+                  className="rounded-xl bg-[#D92321]/12 border border-[#D92321]/45 px-3.5 py-2.5 text-xs font-bold text-[#ffd6d5] flex items-start gap-2"
+                >
+                  <AlertTriangle className="w-4 h-4 text-[#ff8a88] shrink-0 mt-0.5" />
+                  <span>{composerError}</span>
+                </div>
+              )}
+
+              <div className="flex flex-wrap items-center gap-2.5 pt-1">
               <button
                 type="button"
                 disabled={sendingTest || sendingBroadcast || Boolean(urlValidationError)}
@@ -450,9 +466,10 @@ export function AdminNotificationsPanel({
                 onClick={() => {
                   const errMsg = validateComposerFields();
                   if (errMsg) {
-                    onNotify(errMsg);
+                    setComposerError(errMsg);
                     return;
                   }
+                  setComposerError(null);
                   setConfirmBroadcastOpen(true);
                 }}
                 className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-[#E50914] hover:bg-[#f40612] px-5 py-2.5 text-xs font-extrabold text-white shadow-lg transition-colors cursor-pointer disabled:opacity-50"

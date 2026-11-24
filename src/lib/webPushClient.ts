@@ -1,6 +1,25 @@
 import type { User } from 'firebase/auth';
-import { resolveApiEndpoint, shouldSkipBackendApiCalls } from './clientScraper';
+import { getCustomApiBaseUrl, isProxyWorkerUrl } from './clientScraper';
 import { getAppBasePrefix } from './permalink';
+
+export function shouldSkipPushApiCalls(): boolean {
+  if (typeof window === 'undefined') return true;
+  const customBase = getCustomApiBaseUrl();
+  if (customBase && !isProxyWorkerUrl(customBase)) {
+    return false;
+  }
+  const host = window.location.hostname.toLowerCase();
+  return host.endsWith('.github.io') || host.endsWith('.workers.dev');
+}
+
+export function resolvePushApiEndpoint(endpointPath: string): string {
+  const normalized = endpointPath.startsWith('/') ? endpointPath : `/${endpointPath}`;
+  const customBase = getCustomApiBaseUrl();
+  if (customBase && !isProxyWorkerUrl(customBase)) {
+    return `${customBase}${normalized}`;
+  }
+  return normalized;
+}
 
 export type PushPermissionState = NotificationPermission | 'unsupported';
 
@@ -97,7 +116,7 @@ export function detectWebPushCapabilities(): WebPushCapabilities {
   const hasNotification = typeof Notification !== 'undefined';
   const hasServiceWorker = 'serviceWorker' in navigator;
   const hasPushManager = 'PushManager' in window;
-  const backendAvailable = !shouldSkipBackendApiCalls();
+  const backendAvailable = !shouldSkipPushApiCalls();
   const permission: PushPermissionState = hasNotification ? Notification.permission : 'unsupported';
   const requiresHomeScreenInstall = isAppleMobile && !isStandalone;
 
@@ -179,10 +198,12 @@ async function getPushServiceWorkerRegistration(): Promise<ServiceWorkerRegistra
 }
 
 export async function fetchVapidPublicKey(): Promise<string | null> {
-  if (shouldSkipBackendApiCalls()) return null;
+  if (shouldSkipPushApiCalls()) return null;
   try {
-    const res = await fetch(resolveApiEndpoint('/api/push/config'));
+    const res = await fetch(resolvePushApiEndpoint('/api/push/config'));
     if (!res.ok) return null;
+    const ct = res.headers.get('content-type') || '';
+    if (!ct.includes('application/json')) return null;
     const data = (await res.json()) as { ok?: boolean; publicKey?: string };
     return data.ok && data.publicKey ? data.publicKey : null;
   } catch {
@@ -303,7 +324,7 @@ export async function subscribeDeviceToWebPush(): Promise<WebPushActionResult> {
   }
 
   const subJson = subscription.toJSON();
-  const res = await fetch(resolveApiEndpoint('/api/push/subscribe'), {
+  const res = await fetch(resolvePushApiEndpoint('/api/push/subscribe'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ subscription: subJson }),
@@ -351,7 +372,7 @@ export async function unsubscribeDeviceFromWebPush(): Promise<WebPushActionResul
   }
 
   if (endpoint && caps.backendAvailable) {
-    await fetch(resolveApiEndpoint('/api/push/unsubscribe'), {
+    await fetch(resolvePushApiEndpoint('/api/push/unsubscribe'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ endpoint }),
@@ -369,7 +390,7 @@ export async function unsubscribeDeviceFromWebPush(): Promise<WebPushActionResul
 
 export async function fetchAdminPushStats(user: User): Promise<AdminPushStats> {
   const token = await user.getIdToken();
-  const res = await fetch(resolveApiEndpoint('/api/push/admin/stats'), {
+  const res = await fetch(resolvePushApiEndpoint('/api/push/admin/stats'), {
     headers: {
       Authorization: `Bearer ${token}`,
     },
@@ -397,7 +418,7 @@ export async function sendAdminTestPush(params: {
   endpoint: string;
 }): Promise<AdminPushSendResponse> {
   const token = await params.user.getIdToken();
-  const res = await fetch(resolveApiEndpoint('/api/push/send-test'), {
+  const res = await fetch(resolvePushApiEndpoint('/api/push/send-test'), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -421,7 +442,7 @@ export async function sendAdminBroadcastPush(params: {
   confirmed: boolean;
 }): Promise<AdminPushSendResponse> {
   const token = await params.user.getIdToken();
-  const res = await fetch(resolveApiEndpoint('/api/push/broadcast'), {
+  const res = await fetch(resolvePushApiEndpoint('/api/push/broadcast'), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

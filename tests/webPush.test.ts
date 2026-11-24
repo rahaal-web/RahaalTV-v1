@@ -312,3 +312,39 @@ test('VAPID config resolves env keys and normalizes bracketed mailto subject', a
   assert.equal(cfg.publicKey, keys.publicKey);
   assert.equal('privateKey' in cfg, false);
 });
+
+test('WebPush Client: ignores Cloudflare Worker proxy URL and uses same-origin Node server', async () => {
+  const originalWindow = (globalThis as { window?: unknown }).window;
+  const originalLocalStorage = (globalThis as { localStorage?: unknown }).localStorage;
+
+  const store = new Map<string, string>([
+    ['rahaltv_api_base_url', 'https://rahaltv-proxy.example.workers.dev'],
+  ]);
+  (globalThis as { localStorage?: unknown }).localStorage = {
+    getItem: (k: string) => store.get(k) ?? null,
+    setItem: (k: string, v: string) => store.set(k, v),
+    removeItem: (k: string) => store.delete(k),
+  };
+  (globalThis as { window?: unknown }).window = {
+    location: {
+      hostname: 'ais-dev-example.europe-west2.run.app',
+      origin: 'https://ais-dev-example.europe-west2.run.app',
+    },
+  };
+
+  try {
+    const { resolvePushApiEndpoint, shouldSkipPushApiCalls } = await import(
+      '../src/lib/webPushClient'
+    );
+    assert.equal(shouldSkipPushApiCalls(), false);
+    assert.equal(resolvePushApiEndpoint('/api/push/config'), '/api/push/config');
+    assert.equal(resolvePushApiEndpoint('/api/push/send-test'), '/api/push/send-test');
+
+    (globalThis as { window: { location: { hostname: string } } }).window.location.hostname =
+      'rahal-web.github.io';
+    assert.equal(shouldSkipPushApiCalls(), true);
+  } finally {
+    (globalThis as { window?: unknown }).window = originalWindow;
+    (globalThis as { localStorage?: unknown }).localStorage = originalLocalStorage;
+  }
+});
