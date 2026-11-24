@@ -1,20 +1,60 @@
 import type { User } from 'firebase/auth';
-import { getCustomApiBaseUrl, isProxyWorkerUrl } from './clientScraper';
+import { getCustomApiBaseUrl, isProxyWorkerUrl, normalizeCustomApiBaseUrl } from './clientScraper';
 import { getAppBasePrefix } from './permalink';
+
+const STORAGE_PUSH_API_BASE_URL = 'rahaltv_push_api_base_url';
+
+export function getPushApiBaseUrl(): string {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const saved = localStorage.getItem(STORAGE_PUSH_API_BASE_URL) || '';
+      if (saved.trim()) return normalizeCustomApiBaseUrl(saved);
+    }
+  } catch {
+    // Ignore storage access issues
+  }
+  const envPushBase = (import.meta.env?.VITE_PUSH_API_BASE_URL as string | undefined) || '';
+  return envPushBase ? normalizeCustomApiBaseUrl(envPushBase) : '';
+}
+
+export function setPushApiBaseUrl(rawUrl: string): string {
+  const cleaned = rawUrl.trim() ? normalizeCustomApiBaseUrl(rawUrl) : '';
+  try {
+    if (typeof localStorage !== 'undefined') {
+      if (cleaned) {
+        localStorage.setItem(STORAGE_PUSH_API_BASE_URL, cleaned);
+      } else {
+        localStorage.removeItem(STORAGE_PUSH_API_BASE_URL);
+      }
+    }
+  } catch {
+    // Ignore storage access issues
+  }
+  return cleaned;
+}
 
 export function shouldSkipPushApiCalls(): boolean {
   if (typeof window === 'undefined') return true;
+  if (getPushApiBaseUrl()) return false;
   const customBase = getCustomApiBaseUrl();
-  if (customBase && !isProxyWorkerUrl(customBase)) {
-    return false;
-  }
   const host = window.location.hostname.toLowerCase();
-  return host.endsWith('.github.io') || host.endsWith('.workers.dev');
+  if (host.endsWith('.github.io')) {
+    return !customBase;
+  }
+  return false;
 }
 
 export function resolvePushApiEndpoint(endpointPath: string): string {
   const normalized = endpointPath.startsWith('/') ? endpointPath : `/${endpointPath}`;
+  const explicitPushBase = getPushApiBaseUrl();
+  if (explicitPushBase) {
+    return `${explicitPushBase}${normalized}`;
+  }
   const customBase = getCustomApiBaseUrl();
+  const host = typeof window !== 'undefined' ? window.location.hostname.toLowerCase() : '';
+  if (host.endsWith('.github.io') && customBase) {
+    return `${customBase}${normalized}`;
+  }
   if (customBase && !isProxyWorkerUrl(customBase)) {
     return `${customBase}${normalized}`;
   }
@@ -197,18 +237,46 @@ async function getPushServiceWorkerRegistration(): Promise<ServiceWorkerRegistra
   }
 }
 
-export async function fetchVapidPublicKey(): Promise<string | null> {
-  if (shouldSkipPushApiCalls()) return null;
+export async function fetchVapidPublicKeyWithReason(): Promise<{
+  publicKey: string | null;
+  error: string | null;
+}> {
+  if (shouldSkipPushApiCalls()) {
+    return {
+      publicKey: null,
+      error:
+        'الاستضافة الحالية ثابتة (GitHub Pages) ولا تحتوي على خادم إشعارات. أضف رابط خادم التطبيق أو Cloudflare Worker أولاً.',
+    };
+  }
   try {
     const res = await fetch(resolvePushApiEndpoint('/api/push/config'));
-    if (!res.ok) return null;
     const ct = res.headers.get('content-type') || '';
-    if (!ct.includes('application/json')) return null;
-    const data = (await res.json()) as { ok?: boolean; publicKey?: string };
-    return data.ok && data.publicKey ? data.publicKey : null;
+    if (!ct.includes('application/json')) {
+      return {
+        publicKey: null,
+        error:
+          'لم يُعثر على خدمة الإشعارات (/api/push/config) على هذا النطاق. تأكد من تشغيل خادم التطبيق (Node Server) أو تحديث كود Cloudflare Worker.',
+      };
+    }
+    const data = (await res.json()) as { ok?: boolean; publicKey?: string; error?: string };
+    if (!res.ok || !data.ok || !data.publicKey) {
+      return {
+        publicKey: null,
+        error: data.error || 'تعذر قراءة مفتاح التشفير (VAPID) من الخادم.',
+      };
+    }
+    return { publicKey: data.publicKey, error: null };
   } catch {
-    return null;
+    return {
+      publicKey: null,
+      error: 'تعذر الاتصال بخادم الإشعارات (/api/push/config).',
+    };
   }
+}
+
+export async function fetchVapidPublicKey(): Promise<string | null> {
+  const { publicKey } = await fetchVapidPublicKeyWithReason();
+  return publicKey;
 }
 
 export async function inspectWebPushStatus(): Promise<WebPushStatusResult> {
@@ -292,14 +360,15 @@ export async function subscribeDeviceToWebPush(): Promise<WebPushActionResult> {
     };
   }
 
-  const publicKey = await fetchVapidPublicKey();
+  const vapidCheck = await fetchVapidPublicKeyWithReason();
+  const publicKey = vapidCheck.publicKey;
   if (!publicKey) {
     return {
       ok: false,
       subscribed: false,
       endpoint: null,
       permission,
-      message: 'تعذر الحصول على مفتاح التشفير (VAPID) من الخادم.',
+      message: vapidCheck.error || 'تعذر الحصول على مفتاح التشفير (VAPID) من الخادم.',
     };
   }
 
@@ -389,12 +458,23 @@ export async function unsubscribeDeviceFromWebPush(): Promise<WebPushActionResul
 }
 
 export async function fetchAdminPushStats(user: User): Promise<AdminPushStats> {
+  if (shouldSkipPushApiCalls()) {
+    throw new Error(
+      'الاستضافة الحالية ثابتة (GitHub Pages) ولا تحتوي على خادم إشعارات. أضف رابط خادم الإشعارات أدناه أو استخدم استضافة تدعم Node/Cloudflare Worker.'
+    );
+  }
   const token = await user.getIdToken();
   const res = await fetch(resolvePushApiEndpoint('/api/push/admin/stats'), {
     headers: {
       Authorization: `Bearer ${token}`,
     },
   });
+  const ct = res.headers.get('content-type') || '';
+  if (!ct.includes('application/json')) {
+    throw new Error(
+      'نقطة خادم الإشعارات (/api/push/admin/stats) غير متاحة على هذا النطاق. تأكد من تحديث Cloudflare Worker أو ضبط رابط خادم Node.'
+    );
+  }
   const json = (await res.json().catch(() => ({}))) as Partial<AdminPushStats> & {
     ok?: boolean;
     error?: string;

@@ -35,9 +35,11 @@ import {
   type AdminPushSendResponse,
   type AdminPushStats,
   fetchAdminPushStats,
+  getPushApiBaseUrl,
   inspectWebPushStatus,
   sendAdminBroadcastPush,
   sendAdminTestPush,
+  setPushApiBaseUrl,
   subscribeDeviceToWebPush,
 } from '../../lib/webPushClient';
 import { MediaItem, VisitorRequest } from '../../types/media';
@@ -89,6 +91,7 @@ export function AdminNotificationsPanel({
   const [confirmBroadcastOpen, setConfirmBroadcastOpen] = useState(false);
   const [composerError, setComposerError] = useState<string | null>(null);
   const [lastSendResult, setLastSendResult] = useState<AdminPushSendResponse | null>(null);
+  const [pushServerInput, setPushServerInput] = useState<string>(() => getPushApiBaseUrl());
 
   const sanitizedPreviewUrl = useMemo(() => sanitizeInternalRouteUrl(pushUrl), [pushUrl]);
   const urlValidationError =
@@ -334,15 +337,40 @@ export function AdminNotificationsPanel({
         </div>
 
         {statsError && (
-          <div className="rounded-2xl bg-[#D92321]/10 border border-[#D92321]/35 p-3 text-xs font-bold text-[#ffd6d5] flex items-center justify-between gap-2">
-            <span>{statsError}</span>
-            <button
-              type="button"
-              onClick={() => void loadStats()}
-              className="rounded-lg bg-white/10 px-3 py-1 text-[11px] text-white hover:bg-white/20 cursor-pointer"
-            >
-              تحديث
-            </button>
+          <div className="rounded-2xl bg-[#D92321]/10 border border-[#D92321]/35 p-3.5 text-xs font-bold text-[#ffd6d5] space-y-2.5">
+            <div className="flex items-center justify-between gap-2">
+              <span>{statsError}</span>
+              <button
+                type="button"
+                onClick={() => void loadStats()}
+                className="rounded-lg bg-white/10 px-3 py-1 text-[11px] text-white hover:bg-white/20 cursor-pointer shrink-0"
+              >
+                تحديث
+              </button>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-2 pt-1 border-t border-white/10">
+              <input
+                type="url"
+                dir="ltr"
+                value={pushServerInput}
+                onChange={(e) => setPushServerInput(e.target.value)}
+                placeholder="اختياري: رابط خادم الإشعارات (Node أو Worker) مثل https://your-worker.workers.dev"
+                className="flex-1 min-h-[38px] rounded-xl bg-[#0c1821] border border-white/15 px-3 py-1.5 text-[11px] font-latin text-white focus:border-[#f9c400] focus:outline-none"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  const saved = setPushApiBaseUrl(pushServerInput);
+                  setPushServerInput(saved);
+                  setComposerError(null);
+                  void loadStats();
+                  onNotify(saved ? 'تم حفظ رابط خادم الإشعارات' : 'تمت العودة للخادم الافتراضي على نفس النطاق');
+                }}
+                className="min-h-[38px] rounded-xl bg-[#f9c400] hover:bg-[#ffe066] px-3.5 py-1.5 text-[11px] font-black text-black cursor-pointer shrink-0"
+              >
+                حفظ وفحص
+              </button>
+            </div>
           </div>
         )}
 

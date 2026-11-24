@@ -108,7 +108,7 @@ export function getCustomApiBaseUrl(): string {
   } catch {
     // Ignore storage access issues
   }
-  const envBase = (import.meta.env.VITE_API_BASE_URL as string | undefined) || '';
+  const envBase = (import.meta.env?.VITE_API_BASE_URL as string | undefined) || '';
   const normalizedEnv = normalizeCustomApiBaseUrl(envBase);
   if (normalizedEnv) return normalizedEnv;
   if (typeof window !== 'undefined' && window.location.hostname.endsWith('.workers.dev')) {

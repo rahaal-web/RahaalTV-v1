@@ -341,10 +341,159 @@ test('WebPush Client: ignores Cloudflare Worker proxy URL and uses same-origin N
     assert.equal(resolvePushApiEndpoint('/api/push/send-test'), '/api/push/send-test');
 
     (globalThis as { window: { location: { hostname: string } } }).window.location.hostname =
+      'rahaaltv-v1.example.workers.dev';
+    assert.equal(shouldSkipPushApiCalls(), false);
+    assert.equal(resolvePushApiEndpoint('/api/push/config'), '/api/push/config');
+
+    store.clear();
+    (globalThis as { window: { location: { hostname: string } } }).window.location.hostname =
       'rahal-web.github.io';
     assert.equal(shouldSkipPushApiCalls(), true);
   } finally {
     (globalThis as { window?: unknown }).window = originalWindow;
     (globalThis as { localStorage?: unknown }).localStorage = originalLocalStorage;
   }
+});
+
+test('Cloudflare Worker WebPush: RFC 8291 aes128gcm encryption, VAPID JWT, and KV routes', async () => {
+  const workerMod = (await import('../cloudflare-worker.js')) as {
+    default: { fetch: (req: Request, env: Record<string, unknown>) => Promise<Response> };
+    encryptWorkerWebPushPayload: (p: {
+      p256dh: string;
+      auth: string;
+      payload: string;
+    }) => Promise<Uint8Array>;
+    createWorkerVapidAuthHeader: (p: {
+      endpoint: string;
+      publicKey: string;
+      privateKey: string;
+      subject: string;
+    }) => Promise<string>;
+  };
+  const { generateVAPIDKeys } = await import('web-push');
+  const vapid = generateVAPIDKeys();
+
+  // Verify WebCrypto aes128gcm encryption can be decrypted cleanly by receiver keypair
+  const clientKeys = await globalThis.crypto.subtle.generateKey(
+    { name: 'ECDH', namedCurve: 'P-256' },
+    true,
+    ['deriveBits']
+  );
+  const clientPubRaw = new Uint8Array(
+    await globalThis.crypto.subtle.exportKey('raw', clientKeys.publicKey)
+  );
+  const authSecret = globalThis.crypto.getRandomValues(new Uint8Array(16));
+  const b64u = (b: Uint8Array) => Buffer.from(b).toString('base64url');
+
+  const encrypted = await workerMod.encryptWorkerWebPushPayload({
+    p256dh: b64u(clientPubRaw),
+    auth: b64u(authSecret),
+    payload: JSON.stringify({ title: 'اختبار', body: 'رسالة مشفرة' }),
+  });
+  assert.ok(encrypted.length > 86 + 16);
+
+  // Decrypt RFC 8188 / RFC 8291 aes128gcm payload on client side to prove exact protocol compliance
+  const salt = encrypted.slice(0, 16);
+  const idlen = encrypted[20];
+  assert.equal(idlen, 65);
+  const asPubRaw = encrypted.slice(21, 21 + idlen);
+  const ciphertext = encrypted.slice(21 + idlen);
+
+  const asPubKey = await globalThis.crypto.subtle.importKey(
+    'raw',
+    asPubRaw,
+    { name: 'ECDH', namedCurve: 'P-256' },
+    false,
+    []
+  );
+  const shared = new Uint8Array(
+    await globalThis.crypto.subtle.deriveBits(
+      { name: 'ECDH', public: asPubKey },
+      clientKeys.privateKey,
+      256
+    )
+  );
+  const enc = new TextEncoder();
+  const keyInfo = Buffer.concat([enc.encode('WebPush: info\0'), clientPubRaw, asPubRaw]);
+  const hkdf1 = await globalThis.crypto.subtle.importKey('raw', shared, 'HKDF', false, ['deriveBits']);
+  const ikm = new Uint8Array(
+    await globalThis.crypto.subtle.deriveBits(
+      { name: 'HKDF', hash: 'SHA-256', salt: authSecret, info: keyInfo },
+      hkdf1,
+      256
+    )
+  );
+  const hkdf2 = await globalThis.crypto.subtle.importKey('raw', ikm, 'HKDF', false, ['deriveBits']);
+  const cek = new Uint8Array(
+    await globalThis.crypto.subtle.deriveBits(
+      { name: 'HKDF', hash: 'SHA-256', salt, info: enc.encode('Content-Encoding: aes128gcm\0') },
+      hkdf2,
+      128
+    )
+  );
+  const nonce = new Uint8Array(
+    await globalThis.crypto.subtle.deriveBits(
+      { name: 'HKDF', hash: 'SHA-256', salt, info: enc.encode('Content-Encoding: nonce\0') },
+      hkdf2,
+      96
+    )
+  );
+  const aesKey = await globalThis.crypto.subtle.importKey('raw', cek, 'AES-GCM', false, ['decrypt']);
+  const decryptedPadded = new Uint8Array(
+    await globalThis.crypto.subtle.decrypt({ name: 'AES-GCM', iv: nonce }, aesKey, ciphertext)
+  );
+  assert.equal(decryptedPadded[decryptedPadded.length - 1], 0x02);
+  const decodedJson = JSON.parse(new TextDecoder().decode(decryptedPadded.slice(0, -1))) as {
+    title: string;
+    body: string;
+  };
+  assert.equal(decodedJson.title, 'اختبار');
+  assert.equal(decodedJson.body, 'رسالة مشفرة');
+
+  // Verify VAPID JWT header format
+  const authHeader = await workerMod.createWorkerVapidAuthHeader({
+    endpoint: 'https://fcm.googleapis.com/fcm/send/abc',
+    publicKey: vapid.publicKey,
+    privateKey: vapid.privateKey,
+    subject: 'mailto: <voar44@gmail.com>',
+  });
+  assert.ok(authHeader.startsWith('vapid t='));
+  assert.ok(authHeader.endsWith(`, k=${vapid.publicKey}`));
+
+  // Verify Worker /api/push/config & /api/push/subscribe with mock KV
+  const kvMap = new Map<string, string>();
+  const workerEnv = {
+    VAPID_PUBLIC_KEY: vapid.publicKey,
+    VAPID_PRIVATE_KEY: vapid.privateKey,
+    VAPID_SUBJECT: 'mailto:voar44@gmail.com',
+    DB_CONFIG_KV: {
+      get: async (k: string) => kvMap.get(k) ?? null,
+      put: async (k: string, v: string) => {
+        kvMap.set(k, v);
+      },
+      delete: async (k: string) => {
+        kvMap.delete(k);
+      },
+    },
+  };
+
+  const cfgRes = await workerMod.default.fetch(
+    new Request('https://rahaaltv.workers.dev/api/push/config'),
+    workerEnv
+  );
+  assert.equal(cfgRes.status, 200);
+  const cfgData = (await cfgRes.json()) as { ok: boolean; publicKey: string };
+  assert.equal(cfgData.ok, true);
+  assert.equal(cfgData.publicKey, vapid.publicKey);
+
+  const subRes = await workerMod.default.fetch(
+    new Request('https://rahaaltv.workers.dev/api/push/subscribe', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ subscription: VALID_SUB_1 }),
+    }),
+    workerEnv
+  );
+  assert.equal(subRes.status, 200);
+  assert.ok(kvMap.has('push_store_v1'));
 });
