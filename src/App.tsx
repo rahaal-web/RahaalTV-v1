@@ -155,10 +155,12 @@ import {
 
 const DEFAULT_FILTERS: CatalogFilterState = DEFAULT_CATALOG_FILTERS;
 
+const LEGACY_REMOVED_TAGLINE =
+  'افلام ومسلسلات بجودة عالية بدون تقطيع ، تحميل ومشاهدة افلام اجنبية بروابط مباشرة ، مسلسلات اجنبية ، مسلسلات رمضان 2026 وعروض المصارعة الحرة المترجمة.';
+
 const DEFAULT_SETTINGS: SiteSettings = {
   siteName: 'RahaL TV',
-  tagline:
-    'افلام ومسلسلات بجودة عالية بدون تقطيع ، تحميل ومشاهدة افلام اجنبية بروابط مباشرة ، مسلسلات اجنبية ، مسلسلات رمضان 2026 وعروض المصارعة الحرة المترجمة.',
+  tagline: '',
   announcementText: '',
   tickerEnabled: false,
   featuredLimit: 5,
@@ -697,7 +699,7 @@ export default function App() {
     } else if (view === 'single' && matchedSingleMedia) {
       document.title = `${matchedSingleMedia.title} — ${effectiveBrandName}`;
     } else {
-      document.title = `${effectiveBrandName} — افلام ومسلسلات بجودة عالية بدون تقطيع`;
+      document.title = effectiveBrandName;
     }
   }, [view, matchedSingleMedia, effectiveBrandName]);
 
@@ -946,7 +948,10 @@ export default function App() {
             const syncedHome = mergeLiveHomeConfig(prev.homeConfig);
             return {
               siteName: syncedBranding.siteName || resolvedSiteName,
-              tagline: data.tagline || DEFAULT_SETTINGS.tagline,
+              tagline:
+                data.tagline && data.tagline.trim() !== LEGACY_REMOVED_TAGLINE
+                  ? data.tagline
+                  : DEFAULT_SETTINGS.tagline,
               announcementText: data.announcementText || '',
               tickerEnabled: data.tickerEnabled ?? false,
               featuredLimit: data.featuredLimit || 5,

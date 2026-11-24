@@ -477,7 +477,7 @@ export function HomeView({
 
   const heroDescription =
     homeConfig.heroDescription ||
-    (homeConfig.heroMode === 'brand' ? siteSettings.tagline : activeHero.story);
+    (homeConfig.heroMode === 'brand' ? siteSettings.tagline || activeHero.story : activeHero.story);
 
   const heroInWatchlist = watchlistIds.includes(activeHero.id);
   const gridColClass = getGridColumnClass(homeConfig.cardsPerRow);

@@ -240,6 +240,42 @@ export function SingleDetailView({
     setTimeout(() => setCopiedUrl(false), 2400);
   };
 
+  const handleWebShare = async () => {
+    const shareUrl =
+      dedicatedShortUrl || (typeof window !== 'undefined' ? window.location.href : '');
+    const shareTitle =
+      allEpisodes.length > 0 && activeEpisodeObj
+        ? `${item.title} — الحلقة ${String(selectedEpisodeNumber).padStart(2, '0')}`
+        : item.title;
+    const shareText = `${shareTitle} — شاهد الآن على RahaL TV`;
+
+    if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+      try {
+        await navigator.share({
+          title: shareTitle,
+          text: shareText,
+          url: shareUrl,
+        });
+        onNotify('تمت مشاركة العمل بنجاح');
+        return;
+      } catch (err) {
+        if (err instanceof Error && err.name === 'AbortError') {
+          return;
+        }
+        // Fallback to clipboard when Web Share is unavailable or restricted in embedded frames
+      }
+    }
+
+    try {
+      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(`${shareTitle}\n${shareUrl}`);
+      }
+    } catch {
+      // Clipboard fallback ignored
+    }
+    onNotify('تم نسخ عنوان ورابط العمل للمشاركة');
+  };
+
   const handleSocialShare = async (platform: string) => {
     const shareText = `${item.title} — شاهد الآن على RahaL TV: ${dedicatedShortUrl}`;
     try {
@@ -470,19 +506,31 @@ export function SingleDetailView({
                 </button>
               </div>
 
-              {/* Watchlist Toggle Button (.single-playlist-button) */}
-              <button
-                type="button"
-                onClick={() => onToggleWatchlist(item)}
-                className={`w-full max-w-[240px] sm:max-w-[270px] min-h-[46px] mx-auto md:max-w-none flex items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-extrabold border transition-all cursor-pointer ${
-                  isInWatchlist
-                    ? 'bg-[#4CAF50]/20 border-[#4CAF50] text-[#4CAF50] shadow-[0_8px_20px_rgba(76,175,80,0.18)]'
-                    : 'bg-[#15222d] border-white/10 text-white hover:border-[#4CAF50] hover:text-[#4CAF50] hover:bg-[#1a2a36]'
-                }`}
-              >
-                {isInWatchlist ? <Check className="w-4 h-4" /> : <Bookmark className="w-4 h-4" />}
-                <span>{isInWatchlist ? 'مُضاف إلى قائمتي' : 'إضافة إلى قائمتي'}</span>
-              </button>
+              {/* Watchlist & Web Share Buttons */}
+              <div className="w-full max-w-[240px] sm:max-w-[270px] mx-auto md:max-w-none flex flex-col gap-2">
+                <button
+                  type="button"
+                  onClick={() => onToggleWatchlist(item)}
+                  className={`w-full min-h-[46px] flex items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-extrabold border transition-all cursor-pointer ${
+                    isInWatchlist
+                      ? 'bg-[#4CAF50]/20 border-[#4CAF50] text-[#4CAF50] shadow-[0_8px_20px_rgba(76,175,80,0.18)]'
+                      : 'bg-[#15222d] border-white/10 text-white hover:border-[#4CAF50] hover:text-[#4CAF50] hover:bg-[#1a2a36]'
+                  }`}
+                >
+                  {isInWatchlist ? <Check className="w-4 h-4" /> : <Bookmark className="w-4 h-4" />}
+                  <span>{isInWatchlist ? 'مُضاف إلى قائمتي' : 'إضافة إلى قائمتي'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => void handleWebShare()}
+                  aria-label={`مشاركة ${item.title}`}
+                  className="w-full min-h-[44px] flex items-center justify-center gap-2 rounded-2xl bg-[#15222d] border border-white/10 px-4 py-2.5 text-sm font-extrabold text-white hover:border-[#D92321] hover:bg-[#D92321]/15 transition-all cursor-pointer"
+                >
+                  <Share2 className="w-4 h-4 text-[#D92321]" />
+                  <span>مشاركة</span>
+                </button>
+              </div>
             </div>
           </div>
 
@@ -1231,10 +1279,14 @@ export function SingleDetailView({
                   </div>
 
                   <div className="space-y-2 sm:space-y-0 sm:flex sm:flex-wrap sm:items-center sm:gap-2">
-                    <span className="inline-flex items-center gap-1 text-xs font-bold text-[#b7c9ef] sm:ml-1">
+                    <button
+                      type="button"
+                      onClick={() => void handleWebShare()}
+                      className="inline-flex min-h-[40px] sm:min-h-0 items-center justify-center gap-1.5 rounded-xl bg-[#D92321] hover:bg-[#dc0e30] px-3.5 py-2 sm:py-1.5 text-xs font-extrabold text-white transition-colors cursor-pointer sm:ml-1"
+                    >
                       <Share2 className="w-3.5 h-3.5" />
-                      مشاركة:
-                    </span>
+                      <span>مشاركة</span>
+                    </button>
                     <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2">
                       {['فيسبوك', 'إكس', 'تيليجرام', 'واتساب'].map((platform) => (
                         <button

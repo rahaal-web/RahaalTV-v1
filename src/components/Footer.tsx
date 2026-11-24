@@ -18,6 +18,10 @@ export function Footer({ tagline, branding, siteName, onOpenTopic, onNavigateHom
   };
   const resolvedBrandName = branding?.siteName || siteName || 'RahaL TV';
   const isLogoHidden = branding?.logoMode === 'hidden';
+  const legacyRemovedTagline =
+    'افلام ومسلسلات بجودة عالية بدون تقطيع ، تحميل ومشاهدة افلام اجنبية بروابط مباشرة ، مسلسلات اجنبية ، مسلسلات رمضان 2026 وعروض المصارعة الحرة المترجمة.';
+  const cleanTagline =
+    tagline && tagline.trim() !== legacyRemovedTagline ? tagline.trim() : '';
 
   return (
     <footer className="relative mt-12 sm:mt-16 bg-[#141414] border-t border-white/[0.08] pb-[calc(5.25rem+env(safe-area-inset-bottom,0px))] sm:pb-10 pt-10 sm:pt-12">
@@ -34,10 +38,11 @@ export function Footer({ tagline, branding, siteName, onOpenTopic, onNavigateHom
             </button>
           )}
 
-          <p className="max-w-2xl text-xs sm:text-sm font-medium leading-relaxed text-[#a3a3a3]">
-            {tagline ||
-              'افلام ومسلسلات بجودة عالية بدون تقطيع ، تحميل ومشاهدة افلام اجنبية بروابط مباشرة ، مسلسلات اجنبية ، مسلسلات رمضان 2026 وعروض المصارعة الحرة المترجمة.'}
-          </p>
+          {cleanTagline && (
+            <p className="max-w-2xl text-xs sm:text-sm font-medium leading-relaxed text-[#a3a3a3]">
+              {cleanTagline}
+            </p>
+          )}
 
           <nav className="mt-5 sm:mt-6 flex flex-wrap items-center justify-center gap-x-3 gap-y-2 sm:gap-6" aria-label="روابط الفوتر">
             <button

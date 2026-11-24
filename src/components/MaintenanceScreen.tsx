@@ -63,7 +63,11 @@ export function MaintenanceScreen({
 
         {/* Tagline & Admin Sign-in Escape Hatch */}
         <div className="pt-3 border-t border-white/[0.08] flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-[#b7c9ef]/80">
-          <p className="line-clamp-2 sm:line-clamp-1 text-center sm:text-right max-w-md">{tagline}</p>
+          {tagline ? (
+            <p className="line-clamp-2 sm:line-clamp-1 text-center sm:text-right max-w-md">{tagline}</p>
+          ) : (
+            <span />
+          )}
 
           <button
             type="button"
