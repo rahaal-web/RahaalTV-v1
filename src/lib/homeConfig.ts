@@ -2,6 +2,7 @@ import {
   HeroImageFitMode,
   HeroInfoPosition,
   HeroTextAlign,
+  HomeCardStyle,
   HomeHeroMode,
   HomeLayoutConfig,
   HomeSectionConfig,
@@ -293,7 +294,9 @@ export function normalizeHomeConfig(
     showFullLibrary: Boolean(raw.showFullLibrary ?? false),
     showRequestBanner: Boolean(raw.showRequestBanner ?? true),
     cardsPerRow,
-    cardStyle: raw.cardStyle === 'classic' ? 'classic' : 'clean',
+    cardStyle: (
+      raw.cardStyle === 'classic' || raw.cardStyle === 'showcase' ? raw.cardStyle : 'clean'
+    ) as HomeCardStyle,
     sections: rawSections,
   };
 }

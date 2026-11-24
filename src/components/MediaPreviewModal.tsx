@@ -37,7 +37,7 @@ import {
   loadStoredPopupShieldConfig,
   resolveEffectiveShieldDecision,
 } from '../lib/popupShield';
-import { MediaItem, PlayerThemeConfig, PopupShieldConfig } from '../types/media';
+import { HomeCardStyle, MediaItem, PlayerThemeConfig, PopupShieldConfig } from '../types/media';
 import { MovieCard } from './MovieCard';
 
 interface MediaPreviewModalProps {
@@ -48,6 +48,7 @@ interface MediaPreviewModalProps {
   busy?: boolean;
   playerTheme?: PlayerThemeConfig;
   popupShieldConfig?: PopupShieldConfig;
+  cardStyle?: HomeCardStyle;
 }
 
 function extractSafePreviewSrc(embedCode?: string, url?: string): string | null {
@@ -74,6 +75,7 @@ export function MediaPreviewModal({
   busy = false,
   playerTheme,
   popupShieldConfig,
+  cardStyle = 'clean',
 }: MediaPreviewModalProps) {
   const [previewMode, setPreviewMode] = useState<'page' | 'card'>('page');
   const [testServerIdx, setTestServerIdx] = useState<number | null>(null);
@@ -212,6 +214,7 @@ export function MediaPreviewModal({
                   onSelect={() => setPreviewMode('page')}
                   isInWatchlist={false}
                   onToggleWatchlist={() => {}}
+                  variant={cardStyle}
                 />
               </div>
             </div>

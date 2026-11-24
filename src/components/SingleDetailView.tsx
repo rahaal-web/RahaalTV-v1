@@ -38,7 +38,7 @@ import { FALLBACK_BACKDROP, FALLBACK_POSTER } from '../lib/mediaFilters';
 import { getBackdropUrl, getPosterUrl } from '../lib/mediaImages';
 import { resolveDisplayShortUrl } from '../lib/permalink';
 import { formatShortServerName } from '../lib/playerTheme';
-import { MediaItem, CatalogFilterState, MediaRatingRecord } from '../types/media';
+import { MediaItem, CatalogFilterState, HomeCardStyle, MediaRatingRecord } from '../types/media';
 import { MovieCard } from './MovieCard';
 import { OptimizedImage } from './OptimizedImage';
 import { RunningRabbitLoader } from './RunningRabbitLoader';
@@ -48,6 +48,7 @@ interface SingleDetailViewProps {
   item: MediaItem;
   initialEpisode?: number;
   initialOpenDownloads?: boolean;
+  cardStyle?: HomeCardStyle;
   currentUser: User | null;
   isGuest?: boolean;
   onOpenLogin: () => void;
@@ -79,6 +80,7 @@ export function SingleDetailView({
   item,
   initialEpisode,
   initialOpenDownloads = false,
+  cardStyle = 'clean',
   currentUser,
   isGuest = false,
   onOpenLogin,
@@ -1380,6 +1382,7 @@ export function SingleDetailView({
                     onSelect={onSelectMedia}
                     isInWatchlist={watchlistIds.includes(rel.id)}
                     onToggleWatchlist={onToggleWatchlist}
+                    variant={cardStyle}
                   />
                 ))}
               </div>
@@ -1433,6 +1436,7 @@ export function SingleDetailView({
               onSelect={onSelectMedia}
               isInWatchlist={watchlistIds.includes(rel.id)}
               onToggleWatchlist={onToggleWatchlist}
+              variant={cardStyle}
             />
           ))}
         </div>

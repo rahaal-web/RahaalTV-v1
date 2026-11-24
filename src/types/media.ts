@@ -202,6 +202,8 @@ export type HeroInfoPosition =
   | 'middle-center'
   | 'middle-left';
 
+export type HomeCardStyle = 'clean' | 'classic' | 'showcase';
+
 export interface HomeLayoutConfig {
   showHero: boolean;
   heroMode: HomeHeroMode;
@@ -244,7 +246,7 @@ export interface HomeLayoutConfig {
   showFullLibrary: boolean;
   showRequestBanner: boolean;
   cardsPerRow: 4 | 5 | 6;
-  cardStyle: 'clean' | 'classic';
+  cardStyle: HomeCardStyle;
   sections: HomeSectionConfig[];
 }
 

@@ -37,6 +37,7 @@ import {
 } from '../lib/mediaImages';
 import {
   CatalogFilterState,
+  HomeCardStyle,
   HomeSectionConfig,
   HomeSectionSource,
   MediaItem,
@@ -191,7 +192,7 @@ function SectionHorizontalRow({
   onToggleWatchlist,
 }: {
   items: MediaItem[];
-  cardStyle: 'clean' | 'classic';
+  cardStyle: HomeCardStyle;
   watchlistIds: string[];
   prioritizeInitialCount?: number;
   onSelectMedia: (item: MediaItem, openDownloads?: boolean) => void;

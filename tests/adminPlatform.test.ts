@@ -360,6 +360,13 @@ describe('Hero Slider Customization Normalization', () => {
     assert.equal(cfg.heroShowGenres, true);
     assert.equal(cfg.heroShowDetailsBtn, false);
   });
+
+  it('preserves clean, classic, and showcase cardStyle values and falls back to clean', () => {
+    assert.equal(normalizeHomeConfig({ cardStyle: 'clean' }).cardStyle, 'clean');
+    assert.equal(normalizeHomeConfig({ cardStyle: 'classic' }).cardStyle, 'classic');
+    assert.equal(normalizeHomeConfig({ cardStyle: 'showcase' }).cardStyle, 'showcase');
+    assert.equal(normalizeHomeConfig({ cardStyle: 'unknown' as never }).cardStyle, 'clean');
+  });
 });
 
 describe('Admin Eye Comfort Appearance & Sidebar Pinning/Reordering', () => {

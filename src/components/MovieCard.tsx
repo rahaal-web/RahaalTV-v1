@@ -1,7 +1,7 @@
-import { Bookmark, Check, Download, Film, Globe, Languages, Play, Star, Tag } from 'lucide-react';
+import { Bookmark, Check, ChevronUp, Download, Film, Globe, Languages, Play, Star, Tag } from 'lucide-react';
 import { FALLBACK_POSTER } from '../lib/mediaFilters';
 import { getPosterUrl } from '../lib/mediaImages';
-import { MediaItem } from '../types/media';
+import { HomeCardStyle, MediaItem } from '../types/media';
 import { OptimizedImage } from './OptimizedImage';
 
 interface MovieCardProps {
@@ -9,7 +9,7 @@ interface MovieCardProps {
   onSelect: (item: MediaItem, openDownloads?: boolean) => void;
   isInWatchlist: boolean;
   onToggleWatchlist: (item: MediaItem) => void;
-  variant?: 'clean' | 'classic';
+  variant?: HomeCardStyle;
   priority?: boolean;
 }
 
@@ -190,6 +190,130 @@ export function MovieCard({
               <span>تحميل</span>
             </button>
           </div>
+        </div>
+      </article>
+    );
+  }
+
+  if (variant === 'showcase') {
+    const fiveStarScore =
+      item.communityRating && item.communityRating.count > 0
+        ? item.communityRating.average
+        : item.imdb && item.imdb > 0
+          ? Math.min(5, Math.max(0, item.imdb / 2))
+          : 0;
+    const filledStars = Math.round(fiveStarScore);
+    const showcaseTags = (item.genres?.length ? item.genres : [primaryCat]).slice(0, 3);
+    const subtitleMeta = [item.year || '2026', primaryCat].filter(Boolean).join(' • ');
+
+    return (
+      <article
+        onClick={() => onSelect(item)}
+        className="group relative flex h-full flex-col rounded-[24px] bg-[#141824] border border-white/[0.08] overflow-hidden shadow-[0_16px_38px_rgba(0,0,0,0.65)] transition-all duration-300 ease-out hover:-translate-y-1 hover:border-white/20 hover:shadow-[0_22px_48px_rgba(0,0,0,0.82)] cursor-pointer"
+      >
+        {/* Top Dark Panel with Rounded Bottom Cutout */}
+        <div className="relative z-10 flex flex-1 flex-col bg-[#141824] rounded-b-[26px] overflow-hidden">
+          {/* Poster Image with Smooth Fade into Dark Info Area */}
+          <div className="relative aspect-[4/4.3] w-full overflow-hidden bg-[#0e121b]">
+            <OptimizedImage
+              src={posterSrc}
+              fallbackSrc={FALLBACK_POSTER}
+              alt={item.title}
+              slot="card_grid"
+              priority={priority}
+              loading={priority ? 'eager' : 'lazy'}
+              className="h-full w-full"
+              imgClassName="object-cover object-top transition-transform duration-500 ease-out group-hover:scale-105"
+            />
+            <div className="pointer-events-none absolute inset-0 z-10 bg-gradient-to-t from-[#141824] via-[#141824]/40 via-35% to-transparent" />
+
+            {/* Top Corner Floating White Rounded-Square Watchlist Button */}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleWatchlist(item);
+              }}
+              aria-label={isInWatchlist ? 'إزالة من قائمتي' : 'إضافة إلى قائمتي'}
+              className={`absolute top-2.5 left-2.5 sm:top-3 sm:left-3 z-20 inline-flex h-9 w-9 sm:h-8 sm:w-8 items-center justify-center rounded-xl shadow-lg transition-all cursor-pointer ${
+                isInWatchlist
+                  ? 'bg-[#f9c400] text-[#141824]'
+                  : 'bg-white/95 text-[#141824] hover:bg-[#f9c400]'
+              }`}
+            >
+              {isInWatchlist ? (
+                <Check className="w-4 h-4 stroke-[2.5]" />
+              ) : (
+                <Bookmark className="w-4 h-4 stroke-[2.2]" />
+              )}
+            </button>
+          </div>
+
+          {/* Info Block */}
+          <div className="relative z-20 -mt-5 flex flex-1 flex-col justify-between px-3 sm:px-4 pb-2.5 text-right">
+            <div className="space-y-1">
+              <h3
+                style={{ fontSize: 'calc(var(--rtv-card-title-size, 13px) + 2px)' }}
+                className="font-display font-extrabold text-white leading-snug line-clamp-1 group-hover:text-[#f9c400] transition-colors"
+              >
+                {item.title}
+              </h3>
+
+              <p className="text-[10.5px] sm:text-[11px] font-medium text-[#b7c9ef]/75 truncate tabular-nums">
+                {subtitleMeta}
+              </p>
+
+              <p className="text-[11px] font-bold text-white/90 truncate tabular-nums">
+                {item.duration || item.quality || 'HD'}
+              </p>
+
+              {/* 5-Star Rating Row */}
+              <div className="pt-0.5 flex items-center gap-1.5">
+                <div className="flex items-center gap-0.5" aria-label={`التقييم ${fiveStarScore.toFixed(1)} من 5`}>
+                  {[1, 2, 3, 4, 5].map((starIdx) => (
+                    <Star
+                      key={starIdx}
+                      className={`w-3 h-3 ${
+                        starIdx <= filledStars
+                          ? 'text-[#f9c400] fill-[#f9c400]'
+                          : 'text-white/20 fill-white/10'
+                      }`}
+                    />
+                  ))}
+                </div>
+                {fiveStarScore > 0 && (
+                  <span dir="ltr" className="font-latin text-[10px] font-bold text-white/65 tabular-nums">
+                    {fiveStarScore.toFixed(1)}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Hashtag Genre Row & Centered Up-Chevron */}
+            <div className="mt-2.5 space-y-2">
+              <div className="flex items-center gap-1.5 overflow-hidden">
+                {showcaseTags.map((tag) => (
+                  <span
+                    key={tag}
+                    className="inline-flex items-center rounded-full bg-white/[0.08] px-2 py-0.5 text-[10px] font-semibold text-white/85 whitespace-nowrap truncate max-w-[92px]"
+                  >
+                    #{tag}
+                  </span>
+                ))}
+              </div>
+
+              <div className="flex justify-center">
+                <ChevronUp className="w-4 h-4 text-white/55 group-hover:text-white group-hover:-translate-y-0.5 transition-all" />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Bottom Curved Accent CTA Bar */}
+        <div className="relative z-0 -mt-5 pt-7 pb-3 px-3 flex items-center justify-center bg-[#E50914] group-hover:bg-[#f40612] text-white transition-colors">
+          <span className="text-[11px] sm:text-xs font-black tracking-wide">
+            مشاهدة الآن
+          </span>
         </div>
       </article>
     );

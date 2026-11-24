@@ -787,28 +787,42 @@ export function HomeBuilderPanel({
 
           <div>
             <span className="block text-xs font-bold text-[#b7c9ef] mb-2">تصميم البطاقة</span>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               <button
                 type="button"
                 onClick={() => updateCfg({ cardStyle: 'clean' })}
-                className={`rounded-xl border px-3 py-2.5 text-xs font-extrabold cursor-pointer ${
+                className={`rounded-xl border px-3 py-2.5 text-center transition-colors cursor-pointer ${
                   cfg.cardStyle === 'clean'
-                    ? 'bg-[#D92321] border-[#D92321] text-white'
-                    : 'bg-[#1a242e] border-white/10 text-[#b7c9ef]'
+                    ? 'bg-[#D92321] border-[#D92321] text-white shadow-md'
+                    : 'bg-[#1a242e] border-white/10 text-[#b7c9ef] hover:text-white'
                 }`}
               >
-                حديث نظيف (Netflix)
+                <span className="block text-xs font-extrabold">حديث نظيف</span>
+                <span className="block text-[10px] opacity-80 mt-0.5">Netflix Style</span>
               </button>
               <button
                 type="button"
                 onClick={() => updateCfg({ cardStyle: 'classic' })}
-                className={`rounded-xl border px-3 py-2.5 text-xs font-extrabold cursor-pointer ${
+                className={`rounded-xl border px-3 py-2.5 text-center transition-colors cursor-pointer ${
                   cfg.cardStyle === 'classic'
-                    ? 'bg-[#D92321] border-[#D92321] text-white'
-                    : 'bg-[#1a242e] border-white/10 text-[#b7c9ef]'
+                    ? 'bg-[#D92321] border-[#D92321] text-white shadow-md'
+                    : 'bg-[#1a242e] border-white/10 text-[#b7c9ef] hover:text-white'
                 }`}
               >
-                كلاسيكي (قلب ثلاثي 3D)
+                <span className="block text-xs font-extrabold">كلاسيكي</span>
+                <span className="block text-[10px] opacity-80 mt-0.5">قلب ثلاثي 3D</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => updateCfg({ cardStyle: 'showcase' })}
+                className={`rounded-xl border px-3 py-2.5 text-center transition-colors cursor-pointer ${
+                  cfg.cardStyle === 'showcase'
+                    ? 'bg-[#D92321] border-[#D92321] text-white shadow-md'
+                    : 'bg-[#1a242e] border-white/10 text-[#b7c9ef] hover:text-white'
+                }`}
+              >
+                <span className="block text-xs font-extrabold">عرض سينمائي</span>
+                <span className="block text-[10px] opacity-80 mt-0.5">تقييم + شريط مشاهدة</span>
               </button>
             </div>
           </div>

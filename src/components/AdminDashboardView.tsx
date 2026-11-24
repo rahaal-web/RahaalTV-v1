@@ -8136,6 +8136,7 @@ export function AdminDashboardView({
         busy={busyAction}
         playerTheme={activePlayerTheme}
         popupShieldConfig={activePopupShield}
+        cardStyle={activeHomeConfig.cardStyle}
         publishLabel={
           previewModalState?.source === 'editor' && !isCreatingNew
             ? 'حفظ التعديلات في قاعدة البيانات'

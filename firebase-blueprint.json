@@ -325,7 +325,7 @@
         "showFullLibrary": { "type": "boolean" },
         "showRequestBanner": { "type": "boolean" },
         "cardsPerRow": { "type": "number" },
-        "cardStyle": { "type": "string", "enum": ["clean", "classic"] },
+        "cardStyle": { "type": "string", "enum": ["clean", "classic", "showcase"] },
         "sections": { "type": "array" },
         "updatedBy": { "type": "string", "minLength": 1, "maxLength": 128 },
         "updatedAt": { "type": "string", "format": "date-time" }

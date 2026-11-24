@@ -16,7 +16,7 @@ import {
   normalizeArabicText,
 } from '../lib/mediaFilters';
 import type { ArchiveSortOption } from '../lib/router';
-import { CatalogFilterState, MediaItem } from '../types/media';
+import { CatalogFilterState, HomeCardStyle, MediaItem } from '../types/media';
 import { MovieCard } from './MovieCard';
 
 interface CatalogArchiveViewProps {
@@ -25,6 +25,7 @@ interface CatalogArchiveViewProps {
   currentPage?: number;
   pageSize?: number;
   sortOverride?: ArchiveSortOption;
+  cardStyle?: HomeCardStyle;
   onUpdateFilters: (next: CatalogFilterState) => void;
   onSearchQueryChange?: (query: string) => void;
   onChangePage?: (page: number) => void;
@@ -71,6 +72,7 @@ export function CatalogArchiveView({
   currentPage: controlledPage,
   pageSize: controlledPageSize,
   sortOverride: controlledSortOverride,
+  cardStyle = 'clean',
   onUpdateFilters,
   onSearchQueryChange,
   onChangePage,
@@ -422,6 +424,7 @@ export function CatalogArchiveView({
                 onSelect={onSelectMedia}
                 isInWatchlist={watchlistIds.includes(item.id)}
                 onToggleWatchlist={onToggleWatchlist}
+                variant={cardStyle}
                 priority={idx < 6}
               />
             ))}

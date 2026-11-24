@@ -1940,6 +1940,7 @@ export default function App() {
             currentPage={archivePage}
             pageSize={archivePageSize}
             sortOverride={archiveSort}
+            cardStyle={siteSettings.homeConfig?.cardStyle || 'clean'}
             onUpdateFilters={(next) => handleUpdateArchiveFilters(next)}
             onSearchQueryChange={(q) =>
               handleUpdateArchiveFilters({ ...filters, query: q }, { replace: true })
@@ -2001,6 +2002,7 @@ export default function App() {
               item={matchedSingleMedia}
               initialEpisode={routeEpisode}
               initialOpenDownloads={openDownloadsOnSingle}
+              cardStyle={siteSettings.homeConfig?.cardStyle || 'clean'}
               currentUser={firebaseUser}
               isGuest={isGuest}
               onOpenLogin={() => openOverlay('login')}

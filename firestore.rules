@@ -213,7 +213,7 @@ service cloud.firestore {
         && cfg.showFullLibrary is bool
         && cfg.showRequestBanner is bool
         && cfg.cardsPerRow in [4, 5, 6]
-        && cfg.cardStyle in ['clean', 'classic']
+        && cfg.cardStyle in ['clean', 'classic', 'showcase']
         && cfg.sections is list && cfg.sections.size() >= 1 && cfg.sections.size() <= 12
         && cfg.sections[0] is map;
     }
