@@ -32,7 +32,13 @@ export interface StreamV4SliderConfig {
   bottomBlendHeightPx: number;
   bottomBlurPx: number;
   bottomOverlapPx: number;
+  articleVerticalAlign: 'top' | 'center' | 'bottom';
+  articleHorizontalAlign: 'right' | 'center' | 'left';
   articleBottomOffsetPx: number;
+  articleTopOffsetPx: number;
+  articleSideOffsetPx: number;
+  articleMaxWidthPx: number;
+  dotsBottomOffsetPx: number;
   sliderHeightDesktopPx: number;
   logoMaxHeightPx: number;
   logoMaxWidthPx: number;
@@ -74,7 +80,13 @@ export const DEFAULT_STREAM_V4_SLIDER_CONFIG: StreamV4SliderConfig = {
   bottomBlendHeightPx: 175,
   bottomBlurPx: 10,
   bottomOverlapPx: 26,
-  articleBottomOffsetPx: 92,
+  articleVerticalAlign: 'bottom',
+  articleHorizontalAlign: 'right',
+  articleBottomOffsetPx: 134,
+  articleTopOffsetPx: 84,
+  articleSideOffsetPx: 40,
+  articleMaxWidthPx: 500,
+  dotsBottomOffsetPx: 28,
   sliderHeightDesktopPx: 680,
   logoMaxHeightPx: 130,
   logoMaxWidthPx: 360,
@@ -229,11 +241,43 @@ export function normalizeStreamV4SliderConfig(
       96,
       DEFAULT_STREAM_V4_SLIDER_CONFIG.bottomOverlapPx
     ),
+    articleVerticalAlign:
+      src.articleVerticalAlign === 'top' || src.articleVerticalAlign === 'center'
+        ? src.articleVerticalAlign
+        : 'bottom',
+    articleHorizontalAlign:
+      src.articleHorizontalAlign === 'center' || src.articleHorizontalAlign === 'left'
+        ? src.articleHorizontalAlign
+        : 'right',
     articleBottomOffsetPx: clampInt(
       src.articleBottomOffsetPx,
       64,
-      190,
+      320,
       DEFAULT_STREAM_V4_SLIDER_CONFIG.articleBottomOffsetPx
+    ),
+    articleTopOffsetPx: clampInt(
+      src.articleTopOffsetPx,
+      64,
+      260,
+      DEFAULT_STREAM_V4_SLIDER_CONFIG.articleTopOffsetPx
+    ),
+    articleSideOffsetPx: clampInt(
+      src.articleSideOffsetPx,
+      12,
+      220,
+      DEFAULT_STREAM_V4_SLIDER_CONFIG.articleSideOffsetPx
+    ),
+    articleMaxWidthPx: clampInt(
+      src.articleMaxWidthPx,
+      320,
+      720,
+      DEFAULT_STREAM_V4_SLIDER_CONFIG.articleMaxWidthPx
+    ),
+    dotsBottomOffsetPx: clampInt(
+      src.dotsBottomOffsetPx,
+      16,
+      100,
+      DEFAULT_STREAM_V4_SLIDER_CONFIG.dotsBottomOffsetPx
     ),
     sliderHeightDesktopPx: clampInt(
       src.sliderHeightDesktopPx,

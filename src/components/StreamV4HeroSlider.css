@@ -212,48 +212,111 @@
   );
 }
 
-/* Right-Side Lower-Middle <article> Aligned Cleanly Above Bottom Strip */
+/* Movie Info <article> with Exact Admin-Controllable Position */
 .rtv-v4-article {
   position: absolute;
   inset-inline: 0;
-  top: 76px;
-  bottom: calc(var(--rtv-v4-effective-overlap, 24px) + 88px);
+  top: clamp(68px, 8vw, var(--rtv-v4-article-top, 84px));
+  bottom: calc(var(--rtv-v4-effective-overlap, 24px) + max(96px, calc(var(--rtv-v4-article-bottom, 134px) - 18px)));
   z-index: 5;
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
+  align-items: flex-start;
   max-width: 1440px;
   margin-inline: auto;
-  padding-inline: 16px;
+  padding-inline: clamp(16px, 3vw, var(--rtv-v4-article-side, 40px));
   pointer-events: none;
 }
 
 @media (min-width: 640px) {
   .rtv-v4-article {
-    top: 84px;
-    bottom: calc(var(--rtv-v4-effective-overlap, 26px) + var(--rtv-v4-article-bottom, 92px));
-    padding-inline: 28px;
+    top: var(--rtv-v4-article-top, 84px);
+    bottom: calc(var(--rtv-v4-effective-overlap, 26px) + var(--rtv-v4-article-bottom, 134px));
+    padding-inline: clamp(24px, 3vw, var(--rtv-v4-article-side, 40px));
   }
 }
 
 @media (min-width: 1024px) {
   .rtv-v4-article {
-    top: calc(74px + 1vw);
-    bottom: calc(var(--rtv-v4-effective-overlap, 26px) + var(--rtv-v4-article-bottom, 92px));
-    justify-content: flex-end;
-    padding-inline: calc(40 * 100vw / 1440);
+    top: var(--rtv-v4-article-top, 84px);
+    bottom: calc(var(--rtv-v4-effective-overlap, 26px) + var(--rtv-v4-article-bottom, 134px));
+    padding-inline: var(--rtv-v4-article-side, 40px);
   }
 }
 
+.rtv-v4-slider[data-valign="top"] .rtv-v4-article {
+  justify-content: flex-start;
+}
+
+.rtv-v4-slider[data-valign="center"] .rtv-v4-article {
+  justify-content: center;
+}
+
+.rtv-v4-slider[data-valign="bottom"] .rtv-v4-article {
+  justify-content: flex-end;
+}
+
+.rtv-v4-slider[data-halign="right"] .rtv-v4-article {
+  align-items: flex-start;
+}
+
+.rtv-v4-slider[data-halign="center"] .rtv-v4-article {
+  align-items: center;
+}
+
+.rtv-v4-slider[data-halign="left"] .rtv-v4-article {
+  align-items: flex-end;
+}
+
 .rtv-v4-slider[data-strip="false"] .rtv-v4-article {
-  bottom: calc(var(--rtv-v4-effective-overlap, 26px) + 34px);
+  bottom: calc(var(--rtv-v4-effective-overlap, 26px) + max(32px, calc(var(--rtv-v4-article-bottom, 134px) - 86px)));
 }
 
 .rtv-v4-article-inner {
   width: 100%;
-  max-width: 500px;
+  max-width: var(--rtv-v4-article-max-w, 500px);
   text-align: right;
   pointer-events: auto;
+}
+
+.rtv-v4-slider[data-halign="center"] .rtv-v4-article-inner {
+  text-align: center;
+}
+
+.rtv-v4-slider[data-halign="center"] .rtv-v4-logo-img {
+  margin-inline: auto;
+  object-position: center;
+}
+
+.rtv-v4-slider[data-halign="center"] .rtv-v4-meta,
+.rtv-v4-slider[data-halign="center"] .rtv-v4-cast,
+.rtv-v4-slider[data-halign="center"] .rtv-v4-btns {
+  justify-content: center;
+}
+
+.rtv-v4-slider[data-halign="center"] .rtv-v4-story {
+  margin-inline: auto;
+}
+
+.rtv-v4-slider[data-halign="left"] .rtv-v4-article-inner {
+  text-align: left;
+}
+
+.rtv-v4-slider[data-halign="left"] .rtv-v4-logo-img {
+  margin-inline-start: 0;
+  margin-inline-end: auto;
+  object-position: left center;
+}
+
+.rtv-v4-slider[data-halign="left"] .rtv-v4-meta,
+.rtv-v4-slider[data-halign="left"] .rtv-v4-cast,
+.rtv-v4-slider[data-halign="left"] .rtv-v4-btns {
+  justify-content: flex-end;
+}
+
+.rtv-v4-slider[data-halign="left"] .rtv-v4-story {
+  margin-inline-start: auto;
 }
 
 .rtv-v4-slide[data-active="true"] .rtv-v4-article-inner {
@@ -479,7 +542,7 @@
 .rtv-v4-dots-wrap {
   position: absolute;
   inset-inline: 0;
-  bottom: calc(var(--rtv-v4-effective-overlap, 24px) + 22px);
+  bottom: calc(var(--rtv-v4-effective-overlap, 24px) + var(--rtv-v4-dots-bottom, 28px));
   z-index: 7;
   width: 100%;
   max-width: 1440px;
@@ -489,14 +552,14 @@
 
 @media (min-width: 640px) {
   .rtv-v4-dots-wrap {
-    bottom: calc(var(--rtv-v4-effective-overlap, 36px) + 26px);
+    bottom: calc(var(--rtv-v4-effective-overlap, 26px) + var(--rtv-v4-dots-bottom, 28px));
     padding-inline: 28px;
   }
 }
 
 @media (min-width: 1024px) {
   .rtv-v4-dots-wrap {
-    bottom: calc(var(--rtv-v4-effective-overlap, 46px) + clamp(24px, 2.2vw, 34px));
+    bottom: calc(var(--rtv-v4-effective-overlap, 26px) + var(--rtv-v4-dots-bottom, 28px));
     padding-inline: calc(40 * 100vw / 1440);
   }
 }

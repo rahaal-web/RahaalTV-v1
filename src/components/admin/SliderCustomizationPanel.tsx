@@ -739,112 +739,135 @@ export function SliderCustomizationPanel({
                 v4Config.defaultSlideDurationSec ||
                 Number(draft.heroSlideIntervalSec) ||
                 6;
+              const v4VAlignClass =
+                v4Config.articleVerticalAlign === 'top'
+                  ? 'justify-start'
+                  : v4Config.articleVerticalAlign === 'center'
+                    ? 'justify-center'
+                    : 'justify-end';
+              const v4HAlignClass =
+                v4Config.articleHorizontalAlign === 'center'
+                  ? 'items-center text-center mx-auto'
+                  : v4Config.articleHorizontalAlign === 'left'
+                    ? 'items-end text-left mr-auto'
+                    : 'items-start text-right';
               return (
-                <div className="relative z-10 p-5 sm:p-7 pb-4 space-y-2.5">
-                  <div className="max-w-[340px] space-y-2 text-right">
-                    {v4Config.showTitle &&
-                      (v4Config.usePngLogoInHero && activePng ? (
-                        <img
-                          src={activePng}
-                          alt={activeSlide?.title || ''}
-                          referrerPolicy="no-referrer"
-                          style={{
-                            maxHeight: `${
-                              previewDevice === 'mobile'
-                                ? Math.round(v4Config.logoMaxHeightPx * 0.6)
-                                : Math.round(v4Config.logoMaxHeightPx * 0.78)
-                            }px`,
-                            maxWidth: `${
-                              previewDevice === 'mobile'
-                                ? Math.min(230, v4Config.logoMaxWidthPx)
-                                : Math.min(300, v4Config.logoMaxWidthPx)
-                            }px`,
-                          }}
-                          className="object-contain object-right drop-shadow"
-                        />
-                      ) : (
-                        <h4
-                          style={{
-                            fontSize: `${
-                              previewDevice === 'mobile'
-                                ? Math.max(20, Math.round(v4Config.titleSizePx * 0.65))
-                                : Math.round(v4Config.titleSizePx * 0.8)
-                            }px`,
-                          }}
-                          className="font-display font-black text-white leading-tight drop-shadow"
+                <div className="relative z-10 h-full flex flex-col justify-between p-5 sm:p-7 pb-4 gap-3">
+                  <div className={`flex-1 flex flex-col ${v4VAlignClass}`}>
+                    <div
+                      style={{
+                        maxWidth: `${Math.min(380, Math.round(v4Config.articleMaxWidthPx * 0.76))}px`,
+                        paddingInlineStart: `${Math.round(v4Config.articleSideOffsetPx * 0.35)}px`,
+                        paddingBottom: `${Math.max(4, Math.round((v4Config.articleBottomOffsetPx - 120) * 0.25))}px`,
+                      }}
+                      className={`w-full flex flex-col space-y-2 ${v4HAlignClass}`}
+                    >
+                      {v4Config.showTitle &&
+                        (v4Config.usePngLogoInHero && activePng ? (
+                          <img
+                            src={activePng}
+                            alt={activeSlide?.title || ''}
+                            referrerPolicy="no-referrer"
+                            style={{
+                              maxHeight: `${
+                                previewDevice === 'mobile'
+                                  ? Math.round(v4Config.logoMaxHeightPx * 0.6)
+                                  : Math.round(v4Config.logoMaxHeightPx * 0.78)
+                              }px`,
+                              maxWidth: `${
+                                previewDevice === 'mobile'
+                                  ? Math.min(230, v4Config.logoMaxWidthPx)
+                                  : Math.min(300, v4Config.logoMaxWidthPx)
+                              }px`,
+                            }}
+                            className="object-contain"
+                          />
+                        ) : (
+                          <h4
+                            style={{
+                              fontSize: `${
+                                previewDevice === 'mobile'
+                                  ? Math.max(20, Math.round(v4Config.titleSizePx * 0.65))
+                                  : Math.round(v4Config.titleSizePx * 0.8)
+                              }px`,
+                            }}
+                            className="font-display font-black text-white leading-tight drop-shadow"
+                          >
+                            {activeSlide?.title || 'Heart of the Beast'}
+                          </h4>
+                        ))}
+
+                      {v4Config.showMetadata && (
+                        <p
+                          style={{ fontSize: `${v4Config.metaSizePx}px` }}
+                          className="font-bold text-white/90"
                         >
-                          {activeSlide?.title || 'Heart of the Beast'}
-                        </h4>
-                      ))}
+                          {activeSlide?.kind === 'series' ? 'مسلسلات' : 'افلام'} •{' '}
+                          {activeSlide?.genres?.slice(0, 2).join(' ، ') || 'اكشن ، اثارة'} •{' '}
+                          {activeSlide?.year || '2026'}
+                        </p>
+                      )}
 
-                    {v4Config.showMetadata && (
-                      <p
-                        style={{ fontSize: `${v4Config.metaSizePx}px` }}
-                        className="font-bold text-white/90"
-                      >
-                        {activeSlide?.kind === 'series' ? 'مسلسلات' : 'افلام'} •{' '}
-                        {activeSlide?.genres?.slice(0, 2).join(' ، ') || 'اكشن ، اثارة'} •{' '}
-                        {activeSlide?.year || '2026'}
-                      </p>
-                    )}
+                      {v4Config.showStory && (
+                        <p
+                          style={{
+                            fontSize: `${v4Config.storySizePx}px`,
+                            display: '-webkit-box',
+                            WebkitBoxOrient: 'vertical',
+                            WebkitLineClamp: v4Config.storyLines,
+                            overflow: 'hidden',
+                          }}
+                          className="text-white/80 leading-relaxed"
+                        >
+                          {activeSlide?.story ||
+                            'تصميم السلايدر الرابع مطابق للمرجع مع شعارات PNG وألوان موقع Rahaal TV.'}
+                        </p>
+                      )}
 
-                    {v4Config.showStory && (
-                      <p
-                        style={{
-                          fontSize: `${v4Config.storySizePx}px`,
-                          display: '-webkit-box',
-                          WebkitBoxOrient: 'vertical',
-                          WebkitLineClamp: v4Config.storyLines,
-                          overflow: 'hidden',
-                        }}
-                        className="text-white/80 leading-relaxed"
-                      >
-                        {activeSlide?.story ||
-                          'تصميم السلايدر الرابع مطابق للمرجع مع شعارات PNG وألوان موقع Rahaal TV.'}
-                      </p>
-                    )}
+                      {v4Config.showCast && (activeSlide?.cast?.length || 0) > 0 && (
+                        <p
+                          style={{ fontSize: `${v4Config.castSizePx}px` }}
+                          className="font-bold text-white/90"
+                        >
+                          {activeSlide!.cast
+                            .slice(0, 3)
+                            .map((c) => c.name)
+                            .join(' • ')}
+                        </p>
+                      )}
 
-                    {v4Config.showCast && (activeSlide?.cast?.length || 0) > 0 && (
-                      <p
-                        style={{ fontSize: `${v4Config.castSizePx}px` }}
-                        className="font-bold text-white/90"
-                      >
-                        {activeSlide!.cast
-                          .slice(0, 3)
-                          .map((c) => c.name)
-                          .join(' • ')}
-                      </p>
-                    )}
+                      {(v4Config.showWatchBtn || v4Config.showWatchlistBtn) && (
+                        <div className="flex items-center gap-2 pt-1">
+                          {v4Config.showWatchBtn && (
+                            <span
+                              style={{ backgroundColor: previewAccent }}
+                              className="inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-[11px] font-extrabold text-white shadow-lg"
+                            >
+                              <Play className="w-3 h-3 fill-current" />
+                              <span>{v4Config.watchBtnText || 'شاهد وحمل الان'}</span>
+                            </span>
+                          )}
+                          {v4Config.showWatchlistBtn && (
+                            <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/20 border border-white/20 text-xs font-bold text-white">
+                              +
+                            </span>
+                          )}
+                        </div>
+                      )}
 
-                    {(v4Config.showWatchBtn || v4Config.showWatchlistBtn) && (
-                      <div className="flex items-center gap-2 pt-1">
-                        {v4Config.showWatchBtn && (
+                      {v4Config.showTagline && activeSlide?.tagline && (
+                        <p className="inline-flex items-center gap-1.5 text-[11px] font-bold text-white/90">
                           <span
                             style={{ backgroundColor: previewAccent }}
-                            className="inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-[11px] font-extrabold text-white shadow-lg"
-                          >
-                            <Play className="w-3 h-3 fill-current" />
-                            <span>{v4Config.watchBtnText || 'شاهد وحمل الان'}</span>
-                          </span>
-                        )}
-                        {v4Config.showWatchlistBtn && (
-                          <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/20 border border-white/20 text-xs font-bold text-white">
-                            +
-                          </span>
-                        )}
-                      </div>
-                    )}
-
-                    {v4Config.showTagline && activeSlide?.tagline && (
-                      <p className="inline-flex items-center gap-1.5 text-[11px] font-bold text-white/90">
-                        <span
-                          style={{ backgroundColor: previewAccent }}
-                          className="inline-block h-3 w-[3px] rounded-full"
-                        />
-                        <span>{activeSlide.tagline}</span>
-                      </p>
-                    )}
+                            className="inline-block h-3 w-[3px] rounded-full"
+                          />
+                          <span>{activeSlide.tagline}</span>
+                        </p>
+                      )}
+                    </div>
                   </div>
+
+                  <div className="space-y-2">
 
                   {v4Config.showBottomStrip && (
                     <div className="pt-2 flex items-center justify-between gap-3 overflow-hidden">
@@ -911,6 +934,7 @@ export function SliderCustomizationPanel({
                       </div>
                     </div>
                   )}
+                  </div>
                 </div>
               );
             })()}

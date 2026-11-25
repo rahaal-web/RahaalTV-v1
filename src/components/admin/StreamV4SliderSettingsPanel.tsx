@@ -2,6 +2,7 @@ import { ChangeEvent, useMemo, useState } from 'react';
 import {
   Clock,
   Image as ImageIcon,
+  Move,
   Palette,
   RotateCcw,
   Search,
@@ -875,9 +876,77 @@ export function StreamV4SliderSettingsPanel({
             />
           </div>
 
+        </div>
+      </div>
+
+      {/* E. Exact 2D & Vertical Positioning Controls for Movie Info & Strip */}
+      <div className="rounded-3xl bg-[#0c1821] border border-white/[0.08] p-6 space-y-5">
+        <div className="flex items-center gap-2 border-b border-white/10 pb-3">
+          <Move className="w-5 h-5 rtv-admin-accent-text" />
+          <div>
+            <h4 className="font-display text-base font-extrabold text-white">
+              5. التحكم الدقيق في مكان بيانات الفيلم والشريط السفلي
+            </h4>
+            <p className="text-[11px] text-[#b7c9ef] mt-0.5">
+              حرّك شعار الفيلم والتفاصيل والوصف والأزرار لأعلى أو لأسفل أو يميناً ويساراً بالبكسل لتناسب كل خلفية.
+            </p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="rounded-2xl bg-[#1a242e]/80 border border-white/[0.07] p-4 space-y-2.5">
+            <span className="block text-xs font-extrabold text-white">التموضع العمودي لبيانات الفيلم:</span>
+            <div className="grid grid-cols-3 gap-2">
+              {([
+                { id: 'top', label: 'أعلى' },
+                { id: 'center', label: 'وسط' },
+                { id: 'bottom', label: 'أسفل (فوق الشريط)' },
+              ] as const).map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => updateCfg({ articleVerticalAlign: opt.id })}
+                  className={`rounded-xl border px-2.5 py-2 text-[11px] font-extrabold transition-all cursor-pointer ${
+                    cfg.articleVerticalAlign === opt.id
+                      ? 'rtv-admin-accent-bg border-transparent'
+                      : 'bg-[#0c1821] border-white/10 text-[#b7c9ef] hover:text-white'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="rounded-2xl bg-[#1a242e]/80 border border-white/[0.07] p-4 space-y-2.5">
+            <span className="block text-xs font-extrabold text-white">المحاذاة الأفقية لبيانات الفيلم:</span>
+            <div className="grid grid-cols-3 gap-2">
+              {([
+                { id: 'right', label: 'يمين (RTL)' },
+                { id: 'center', label: 'منتصف' },
+                { id: 'left', label: 'يسار' },
+              ] as const).map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => updateCfg({ articleHorizontalAlign: opt.id })}
+                  className={`rounded-xl border px-2.5 py-2 text-[11px] font-extrabold transition-all cursor-pointer ${
+                    cfg.articleHorizontalAlign === opt.id
+                      ? 'rtv-admin-accent-bg border-transparent'
+                      : 'bg-[#0c1821] border-white/10 text-[#b7c9ef] hover:text-white'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
           <div className="rounded-2xl bg-[#1a242e]/80 border border-white/[0.07] p-4 space-y-2">
             <div className="flex items-center justify-between text-xs">
-              <span className="font-bold text-white">ارتفاع بيانات الفيلم عن الشريط السفلي</span>
+              <span className="font-bold text-white">رفع البيانات عن الأسفل</span>
               <span className="font-latin font-black rtv-admin-accent-text tabular-nums">
                 {cfg.articleBottomOffsetPx}px
               </span>
@@ -885,10 +954,82 @@ export function StreamV4SliderSettingsPanel({
             <input
               type="range"
               min={64}
-              max={190}
+              max={320}
               step={4}
               value={cfg.articleBottomOffsetPx}
               onChange={(e) => updateCfg({ articleBottomOffsetPx: Number(e.target.value) })}
+              className="w-full accent-[var(--rtv-admin-accent)] cursor-pointer"
+            />
+          </div>
+
+          <div className="rounded-2xl bg-[#1a242e]/80 border border-white/[0.07] p-4 space-y-2">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-bold text-white">المسافة من الأعلى</span>
+              <span className="font-latin font-black rtv-admin-accent-text tabular-nums">
+                {cfg.articleTopOffsetPx}px
+              </span>
+            </div>
+            <input
+              type="range"
+              min={64}
+              max={260}
+              step={4}
+              value={cfg.articleTopOffsetPx}
+              onChange={(e) => updateCfg({ articleTopOffsetPx: Number(e.target.value) })}
+              className="w-full accent-[var(--rtv-admin-accent)] cursor-pointer"
+            />
+          </div>
+
+          <div className="rounded-2xl bg-[#1a242e]/80 border border-white/[0.07] p-4 space-y-2">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-bold text-white">المسافة الجانبية من الحافة</span>
+              <span className="font-latin font-black rtv-admin-accent-text tabular-nums">
+                {cfg.articleSideOffsetPx}px
+              </span>
+            </div>
+            <input
+              type="range"
+              min={12}
+              max={220}
+              step={4}
+              value={cfg.articleSideOffsetPx}
+              onChange={(e) => updateCfg({ articleSideOffsetPx: Number(e.target.value) })}
+              className="w-full accent-[var(--rtv-admin-accent)] cursor-pointer"
+            />
+          </div>
+
+          <div className="rounded-2xl bg-[#1a242e]/80 border border-white/[0.07] p-4 space-y-2">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-bold text-white">عرض كتلة البيانات</span>
+              <span className="font-latin font-black rtv-admin-accent-text tabular-nums">
+                {cfg.articleMaxWidthPx}px
+              </span>
+            </div>
+            <input
+              type="range"
+              min={320}
+              max={720}
+              step={10}
+              value={cfg.articleMaxWidthPx}
+              onChange={(e) => updateCfg({ articleMaxWidthPx: Number(e.target.value) })}
+              className="w-full accent-[var(--rtv-admin-accent)] cursor-pointer"
+            />
+          </div>
+
+          <div className="rounded-2xl bg-[#1a242e]/80 border border-white/[0.07] p-4 space-y-2">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-bold text-white">ارتفاع شريط الشعارات السفلي</span>
+              <span className="font-latin font-black rtv-admin-accent-text tabular-nums">
+                {cfg.dotsBottomOffsetPx}px
+              </span>
+            </div>
+            <input
+              type="range"
+              min={16}
+              max={100}
+              step={2}
+              value={cfg.dotsBottomOffsetPx}
+              onChange={(e) => updateCfg({ dotsBottomOffsetPx: Number(e.target.value) })}
               className="w-full accent-[var(--rtv-admin-accent)] cursor-pointer"
             />
           </div>

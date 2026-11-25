@@ -277,6 +277,10 @@ export function StreamV4HeroSlider({
     '--rtv-v4-bottom-blur': `${cfg.bottomBlurPx}px`,
     '--rtv-v4-bottom-overlap': `${cfg.bottomOverlapPx}px`,
     '--rtv-v4-article-bottom': `${cfg.articleBottomOffsetPx}px`,
+    '--rtv-v4-article-top': `${cfg.articleTopOffsetPx}px`,
+    '--rtv-v4-article-side': `${cfg.articleSideOffsetPx}px`,
+    '--rtv-v4-article-max-w': `${cfg.articleMaxWidthPx}px`,
+    '--rtv-v4-dots-bottom': `${cfg.dotsBottomOffsetPx}px`,
     '--rtv-v4-scrim-opacity': String(Math.max(0.35, Math.min(1, cfg.scrimIntensityPct / 100))),
     ...(cfg.colorMode === 'custom'
       ? {
@@ -295,6 +299,8 @@ export function StreamV4HeroSlider({
     <section
       className="rtv-v4-slider"
       data-strip={cfg.showBottomStrip && slideCount > 1}
+      data-valign={cfg.articleVerticalAlign}
+      data-halign={cfg.articleHorizontalAlign}
       style={dynamicStyleVars}
       aria-roledescription="carousel"
       aria-label="السلايدر الرابع الاستعراضي"
