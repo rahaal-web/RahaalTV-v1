@@ -46,6 +46,8 @@ import {
 import { MovieCard } from './MovieCard';
 import { OptimizedImage } from './OptimizedImage';
 import { RunningRabbitLoader } from './RunningRabbitLoader';
+import { CinematicHeroSlider } from './CinematicHeroSlider';
+import { useHeroSliderVariant } from '../lib/heroSliderMode';
 
 interface HomeViewProps {
   catalog: MediaItem[];
@@ -279,6 +281,7 @@ export function HomeView({
     () => normalizeHomeConfig(siteSettings.homeConfig),
     [siteSettings.homeConfig]
   );
+  const [heroSliderVariant] = useHeroSliderVariant();
 
   const pinnedList = useMemo(() => catalog.filter((i) => i.pinned), [catalog]);
   const maxHeroSlides = Math.min(12, Math.max(1, Number(homeConfig.heroMaxSlides) || 8));
@@ -506,7 +509,16 @@ export function HomeView({
       )}
 
       {/* 1. Full-Bleed Cinematic Hero Section (100vw Cover Default / Optional Contain & Ambient Blur) */}
-      {homeConfig.showHero && (() => {
+      {homeConfig.showHero &&
+        (heroSliderVariant === 'cinematic' ? (
+          <CinematicHeroSlider
+            slides={heroSlides}
+            autoPlayEnabled={autoPlayEnabled}
+            slideIntervalSec={slideIntervalSec}
+            pauseOnHover={pauseOnHover}
+            onSelectMedia={onSelectMedia}
+          />
+        ) : (() => {
         const backdropInfo = getBackdropInfo(activeHero);
         const heroBgSrc = backdropInfo.hasDedicatedBackdrop
           ? backdropInfo.url
@@ -1145,7 +1157,7 @@ export function HomeView({
             </div>
           </section>
         );
-      })()}
+      })())}
 
       {/* Admin Quick Customize Banner when Hero is hidden */}
       {!homeConfig.showHero && (

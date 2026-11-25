@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   CheckCircle2,
+  Clapperboard,
   Eye,
   Image as ImageIcon,
   Layers,
@@ -23,6 +24,7 @@ import {
 } from '../../types/media';
 import { DEFAULT_HOME_CONFIG, normalizeHomeConfig } from '../../lib/homeConfig';
 import { optimizeTmdbUrl } from '../../lib/mediaImages';
+import { HeroSliderVariant, useHeroSliderVariant } from '../../lib/heroSliderMode';
 
 interface SliderCustomizationPanelProps {
   homeConfig: HomeLayoutConfig;
@@ -108,9 +110,19 @@ export function SliderCustomizationPanel({
   onNotify,
 }: SliderCustomizationPanelProps) {
   const [draft, setDraft] = useState<HomeLayoutConfig>(() => normalizeHomeConfig(homeConfig));
+  const [heroSliderVariant, setHeroSliderVariant] = useHeroSliderVariant();
   const [previewDevice, setPreviewDevice] = useState<'desktop' | 'mobile'>('desktop');
   const [previewSlideIdx, setPreviewSlideIdx] = useState(0);
   const [saving, setSaving] = useState(false);
+
+  const handleSelectSliderVariant = (variant: HeroSliderVariant) => {
+    setHeroSliderVariant(variant);
+    onNotify(
+      variant === 'cinematic'
+        ? 'تم تفعيل السلايدر السينمائي الجديد (Cinematic Slider) على الرئيسية فوراً'
+        : 'تم الرجوع إلى السلايدر الأساسي (Original Slider) كما هو تماماً'
+    );
+  };
 
   useEffect(() => {
     setDraft(normalizeHomeConfig(homeConfig));
@@ -243,6 +255,73 @@ export function SliderCustomizationPanel({
         </div>
       </div>
 
+      {/* Slider Design Mode Switcher (Original vs Cinematic) */}
+      <div className="rounded-3xl bg-[#0c1821] border border-white/[0.08] p-6 space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-3">
+          <div className="flex items-center gap-2">
+            <Clapperboard className="w-5 h-5 rtv-admin-accent-text" />
+            <h3 className="font-display text-base font-extrabold text-white">
+              اختيار تصميم السلايدر (Slider Design Style)
+            </h3>
+          </div>
+          <span className="rounded-lg bg-emerald-500/15 border border-emerald-400/30 px-2.5 py-0.5 text-[10px] font-extrabold text-emerald-300">
+            تبديل فوري ومستقل
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+          <button
+            type="button"
+            onClick={() => handleSelectSliderVariant('original')}
+            className={`rounded-2xl border p-4 text-right transition-all cursor-pointer flex flex-col gap-2 ${
+              heroSliderVariant === 'original'
+                ? 'rtv-admin-accent-soft border-sky-400/50 shadow-md'
+                : 'bg-[#1a242e]/65 border-white/[0.08] hover:border-white/20'
+            }`}
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm font-extrabold text-white">
+                1. السلايدر الأساسي (Original Slider)
+              </span>
+              {heroSliderVariant === 'original' && (
+                <span className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2 py-0.5 text-[10px] font-extrabold text-white">
+                  <CheckCircle2 className="w-3 h-3" />
+                  مفعّل الآن
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-[#b7c9ef] leading-relaxed">
+              السلايدر الأصلي الكامل للموقع بكل تصميمه وألوانه وأزراره وعناصر التحكم والمصغرات دون أي تغيير.
+            </p>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleSelectSliderVariant('cinematic')}
+            className={`rounded-2xl border p-4 text-right transition-all cursor-pointer flex flex-col gap-2 ${
+              heroSliderVariant === 'cinematic'
+                ? 'rtv-admin-accent-soft border-sky-400/50 shadow-md'
+                : 'bg-[#1a242e]/65 border-white/[0.08] hover:border-white/20'
+            }`}
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm font-extrabold text-white">
+                2. السلايدر السينمائي الجديد (Cinematic Slider)
+              </span>
+              {heroSliderVariant === 'cinematic' && (
+                <span className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2 py-0.5 text-[10px] font-extrabold text-white">
+                  <CheckCircle2 className="w-3 h-3" />
+                  مفعّل الآن
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-[#b7c9ef] leading-relaxed">
+              تصميم سينمائي هادئ يعرض صورة العمل كاملة واسم الفيلم فقط في المنتصف السفلي بحركة انسيابية متزامنة، بدون أي أزرار أو تفاصيل إضافية.
+            </p>
+          </button>
+        </div>
+      </div>
+
       {/* Live Preview Box */}
       <div className="rounded-3xl bg-[#0c1821] border border-white/[0.08] p-6 space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-3">
@@ -303,6 +382,48 @@ export function SliderCustomizationPanel({
         </div>
 
         {/* Isolated Cinema Site Preview */}
+        {heroSliderVariant === 'cinematic' ? (
+          <div
+            className={`rtv-site-preview mx-auto rounded-2xl overflow-hidden border border-white/15 bg-[#09090b] relative transition-all ${
+              previewDevice === 'mobile' ? 'max-w-[360px] h-[420px]' : 'w-full h-[380px]'
+            }`}
+          >
+            {activeSlide && (
+              <img
+                src={optimizeTmdbUrl(activeSlide.backdrop || activeSlide.poster, 'w780')}
+                alt={activeSlide.title}
+                loading="lazy"
+                decoding="async"
+                className="pointer-events-none absolute inset-0 h-full w-full object-cover object-[50%_22%]"
+              />
+            )}
+            <div
+              className="pointer-events-none absolute inset-0"
+              style={{
+                background:
+                  'linear-gradient(to top, #0f0f0f 0%, rgba(11,11,12,0.88) 14%, rgba(8,8,10,0.48) 32%, transparent 72%)',
+              }}
+            />
+            <div className="pointer-events-none absolute inset-x-0 bottom-6 z-10 flex justify-center px-6">
+              {(() => {
+                const title = activeSlide?.title || 'Naruto';
+                const isArabic = /[\u0600-\u06FF]/.test(title);
+                return (
+                  <h4
+                    dir="auto"
+                    className={`text-center font-bold text-white drop-shadow ${
+                      isArabic
+                        ? 'font-display text-sm sm:text-base tracking-normal'
+                        : 'font-latin uppercase text-xs sm:text-sm tracking-[0.28em]'
+                    }`}
+                  >
+                    {title}
+                  </h4>
+                );
+              })()}
+            </div>
+          </div>
+        ) : (
         <div
           className={`rtv-site-preview mx-auto rounded-2xl overflow-hidden border border-white/15 bg-[#0a0b0e] relative transition-all ${
             previewDevice === 'mobile' ? 'max-w-[360px] h-[420px]' : 'w-full h-[380px]'
@@ -489,7 +610,14 @@ export function SliderCustomizationPanel({
             </div>
           </div>
         </div>
+        )}
       </div>
+
+      {heroSliderVariant === 'cinematic' && (
+        <div className="rounded-2xl bg-amber-500/10 border border-amber-400/25 px-4 py-3 text-xs text-amber-200 leading-relaxed">
+          ملاحظة: التصميم السينمائي الجديد يعرض الصورة واسم العمل فقط دون أي أزرار أو تفاصيل. الإعدادات أدناه خاصة بتخصيص <strong className="text-white">السلايدر الأساسي</strong> وتظل محفوظة كما هي عند الرجوع إليه.
+        </div>
+      )}
 
       {/* Section 0: Hero Image Display Mode & Ambient Backdrop */}
       <div className="rounded-3xl bg-[#0c1821] border border-white/[0.08] p-6 space-y-5">

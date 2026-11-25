@@ -1,0 +1,405 @@
+/* ============================================================================
+   RahaL TV — Independent Cinematic Hero Slider Stylesheet (Naruto-Inspired)
+   Strictly scoped to .rtv-cinematic-slider* — zero impact on Original Slider.
+   Uses GPU-composited properties (transform, opacity) only for silky playback.
+   ============================================================================ */
+
+.rtv-cinematic-slider {
+  position: relative;
+  width: 100vw;
+  max-width: 100vw;
+  margin-inline: calc(50% - 50vw);
+  height: clamp(420px, 66svh, 540px);
+  background-color: #09090b;
+  overflow: hidden;
+  overflow-x: clip;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: pan-y;
+  isolation: isolate;
+}
+
+@media (max-width: 767px) and (orientation: landscape) {
+  .rtv-cinematic-slider {
+    height: clamp(320px, 80svh, 420px);
+  }
+}
+
+@media (min-width: 640px) {
+  .rtv-cinematic-slider {
+    height: clamp(470px, 68vh, 590px);
+  }
+}
+
+@media (min-width: 1024px) {
+  .rtv-cinematic-slider {
+    height: clamp(560px, 76vh, 720px);
+  }
+}
+
+.rtv-cinematic-stage {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  cursor: pointer;
+  outline: none;
+}
+
+.rtv-cinematic-slide {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+}
+
+.rtv-cinematic-slide--idle {
+  z-index: 2;
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+}
+
+.rtv-cinematic-slide--enter-next {
+  z-index: 3;
+  animation: rtvCinematicSlideEnterNext 1.15s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.rtv-cinematic-slide--enter-prev {
+  z-index: 3;
+  animation: rtvCinematicSlideEnterPrev 1.15s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.rtv-cinematic-slide--exit-next {
+  z-index: 1;
+  pointer-events: none;
+  animation: rtvCinematicSlideExitNext 1.15s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.rtv-cinematic-slide--exit-prev {
+  z-index: 1;
+  pointer-events: none;
+  animation: rtvCinematicSlideExitPrev 1.15s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Media parallax + subtle Ken Burns zoom layer */
+.rtv-cinematic-media-frame {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  will-change: transform;
+  backface-visibility: hidden;
+}
+
+.rtv-cinematic-slide--idle .rtv-cinematic-media-frame {
+  animation: rtvCinematicGentleDrift 12s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+}
+
+.rtv-cinematic-slide--enter-next .rtv-cinematic-media-frame {
+  animation: rtvCinematicMediaParallaxInNext 1.15s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.rtv-cinematic-slide--enter-prev .rtv-cinematic-media-frame {
+  animation: rtvCinematicMediaParallaxInPrev 1.15s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.rtv-cinematic-slide--exit-next .rtv-cinematic-media-frame {
+  animation: rtvCinematicMediaParallaxOutNext 1.15s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.rtv-cinematic-slide--exit-prev .rtv-cinematic-media-frame {
+  animation: rtvCinematicMediaParallaxOutPrev 1.15s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.rtv-cinematic-img-shell {
+  width: 100%;
+  height: 100%;
+  background: #09090b;
+}
+
+.rtv-cinematic-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  /* Prioritize upper-center framing so characters' eyes & faces never get sliced */
+  object-position: 50% 22%;
+}
+
+/* Subtle top header blend + dramatic Naruto-inspired bottom black fade */
+.rtv-cinematic-scrim {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 4;
+  background:
+    linear-gradient(
+      to bottom,
+      rgba(10, 10, 12, 0.46) 0%,
+      rgba(10, 10, 12, 0.14) 16%,
+      transparent 34%
+    ),
+    linear-gradient(
+      to top,
+      #0f0f0f 0%,
+      rgba(11, 11, 12, 0.88) 14%,
+      rgba(8, 8, 10, 0.5) 30%,
+      rgba(0, 0, 0, 0.14) 52%,
+      transparent 74%
+    ),
+    radial-gradient(
+      ellipse 88% 72% at 50% 42%,
+      transparent 52%,
+      rgba(0, 0, 0, 0.36) 100%
+    );
+}
+
+/* Bottom-Center Title Overlay (Strictly Title Only — Zero Buttons or Badges) */
+.rtv-cinematic-title-layer {
+  position: absolute;
+  inset-inline: 0;
+  bottom: clamp(24px, 5.2vh, 46px);
+  z-index: 6;
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  padding-inline: clamp(16px, 5vw, 48px);
+  pointer-events: none;
+}
+
+.rtv-cinematic-title-mask {
+  overflow: hidden;
+  max-width: min(88vw, 760px);
+  padding-block: 4px;
+  text-align: center;
+}
+
+.rtv-cinematic-title {
+  margin: 0;
+  color: #ffffff;
+  text-align: center;
+  font-weight: 700;
+  line-height: 1.35;
+  text-shadow: 0 2px 18px rgba(0, 0, 0, 0.85), 0 1px 4px rgba(0, 0, 0, 0.7);
+  will-change: transform, opacity;
+  /* Prevent awkward clipping on very narrow screens */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+.rtv-cinematic-title--latin {
+  font-family: var(--font-latin, "Cairo", system-ui, sans-serif);
+  font-size: clamp(0.875rem, 1.35vw, 1.1875rem);
+  letter-spacing: clamp(0.16em, 0.34vw, 0.34em);
+  text-transform: uppercase;
+  padding-inline-start: clamp(0.16em, 0.34vw, 0.34em);
+}
+
+.rtv-cinematic-title--arabic {
+  font-family: var(--font-display, "Cairo", "Tajawal", system-ui, sans-serif);
+  font-size: clamp(0.95rem, 1.55vw, 1.28rem);
+  letter-spacing: 0 !important;
+  word-spacing: 0.14em;
+}
+
+.rtv-cinematic-slide--idle .rtv-cinematic-title {
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+}
+
+.rtv-cinematic-slide--enter-next .rtv-cinematic-title,
+.rtv-cinematic-slide--enter-prev .rtv-cinematic-title {
+  animation: rtvCinematicTitleRevealUp 1.05s cubic-bezier(0.22, 1, 0.36, 1) 0.08s both;
+}
+
+.rtv-cinematic-slide--exit-next .rtv-cinematic-title,
+.rtv-cinematic-slide--exit-prev .rtv-cinematic-title {
+  animation: rtvCinematicTitleFadeOut 0.56s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+/* Keyframes — Slide + Parallax + Zoom + Text Reveal */
+@keyframes rtvCinematicSlideEnterNext {
+  0% {
+    opacity: 0;
+    transform: translate3d(-100%, 0, 0);
+  }
+  18% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes rtvCinematicSlideEnterPrev {
+  0% {
+    opacity: 0;
+    transform: translate3d(100%, 0, 0);
+  }
+  18% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes rtvCinematicSlideExitNext {
+  0% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+  100% {
+    opacity: 0.15;
+    transform: translate3d(34%, 0, 0);
+  }
+}
+
+@keyframes rtvCinematicSlideExitPrev {
+  0% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+  100% {
+    opacity: 0.15;
+    transform: translate3d(-34%, 0, 0);
+  }
+}
+
+@keyframes rtvCinematicMediaParallaxInNext {
+  0% {
+    transform: translate3d(14%, 0, 0) scale(1.09);
+  }
+  100% {
+    transform: translate3d(0, 0, 0) scale(1.02);
+  }
+}
+
+@keyframes rtvCinematicMediaParallaxInPrev {
+  0% {
+    transform: translate3d(-14%, 0, 0) scale(1.09);
+  }
+  100% {
+    transform: translate3d(0, 0, 0) scale(1.02);
+  }
+}
+
+@keyframes rtvCinematicMediaParallaxOutNext {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1.02);
+  }
+  100% {
+    transform: translate3d(-8%, 0, 0) scale(1.06);
+  }
+}
+
+@keyframes rtvCinematicMediaParallaxOutPrev {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1.02);
+  }
+  100% {
+    transform: translate3d(8%, 0, 0) scale(1.06);
+  }
+}
+
+@keyframes rtvCinematicGentleDrift {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1.02);
+  }
+  100% {
+    transform: translate3d(0, 0, 0) scale(1.06);
+  }
+}
+
+@keyframes rtvCinematicTitleRevealUp {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 28px, 0) scale(0.985);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes rtvCinematicTitleFadeOut {
+  0% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(0, -14px, 0);
+  }
+}
+
+/* Mobile & Low-Spec GPU Optimization: smoother lighter motion on smaller/weaker phones */
+@media (max-width: 639px) {
+  .rtv-cinematic-slide--enter-next,
+  .rtv-cinematic-slide--enter-prev,
+  .rtv-cinematic-slide--exit-next,
+  .rtv-cinematic-slide--exit-prev {
+    animation-duration: 0.85s;
+  }
+
+  .rtv-cinematic-slide--enter-next .rtv-cinematic-media-frame,
+  .rtv-cinematic-slide--enter-prev .rtv-cinematic-media-frame,
+  .rtv-cinematic-slide--exit-next .rtv-cinematic-media-frame,
+  .rtv-cinematic-slide--exit-prev .rtv-cinematic-media-frame {
+    animation-duration: 0.85s;
+  }
+
+  .rtv-cinematic-slide--enter-next .rtv-cinematic-title,
+  .rtv-cinematic-slide--enter-prev .rtv-cinematic-title {
+    animation-duration: 0.82s;
+    animation-delay: 0.05s;
+  }
+
+  .rtv-cinematic-slide--idle .rtv-cinematic-media-frame {
+    animation: none;
+    transform: scale(1.015);
+  }
+}
+
+html[data-rtv-low-spec="true"] .rtv-cinematic-slide--idle .rtv-cinematic-media-frame {
+  animation: none !important;
+  transform: none !important;
+}
+
+html[data-rtv-low-spec="true"] .rtv-cinematic-slide--enter-next,
+html[data-rtv-low-spec="true"] .rtv-cinematic-slide--enter-prev,
+html[data-rtv-low-spec="true"] .rtv-cinematic-slide--exit-next,
+html[data-rtv-low-spec="true"] .rtv-cinematic-slide--exit-prev {
+  animation-duration: 0.55s;
+}
+
+html[data-rtv-low-spec="true"] .rtv-cinematic-slide--enter-next .rtv-cinematic-media-frame,
+html[data-rtv-low-spec="true"] .rtv-cinematic-slide--enter-prev .rtv-cinematic-media-frame,
+html[data-rtv-low-spec="true"] .rtv-cinematic-slide--exit-next .rtv-cinematic-media-frame,
+html[data-rtv-low-spec="true"] .rtv-cinematic-slide--exit-prev .rtv-cinematic-media-frame {
+  animation: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rtv-cinematic-slide--idle .rtv-cinematic-media-frame,
+  .rtv-cinematic-slide--enter-next,
+  .rtv-cinematic-slide--enter-prev,
+  .rtv-cinematic-slide--exit-next,
+  .rtv-cinematic-slide--exit-prev,
+  .rtv-cinematic-slide--enter-next .rtv-cinematic-media-frame,
+  .rtv-cinematic-slide--enter-prev .rtv-cinematic-media-frame,
+  .rtv-cinematic-slide--exit-next .rtv-cinematic-media-frame,
+  .rtv-cinematic-slide--exit-prev .rtv-cinematic-media-frame,
+  .rtv-cinematic-slide--enter-next .rtv-cinematic-title,
+  .rtv-cinematic-slide--enter-prev .rtv-cinematic-title,
+  .rtv-cinematic-slide--exit-next .rtv-cinematic-title,
+  .rtv-cinematic-slide--exit-prev .rtv-cinematic-title {
+    animation: none !important;
+    transform: none !important;
+  }
+}

@@ -33,6 +33,7 @@ import {
   normalizeRecentlyWatchedUiConfig,
   saveStoredRecentlyWatchedUiConfig,
 } from '../lib/recentlyWatchedConfig';
+import { HeroSliderVariant, useHeroSliderVariant } from '../lib/heroSliderMode';
 import {
   HomeHeroMode,
   HomeLayoutConfig,
@@ -94,6 +95,7 @@ export function HomeBuilderPanel({
   onNotify,
 }: HomeBuilderPanelProps) {
   const cfg = useMemo(() => normalizeHomeConfig(homeConfig), [homeConfig]);
+  const [heroSliderVariant, setHeroSliderVariant] = useHeroSliderVariant();
   const [sliderSearch, setSliderSearch] = useState('');
   const [fallbackRwUi, setFallbackRwUi] = useState<RecentlyWatchedUiConfig>(() =>
     loadStoredRecentlyWatchedUiConfig()
@@ -405,6 +407,55 @@ export function HomeBuilderPanel({
                 />
                 <span>إظهار السلايدر</span>
               </label>
+            </div>
+          </div>
+
+          {/* Independent Slider Style Switcher (Original vs Cinematic) */}
+          <div className="rounded-2xl bg-[#1a242e]/80 border border-white/[0.08] p-3.5 space-y-2.5">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-extrabold text-white">
+                تصميم السلايدر المعروض (Slider Style)
+              </span>
+              <span className="text-[10px] font-bold text-[#b7c9ef]">
+                تبديل فوري مع إبقاء الأساسي كما هو
+              </span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {(
+                [
+                  {
+                    id: 'original',
+                    label: 'السلايدر الأساسي (Original Slider)',
+                  },
+                  {
+                    id: 'cinematic',
+                    label: 'السلايدر السينمائي الجديد (Cinematic Slider)',
+                  },
+                ] as Array<{ id: HeroSliderVariant; label: string }>
+              ).map((styleOpt) => (
+                <button
+                  key={styleOpt.id}
+                  type="button"
+                  onClick={() => {
+                    setHeroSliderVariant(styleOpt.id);
+                    onNotify(
+                      styleOpt.id === 'cinematic'
+                        ? 'تم التبديل إلى السلايدر السينمائي الجديد'
+                        : 'تم الرجوع إلى السلايدر الأساسي'
+                    );
+                  }}
+                  className={`rounded-xl border px-3 py-2 text-xs font-extrabold transition-colors cursor-pointer text-right flex items-center justify-between gap-2 ${
+                    heroSliderVariant === styleOpt.id
+                      ? 'rtv-admin-accent-bg border-transparent text-white'
+                      : 'bg-[#0c1821] border-white/10 text-[#b7c9ef] hover:text-white'
+                  }`}
+                >
+                  <span className="truncate">{styleOpt.label}</span>
+                  {heroSliderVariant === styleOpt.id && (
+                    <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                  )}
+                </button>
+              ))}
             </div>
           </div>
 
