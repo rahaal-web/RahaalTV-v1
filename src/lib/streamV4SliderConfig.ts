@@ -6,6 +6,8 @@ export type StreamV4ColorMode = 'site_theme' | 'custom';
 export interface StreamV4SliderConfig {
   /** Per-media transparent PNG logo URLs (shown ONLY inside the slider), keyed by MediaItem.id */
   titleLogos: Record<string, string>;
+  /** Global default display duration in seconds (2..60) for ALL movies in the 4th slider */
+  defaultSlideDurationSec: number;
   /** Per-media custom display duration in seconds (2..60) for the 4th slider only */
   slideDurations: Record<string, number>;
   usePngLogoInHero: boolean;
@@ -30,6 +32,7 @@ export interface StreamV4SliderConfig {
   bottomBlendHeightPx: number;
   bottomBlurPx: number;
   bottomOverlapPx: number;
+  articleBottomOffsetPx: number;
   sliderHeightDesktopPx: number;
   logoMaxHeightPx: number;
   logoMaxWidthPx: number;
@@ -47,6 +50,7 @@ const STREAM_V4_SLIDER_CONFIG_EVENT = 'rahaltv:stream-v4-slider-config-change';
 
 export const DEFAULT_STREAM_V4_SLIDER_CONFIG: StreamV4SliderConfig = {
   titleLogos: {},
+  defaultSlideDurationSec: 6,
   slideDurations: {},
   usePngLogoInHero: true,
   usePngLogoInStrip: true,
@@ -66,14 +70,15 @@ export const DEFAULT_STREAM_V4_SLIDER_CONFIG: StreamV4SliderConfig = {
   enableShineEffect: true,
   colorMode: 'site_theme',
   customAccentColor: '#E50914',
-  scrimIntensityPct: 88,
-  bottomBlendHeightPx: 165,
+  scrimIntensityPct: 92,
+  bottomBlendHeightPx: 175,
   bottomBlurPx: 10,
-  bottomOverlapPx: 46,
+  bottomOverlapPx: 26,
+  articleBottomOffsetPx: 92,
   sliderHeightDesktopPx: 680,
-  logoMaxHeightPx: 135,
-  logoMaxWidthPx: 380,
-  titleSizePx: 46,
+  logoMaxHeightPx: 130,
+  logoMaxWidthPx: 360,
+  titleSizePx: 44,
   metaSizePx: 13,
   storySizePx: 14,
   castSizePx: 13,
@@ -120,6 +125,12 @@ export function normalizeStreamV4SliderConfig(
 
   return {
     titleLogos,
+    defaultSlideDurationSec: clampInt(
+      src.defaultSlideDurationSec,
+      2,
+      60,
+      DEFAULT_STREAM_V4_SLIDER_CONFIG.defaultSlideDurationSec
+    ),
     slideDurations,
     usePngLogoInHero:
       typeof src.usePngLogoInHero === 'boolean'
@@ -217,6 +228,12 @@ export function normalizeStreamV4SliderConfig(
       0,
       96,
       DEFAULT_STREAM_V4_SLIDER_CONFIG.bottomOverlapPx
+    ),
+    articleBottomOffsetPx: clampInt(
+      src.articleBottomOffsetPx,
+      64,
+      190,
+      DEFAULT_STREAM_V4_SLIDER_CONFIG.articleBottomOffsetPx
     ),
     sliderHeightDesktopPx: clampInt(
       src.sliderHeightDesktopPx,

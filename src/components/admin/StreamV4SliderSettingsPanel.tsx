@@ -116,7 +116,10 @@ export function StreamV4SliderSettingsPanel({
       .slice(0, 16);
   }, [catalog, searchQuery, sliderMovies]);
 
-  const defaultIntervalSec = Math.max(2, Number(homeConfig.heroSlideIntervalSec) || 6);
+  const defaultIntervalSec = Math.max(
+    2,
+    Number(cfg.defaultSlideDurationSec) || Number(homeConfig.heroSlideIntervalSec) || 6
+  );
 
   const setMovieLogo = (mediaId: string, url: string) => {
     const nextLogos = { ...cfg.titleLogos };
@@ -229,6 +232,85 @@ export function StreamV4SliderSettingsPanel({
               />
               <span>في الشريط السفلي</span>
             </label>
+          </div>
+        </div>
+
+        {/* Global Auto-Flip Interval for ALL Movies in the 4th Slider */}
+        <div className="rounded-2xl bg-[#1a242e]/90 border border-white/10 p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <Clock className="w-4 h-4 rtv-admin-accent-text" />
+              <span className="text-xs sm:text-sm font-extrabold text-white">
+                وقت ظهور الأفلام كلها (كل كام ثانية يقلب السلايدر)
+              </span>
+              <span className="font-latin text-xs font-black rtv-admin-accent-text tabular-nums">
+                {defaultIntervalSec}s
+              </span>
+            </div>
+            <p className="text-[11px] text-[#b7c9ef]">
+              يطبق على جميع الأفلام في السلايدر الرابع، ويمكنك تخصيص مدة مستقلة لأي فيلم بالأسفل أو توحيد الوقت للكل بضغطة واحدة.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3 shrink-0">
+            <input
+              type="range"
+              min={2}
+              max={60}
+              step={1}
+              value={defaultIntervalSec}
+              onChange={(e) =>
+                updateCfg({ defaultSlideDurationSec: Number(e.target.value) })
+              }
+              className="w-36 sm:w-44 accent-[var(--rtv-admin-accent)] cursor-pointer"
+            />
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() =>
+                  updateCfg({ defaultSlideDurationSec: Math.max(2, defaultIntervalSec - 1) })
+                }
+                aria-label="تقليل الوقت العام"
+                className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-[#0c1821] hover:bg-white/10 border border-white/10 text-xs font-extrabold text-white cursor-pointer"
+              >
+                -
+              </button>
+              <input
+                type="number"
+                min={2}
+                max={60}
+                value={defaultIntervalSec}
+                onChange={(e) =>
+                  updateCfg({
+                    defaultSlideDurationSec: Math.min(60, Math.max(2, Number(e.target.value) || 2)),
+                  })
+                }
+                className="w-14 rounded-lg bg-[#0c1821] border border-white/10 px-2 py-1 text-center font-latin text-xs font-bold text-white tabular-nums focus:border-[var(--rtv-admin-accent)] focus:outline-none"
+              />
+              <button
+                type="button"
+                onClick={() =>
+                  updateCfg({ defaultSlideDurationSec: Math.min(60, defaultIntervalSec + 1) })
+                }
+                aria-label="زيادة الوقت العام"
+                className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-[#0c1821] hover:bg-white/10 border border-white/10 text-xs font-extrabold text-white cursor-pointer"
+              >
+                +
+              </button>
+            </div>
+
+            {Object.keys(cfg.slideDurations).length > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  updateCfg({ slideDurations: {} });
+                  onNotify(`تم توحيد وقت التقليب إلى ${defaultIntervalSec} ثوانٍ لجميع الأفلام`);
+                }}
+                className="rounded-xl bg-[#E50914] hover:bg-[#f40612] px-3 py-1.5 text-[11px] font-extrabold text-white cursor-pointer"
+              >
+                تطبيق على كل الأفلام ({defaultIntervalSec}ث)
+              </button>
+            )}
           </div>
         </div>
 
@@ -789,6 +871,24 @@ export function StreamV4SliderSettingsPanel({
               step={2}
               value={cfg.bottomOverlapPx}
               onChange={(e) => updateCfg({ bottomOverlapPx: Number(e.target.value) })}
+              className="w-full accent-[var(--rtv-admin-accent)] cursor-pointer"
+            />
+          </div>
+
+          <div className="rounded-2xl bg-[#1a242e]/80 border border-white/[0.07] p-4 space-y-2">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-bold text-white">ارتفاع بيانات الفيلم عن الشريط السفلي</span>
+              <span className="font-latin font-black rtv-admin-accent-text tabular-nums">
+                {cfg.articleBottomOffsetPx}px
+              </span>
+            </div>
+            <input
+              type="range"
+              min={64}
+              max={190}
+              step={4}
+              value={cfg.articleBottomOffsetPx}
+              onChange={(e) => updateCfg({ articleBottomOffsetPx: Number(e.target.value) })}
               className="w-full accent-[var(--rtv-admin-accent)] cursor-pointer"
             />
           </div>

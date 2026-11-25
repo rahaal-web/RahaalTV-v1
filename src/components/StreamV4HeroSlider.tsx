@@ -113,10 +113,14 @@ export function StreamV4HeroSlider({
   const safeActiveIndex = slideCount > 0 ? activeIndex % slideCount : 0;
   const activeSlide = visibleSlides[safeActiveIndex];
   const customDurationSec = activeSlide ? cfg.slideDurations[activeSlide.id] : undefined;
+  const fallbackDurationSec = Math.max(
+    2,
+    cfg.defaultSlideDurationSec || slideIntervalSec || 6
+  );
   const currentSlideDurationSec =
     customDurationSec && customDurationSec >= 2
       ? customDurationSec
-      : Math.max(2, slideIntervalSec);
+      : fallbackDurationSec;
   const isPaused = Boolean(pauseOnHover && isHovered);
 
   const cycleSignature = `${activeSlide?.id || ''}:${safeActiveIndex}:${currentSlideDurationSec}`;
@@ -272,6 +276,7 @@ export function StreamV4HeroSlider({
     '--rtv-v4-blend-h': `${cfg.bottomBlendHeightPx}px`,
     '--rtv-v4-bottom-blur': `${cfg.bottomBlurPx}px`,
     '--rtv-v4-bottom-overlap': `${cfg.bottomOverlapPx}px`,
+    '--rtv-v4-article-bottom': `${cfg.articleBottomOffsetPx}px`,
     '--rtv-v4-scrim-opacity': String(Math.max(0.35, Math.min(1, cfg.scrimIntensityPct / 100))),
     ...(cfg.colorMode === 'custom'
       ? {
@@ -289,6 +294,7 @@ export function StreamV4HeroSlider({
   return (
     <section
       className="rtv-v4-slider"
+      data-strip={cfg.showBottomStrip && slideCount > 1}
       style={dynamicStyleVars}
       aria-roledescription="carousel"
       aria-label="السلايدر الرابع الاستعراضي"

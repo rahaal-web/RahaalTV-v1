@@ -252,6 +252,7 @@ import {
 import {
   getStreamV4MovieDuration,
   getStreamV4MoviePngLogo,
+  loadStreamV4SliderConfig,
   setStreamV4MovieDuration,
   setStreamV4MoviePngLogo,
   uploadTransparentSliderPng,
@@ -7613,7 +7614,11 @@ export function AdminDashboardView({
                                 max={60}
                                 value={editingSliderDurationSec}
                                 onChange={(e) => setEditingSliderDurationSec(e.target.value)}
-                                placeholder={String(activeHomeConfig.heroSlideIntervalSec || 6)}
+                                placeholder={String(
+                                  loadStreamV4SliderConfig().defaultSlideDurationSec ||
+                                    activeHomeConfig.heroSlideIntervalSec ||
+                                    6
+                                )}
                                 className="w-20 rounded-lg bg-[#1a242e] border border-white/10 px-2.5 py-1 text-center font-latin text-xs font-bold text-white tabular-nums focus:border-[#E50914] focus:outline-none"
                               />
                               <span className="text-[11px] text-[#b7c9ef]">ثانية</span>

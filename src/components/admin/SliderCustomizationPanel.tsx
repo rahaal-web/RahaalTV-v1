@@ -736,6 +736,7 @@ export function SliderCustomizationPanel({
               const activePng = activeSlide ? v4Config.titleLogos[activeSlide.id] : '';
               const activeSlideDuration =
                 (activeSlide && v4Config.slideDurations[activeSlide.id]) ||
+                v4Config.defaultSlideDurationSec ||
                 Number(draft.heroSlideIntervalSec) ||
                 6;
               return (
