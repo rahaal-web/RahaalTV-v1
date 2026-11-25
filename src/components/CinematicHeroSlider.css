@@ -1,7 +1,9 @@
 /* ============================================================================
-   RahaL TV — Independent Cinematic Hero Slider Stylesheet (Naruto-Inspired)
-   Strictly scoped to .rtv-cinematic-slider* — zero impact on Original Slider.
-   Uses GPU-composited properties (transform, opacity) only for silky playback.
+   RahaL TV — Premium 3D Cinematic Hero Slider Stylesheet
+   Completely independent of Original Slider (.rtv-cinematic-slider*).
+   Architecture: Mobile-First, 3D Perspective + RotateY + Depth Parallax + Zoom,
+   Rahaal TV Dark Cinema Obsidian (#09090b / #0f0f0f) & Subtle Crimson Glow.
+   Zero buttons, zero icons, zero horizontal overflow.
    ============================================================================ */
 
 .rtv-cinematic-slider {
@@ -9,31 +11,42 @@
   width: 100vw;
   max-width: 100vw;
   margin-inline: calc(50% - 50vw);
-  height: clamp(420px, 66svh, 540px);
-  background-color: #09090b;
+  /* Mobile-First taller theatrical framing tailored for portrait posters & faces */
+  height: clamp(460px, 68svh, 580px);
+  background-color: #08080a;
   overflow: hidden;
   overflow-x: clip;
   user-select: none;
   -webkit-user-select: none;
   touch-action: pan-y;
   isolation: isolate;
+  /* 3D Camera Perspective */
+  perspective: 920px;
+  perspective-origin: 50% 48%;
+  --rtv-tilt-x: 0deg;
+  --rtv-tilt-y: 0deg;
+  --rtv-par-x: 0px;
+  --rtv-par-y: 0px;
 }
 
 @media (max-width: 767px) and (orientation: landscape) {
   .rtv-cinematic-slider {
-    height: clamp(320px, 80svh, 420px);
+    height: clamp(330px, 82svh, 430px);
+    perspective: 1100px;
   }
 }
 
 @media (min-width: 640px) {
   .rtv-cinematic-slider {
-    height: clamp(470px, 68vh, 590px);
+    height: clamp(490px, 70vh, 610px);
+    perspective: 1280px;
   }
 }
 
 @media (min-width: 1024px) {
   .rtv-cinematic-slider {
-    height: clamp(560px, 76vh, 720px);
+    height: clamp(580px, 78vh, 740px);
+    perspective: 1520px;
   }
 }
 
@@ -44,134 +57,194 @@
   overflow: hidden;
   cursor: pointer;
   outline: none;
+  transform-style: preserve-3d;
 }
 
+/* Deep Ambient Cinema Stage Glow (Black + Subtle Rahaal TV Crimson) */
+.rtv-cinematic-ambient {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(
+      ellipse 70% 42% at 50% 94%,
+      rgba(229, 9, 20, 0.14) 0%,
+      rgba(165, 10, 18, 0.05) 45%,
+      transparent 78%
+    ),
+    radial-gradient(
+      ellipse 85% 65% at 50% 25%,
+      rgba(24, 24, 28, 0.45) 0%,
+      #08080a 78%
+    );
+}
+
+/* Individual 3D Slide Container */
 .rtv-cinematic-slide {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
   overflow: hidden;
-  will-change: transform, opacity;
+  transform-style: preserve-3d;
+  transform-origin: 50% 50%;
   backface-visibility: hidden;
+  will-change: transform, opacity;
 }
 
 .rtv-cinematic-slide--idle {
   z-index: 2;
   opacity: 1;
-  transform: translate3d(0, 0, 0);
+  transform: translate3d(0, 0, 0) rotateY(0deg) scale(1);
 }
 
 .rtv-cinematic-slide--enter-next {
-  z-index: 3;
-  animation: rtvCinematicSlideEnterNext 1.15s cubic-bezier(0.22, 1, 0.36, 1) both;
+  z-index: 4;
+  animation: rtv3dSlideEnterNext 1.25s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .rtv-cinematic-slide--enter-prev {
-  z-index: 3;
-  animation: rtvCinematicSlideEnterPrev 1.15s cubic-bezier(0.22, 1, 0.36, 1) both;
+  z-index: 4;
+  animation: rtv3dSlideEnterPrev 1.25s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .rtv-cinematic-slide--exit-next {
   z-index: 1;
   pointer-events: none;
-  animation: rtvCinematicSlideExitNext 1.15s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: rtv3dSlideExitNext 1.25s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .rtv-cinematic-slide--exit-prev {
   z-index: 1;
   pointer-events: none;
-  animation: rtvCinematicSlideExitPrev 1.15s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: rtv3dSlideExitPrev 1.25s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-/* Media parallax + subtle Ken Burns zoom layer */
+/* Desktop Subtle Interactive 3D Pointer Parallax Layer */
+.rtv-cinematic-tilt-plane {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transform-style: preserve-3d;
+  transform: rotateX(var(--rtv-tilt-x)) rotateY(var(--rtv-tilt-y));
+  transition: transform 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+}
+
+/* Depth-Layered Media Plane (Zoom In/Out + Parallax) */
 .rtv-cinematic-media-frame {
   position: relative;
   width: 100%;
   height: 100%;
-  will-change: transform;
+  transform-origin: 50% 42%;
   backface-visibility: hidden;
+  will-change: transform;
 }
 
 .rtv-cinematic-slide--idle .rtv-cinematic-media-frame {
-  animation: rtvCinematicGentleDrift 12s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+  animation: rtv3dZoomBreath 11s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
 }
 
 .rtv-cinematic-slide--enter-next .rtv-cinematic-media-frame {
-  animation: rtvCinematicMediaParallaxInNext 1.15s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: rtv3dMediaParallaxInNext 1.25s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .rtv-cinematic-slide--enter-prev .rtv-cinematic-media-frame {
-  animation: rtvCinematicMediaParallaxInPrev 1.15s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: rtv3dMediaParallaxInPrev 1.25s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .rtv-cinematic-slide--exit-next .rtv-cinematic-media-frame {
-  animation: rtvCinematicMediaParallaxOutNext 1.15s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: rtv3dMediaParallaxOutNext 1.25s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .rtv-cinematic-slide--exit-prev .rtv-cinematic-media-frame {
-  animation: rtvCinematicMediaParallaxOutPrev 1.15s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: rtv3dMediaParallaxOutPrev 1.25s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.rtv-cinematic-img-parallax {
+  width: 100%;
+  height: 100%;
+  transform: translate3d(var(--rtv-par-x), var(--rtv-par-y), 0) scale(1.03);
+  transition: transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .rtv-cinematic-img-shell {
   width: 100%;
   height: 100%;
-  background: #09090b;
+  background: #08080a;
 }
 
 .rtv-cinematic-img {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  /* Prioritize upper-center framing so characters' eyes & faces never get sliced */
-  object-position: 50% 22%;
+  /* Preserve faces & key upper-center subject composition across mobile & desktop */
+  object-position: 50% 18%;
 }
 
-/* Subtle top header blend + dramatic Naruto-inspired bottom black fade */
+@media (min-width: 640px) {
+  .rtv-cinematic-img {
+    object-position: 50% 22%;
+  }
+}
+
+/* Multi-Layer Cinema Lighting, Subtle Crimson Edge Rim & Obsidian Vignette Scrim */
 .rtv-cinematic-scrim {
   position: absolute;
   inset: 0;
   pointer-events: none;
   z-index: 4;
   background:
+    /* Top edge soft blend for navbar readability */
     linear-gradient(
       to bottom,
-      rgba(10, 10, 12, 0.46) 0%,
-      rgba(10, 10, 12, 0.14) 16%,
+      rgba(8, 8, 10, 0.56) 0%,
+      rgba(8, 8, 10, 0.16) 15%,
       transparent 34%
     ),
+    /* Deep seamless Obsidian cinema fade at bottom */
     linear-gradient(
       to top,
       #0f0f0f 0%,
-      rgba(11, 11, 12, 0.88) 14%,
-      rgba(8, 8, 10, 0.5) 30%,
-      rgba(0, 0, 0, 0.14) 52%,
+      rgba(12, 12, 14, 0.92) 12%,
+      rgba(10, 10, 12, 0.62) 26%,
+      rgba(8, 8, 10, 0.22) 48%,
       transparent 74%
     ),
+    /* Subtle warm crimson-noir atmospheric cinema glow */
     radial-gradient(
-      ellipse 88% 72% at 50% 42%,
-      transparent 52%,
-      rgba(0, 0, 0, 0.36) 100%
+      ellipse 56% 24% at 50% 90%,
+      rgba(229, 9, 20, 0.13) 0%,
+      rgba(180, 10, 18, 0.04) 48%,
+      transparent 78%
+    ),
+    /* Cinematic edge vignette for 3D depth separation */
+    radial-gradient(
+      ellipse 90% 78% at 50% 42%,
+      transparent 54%,
+      rgba(0, 0, 0, 0.45) 100%
     );
 }
 
-/* Bottom-Center Title Overlay (Strictly Title Only — Zero Buttons or Badges) */
+/* Foreground 3D Floating Title Plane (Z-depth offset for true Parallax separation) */
 .rtv-cinematic-title-layer {
   position: absolute;
   inset-inline: 0;
-  bottom: clamp(24px, 5.2vh, 46px);
+  bottom: clamp(24px, 5.2svh, 48px);
   z-index: 6;
   display: flex;
   justify-content: center;
   align-items: flex-end;
-  padding-inline: clamp(16px, 5vw, 48px);
+  padding-inline: clamp(18px, 6vw, 56px);
   pointer-events: none;
+  transform: translate3d(0, 0, 40px);
 }
 
 .rtv-cinematic-title-mask {
   overflow: hidden;
   max-width: min(88vw, 760px);
-  padding-block: 4px;
+  padding-block: 6px;
   text-align: center;
 }
 
@@ -181,9 +254,12 @@
   text-align: center;
   font-weight: 700;
   line-height: 1.35;
-  text-shadow: 0 2px 18px rgba(0, 0, 0, 0.85), 0 1px 4px rgba(0, 0, 0, 0.7);
+  text-wrap: balance;
+  text-shadow:
+    0 2px 22px rgba(0, 0, 0, 0.92),
+    0 1px 6px rgba(0, 0, 0, 0.78),
+    0 0 28px rgba(229, 9, 20, 0.14);
   will-change: transform, opacity;
-  /* Prevent awkward clipping on very narrow screens */
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
@@ -192,17 +268,17 @@
 
 .rtv-cinematic-title--latin {
   font-family: var(--font-latin, "Cairo", system-ui, sans-serif);
-  font-size: clamp(0.875rem, 1.35vw, 1.1875rem);
-  letter-spacing: clamp(0.16em, 0.34vw, 0.34em);
+  font-size: clamp(0.875rem, 1.38vw, 1.22rem);
+  letter-spacing: clamp(0.2em, 0.38vw, 0.4em);
   text-transform: uppercase;
-  padding-inline-start: clamp(0.16em, 0.34vw, 0.34em);
+  padding-inline-start: clamp(0.2em, 0.38vw, 0.4em);
 }
 
 .rtv-cinematic-title--arabic {
   font-family: var(--font-display, "Cairo", "Tajawal", system-ui, sans-serif);
-  font-size: clamp(0.95rem, 1.55vw, 1.28rem);
+  font-size: clamp(0.95rem, 1.6vw, 1.32rem);
   letter-spacing: 0 !important;
-  word-spacing: 0.14em;
+  word-spacing: 0.15em;
 }
 
 .rtv-cinematic-slide--idle .rtv-cinematic-title {
@@ -212,114 +288,120 @@
 
 .rtv-cinematic-slide--enter-next .rtv-cinematic-title,
 .rtv-cinematic-slide--enter-prev .rtv-cinematic-title {
-  animation: rtvCinematicTitleRevealUp 1.05s cubic-bezier(0.22, 1, 0.36, 1) 0.08s both;
+  animation: rtv3dTitleRevealUp 1.12s cubic-bezier(0.22, 1, 0.36, 1) 0.1s both;
 }
 
 .rtv-cinematic-slide--exit-next .rtv-cinematic-title,
 .rtv-cinematic-slide--exit-prev .rtv-cinematic-title {
-  animation: rtvCinematicTitleFadeOut 0.56s cubic-bezier(0.4, 0, 0.2, 1) both;
+  animation: rtv3dTitleFadeOut 0.58s cubic-bezier(0.4, 0, 0.2, 1) both;
 }
 
-/* Keyframes — Slide + Parallax + Zoom + Text Reveal */
-@keyframes rtvCinematicSlideEnterNext {
+/* ============================================================================
+   3D Spatial Keyframes (Perspective + RotateY + Depth Z + Zoom + Parallax)
+   ============================================================================ */
+@keyframes rtv3dSlideEnterNext {
   0% {
     opacity: 0;
-    transform: translate3d(-100%, 0, 0);
+    transform: translate3d(-72%, 0, -130px) rotateY(10deg) scale(0.94);
   }
-  18% {
+  20% {
     opacity: 1;
   }
   100% {
     opacity: 1;
-    transform: translate3d(0, 0, 0);
+    transform: translate3d(0, 0, 0) rotateY(0deg) scale(1);
   }
 }
 
-@keyframes rtvCinematicSlideEnterPrev {
+@keyframes rtv3dSlideEnterPrev {
   0% {
     opacity: 0;
-    transform: translate3d(100%, 0, 0);
+    transform: translate3d(72%, 0, -130px) rotateY(-10deg) scale(0.94);
   }
-  18% {
+  20% {
     opacity: 1;
   }
   100% {
     opacity: 1;
-    transform: translate3d(0, 0, 0);
+    transform: translate3d(0, 0, 0) rotateY(0deg) scale(1);
   }
 }
 
-@keyframes rtvCinematicSlideExitNext {
+@keyframes rtv3dSlideExitNext {
   0% {
     opacity: 1;
-    transform: translate3d(0, 0, 0);
+    transform: translate3d(0, 0, 0) rotateY(0deg) scale(1);
   }
   100% {
-    opacity: 0.15;
-    transform: translate3d(34%, 0, 0);
+    opacity: 0;
+    transform: translate3d(34%, 0, -160px) rotateY(-8deg) scale(0.93);
   }
 }
 
-@keyframes rtvCinematicSlideExitPrev {
+@keyframes rtv3dSlideExitPrev {
   0% {
     opacity: 1;
-    transform: translate3d(0, 0, 0);
+    transform: translate3d(0, 0, 0) rotateY(0deg) scale(1);
   }
   100% {
-    opacity: 0.15;
-    transform: translate3d(-34%, 0, 0);
+    opacity: 0;
+    transform: translate3d(-34%, 0, -160px) rotateY(8deg) scale(0.93);
   }
 }
 
-@keyframes rtvCinematicMediaParallaxInNext {
+/* Inner Artwork Parallax + Zoom Out Settle on Arrival */
+@keyframes rtv3dMediaParallaxInNext {
   0% {
-    transform: translate3d(14%, 0, 0) scale(1.09);
+    transform: translate3d(12%, 0, 0) scale(1.13);
   }
   100% {
     transform: translate3d(0, 0, 0) scale(1.02);
   }
 }
 
-@keyframes rtvCinematicMediaParallaxInPrev {
+@keyframes rtv3dMediaParallaxInPrev {
   0% {
-    transform: translate3d(-14%, 0, 0) scale(1.09);
+    transform: translate3d(-12%, 0, 0) scale(1.13);
   }
   100% {
     transform: translate3d(0, 0, 0) scale(1.02);
   }
 }
 
-@keyframes rtvCinematicMediaParallaxOutNext {
+/* Outgoing Artwork Gentle Counter-Parallax + Zoom Out */
+@keyframes rtv3dMediaParallaxOutNext {
   0% {
     transform: translate3d(0, 0, 0) scale(1.02);
   }
   100% {
-    transform: translate3d(-8%, 0, 0) scale(1.06);
+    transform: translate3d(-8%, 0, 0) scale(0.98);
   }
 }
 
-@keyframes rtvCinematicMediaParallaxOutPrev {
+@keyframes rtv3dMediaParallaxOutPrev {
   0% {
     transform: translate3d(0, 0, 0) scale(1.02);
   }
   100% {
-    transform: translate3d(8%, 0, 0) scale(1.06);
+    transform: translate3d(8%, 0, 0) scale(0.98);
   }
 }
 
-@keyframes rtvCinematicGentleDrift {
+/* Smooth Ambient Zoom In Breathing During Slide Dwell */
+@keyframes rtv3dZoomBreath {
   0% {
     transform: translate3d(0, 0, 0) scale(1.02);
   }
   100% {
-    transform: translate3d(0, 0, 0) scale(1.06);
+    transform: translate3d(0, 0, 0) scale(1.07);
   }
 }
 
-@keyframes rtvCinematicTitleRevealUp {
+/* Synchronized Title Text Reveal (Bottom-to-Top Fade + Subtle Z-lift) */
+@keyframes rtv3dTitleRevealUp {
   0% {
     opacity: 0;
-    transform: translate3d(0, 28px, 0) scale(0.985);
+    transform: translate3d(0, 30px, 0) scale(0.97);
   }
   100% {
     opacity: 1;
@@ -327,7 +409,7 @@
   }
 }
 
-@keyframes rtvCinematicTitleFadeOut {
+@keyframes rtv3dTitleFadeOut {
   0% {
     opacity: 1;
     transform: translate3d(0, 0, 0);
@@ -338,34 +420,92 @@
   }
 }
 
-/* Mobile & Low-Spec GPU Optimization: smoother lighter motion on smaller/weaker phones */
+/* ============================================================================
+   Mobile-First Performance & Lighter 3D Motion Optimization
+   ============================================================================ */
 @media (max-width: 639px) {
+  .rtv-cinematic-slider {
+    perspective: 860px;
+  }
+
   .rtv-cinematic-slide--enter-next,
   .rtv-cinematic-slide--enter-prev,
   .rtv-cinematic-slide--exit-next,
   .rtv-cinematic-slide--exit-prev {
-    animation-duration: 0.85s;
+    animation-duration: 0.9s;
   }
 
   .rtv-cinematic-slide--enter-next .rtv-cinematic-media-frame,
   .rtv-cinematic-slide--enter-prev .rtv-cinematic-media-frame,
   .rtv-cinematic-slide--exit-next .rtv-cinematic-media-frame,
   .rtv-cinematic-slide--exit-prev .rtv-cinematic-media-frame {
-    animation-duration: 0.85s;
+    animation-duration: 0.9s;
   }
 
   .rtv-cinematic-slide--enter-next .rtv-cinematic-title,
   .rtv-cinematic-slide--enter-prev .rtv-cinematic-title {
-    animation-duration: 0.82s;
-    animation-delay: 0.05s;
+    animation-duration: 0.86s;
+    animation-delay: 0.06s;
   }
 
+  /* Keep continuous idle GPU cost minimal on phones */
   .rtv-cinematic-slide--idle .rtv-cinematic-media-frame {
     animation: none;
     transform: scale(1.015);
   }
+
+  .rtv-cinematic-tilt-plane,
+  .rtv-cinematic-img-parallax {
+    transform: none !important;
+    transition: none !important;
+  }
+
+  @keyframes rtv3dSlideEnterNext {
+    0% {
+      opacity: 0;
+      transform: translate3d(-55%, 0, -70px) rotateY(5deg) scale(0.96);
+    }
+    100% {
+      opacity: 1;
+      transform: translate3d(0, 0, 0) rotateY(0deg) scale(1);
+    }
+  }
+
+  @keyframes rtv3dSlideEnterPrev {
+    0% {
+      opacity: 0;
+      transform: translate3d(55%, 0, -70px) rotateY(-5deg) scale(0.96);
+    }
+    100% {
+      opacity: 1;
+      transform: translate3d(0, 0, 0) rotateY(0deg) scale(1);
+    }
+  }
+
+  @keyframes rtv3dSlideExitNext {
+    0% {
+      opacity: 1;
+      transform: translate3d(0, 0, 0) rotateY(0deg) scale(1);
+    }
+    100% {
+      opacity: 0;
+      transform: translate3d(26%, 0, -80px) rotateY(-4deg) scale(0.95);
+    }
+  }
+
+  @keyframes rtv3dSlideExitPrev {
+    0% {
+      opacity: 1;
+      transform: translate3d(0, 0, 0) rotateY(0deg) scale(1);
+    }
+    100% {
+      opacity: 0;
+      transform: translate3d(-26%, 0, -80px) rotateY(4deg) scale(0.95);
+    }
+  }
 }
 
+/* Low-Spec Mode & Reduced Motion Accessibility */
 html[data-rtv-low-spec="true"] .rtv-cinematic-slide--idle .rtv-cinematic-media-frame {
   animation: none !important;
   transform: none !important;
@@ -381,8 +521,11 @@ html[data-rtv-low-spec="true"] .rtv-cinematic-slide--exit-prev {
 html[data-rtv-low-spec="true"] .rtv-cinematic-slide--enter-next .rtv-cinematic-media-frame,
 html[data-rtv-low-spec="true"] .rtv-cinematic-slide--enter-prev .rtv-cinematic-media-frame,
 html[data-rtv-low-spec="true"] .rtv-cinematic-slide--exit-next .rtv-cinematic-media-frame,
-html[data-rtv-low-spec="true"] .rtv-cinematic-slide--exit-prev .rtv-cinematic-media-frame {
+html[data-rtv-low-spec="true"] .rtv-cinematic-slide--exit-prev .rtv-cinematic-media-frame,
+html[data-rtv-low-spec="true"] .rtv-cinematic-tilt-plane,
+html[data-rtv-low-spec="true"] .rtv-cinematic-img-parallax {
   animation: none !important;
+  transform: none !important;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -401,5 +544,11 @@ html[data-rtv-low-spec="true"] .rtv-cinematic-slide--exit-prev .rtv-cinematic-me
   .rtv-cinematic-slide--exit-prev .rtv-cinematic-title {
     animation: none !important;
     transform: none !important;
+  }
+
+  .rtv-cinematic-tilt-plane,
+  .rtv-cinematic-img-parallax {
+    transform: none !important;
+    transition: none !important;
   }
 }

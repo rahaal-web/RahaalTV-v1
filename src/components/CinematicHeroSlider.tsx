@@ -1,4 +1,12 @@
-import { KeyboardEvent, TouchEvent, useCallback, useEffect, useRef, useState } from 'react';
+import {
+  KeyboardEvent,
+  MouseEvent,
+  TouchEvent,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
 import { FALLBACK_BACKDROP, FALLBACK_POSTER } from '../lib/mediaFilters';
 import { getBackdropInfo, getPosterUrl } from '../lib/mediaImages';
 import { MediaItem } from '../types/media';
@@ -15,16 +23,28 @@ interface CinematicHeroSliderProps {
 
 type SlideDirection = 'next' | 'prev';
 
-const TRANSITION_DURATION_MS = 1150;
+const TRANSITION_DURATION_MS = 1250;
 const ARABIC_CHAR_REGEX = /[\u0600-\u06FF]/;
 
-function resolveCinematicSlideArtwork(item: MediaItem): {
+function resolveCinematicSlideArtwork(
+  item: MediaItem,
+  preferPortraitPoster: boolean
+): {
   src: string;
   fallbackSrc: string;
 } {
   const backdropInfo = getBackdropInfo(item);
   const posterUrl = getPosterUrl(item, 'detail_poster');
   const hasRealPoster = Boolean(posterUrl && posterUrl !== FALLBACK_POSTER);
+
+  if (preferPortraitPoster && hasRealPoster) {
+    return {
+      src: posterUrl,
+      fallbackSrc: backdropInfo.hasDedicatedBackdrop
+        ? backdropInfo.url
+        : FALLBACK_BACKDROP,
+    };
+  }
 
   if (backdropInfo.hasDedicatedBackdrop) {
     return {
@@ -68,14 +88,34 @@ export function CinematicHeroSlider({
     transitionId: number;
   } | null>(null);
   const [isHovered, setIsHovered] = useState(false);
+  const [isMobilePortrait, setIsMobilePortrait] = useState(false);
 
+  const sliderSectionRef = useRef<HTMLElement | null>(null);
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
   const didSwipeRef = useRef(false);
   const transitionCounterRef = useRef(0);
   const transitionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pointerRafRef = useRef<number | null>(null);
 
   const slideCount = slides.length;
   const safeActiveIndex = slideCount > 0 ? activeIndex % slideCount : 0;
+
+  // Mobile-First portrait detection: selects vertical posters on portrait phones for face-safe framing
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+      return undefined;
+    }
+    const mq = window.matchMedia('(max-width: 639px) and (orientation: portrait)');
+    const sync = () => setIsMobilePortrait(mq.matches);
+    sync();
+
+    if (typeof mq.addEventListener === 'function') {
+      mq.addEventListener('change', sync);
+      return () => mq.removeEventListener('change', sync);
+    }
+    mq.addListener(sync);
+    return () => mq.removeListener(sync);
+  }, []);
 
   useEffect(() => {
     if (slideCount > 0 && activeIndex >= slideCount) {
@@ -89,6 +129,9 @@ export function CinematicHeroSlider({
     return () => {
       if (transitionTimerRef.current) {
         clearTimeout(transitionTimerRef.current);
+      }
+      if (pointerRafRef.current !== null && typeof cancelAnimationFrame === 'function') {
+        cancelAnimationFrame(pointerRafRef.current);
       }
     };
   }, []);
@@ -144,17 +187,53 @@ export function CinematicHeroSlider({
     return () => clearTimeout(timer);
   }, [autoPlayEnabled, slideCount, pauseOnHover, isHovered, slideIntervalSec, goToSlide]);
 
-  // Silently warm browser cache for the upcoming slide so transitions feel instantaneous
+  // Silently prime next slide artwork into browser cache for seamless 3D transitions
   useEffect(() => {
     if (slideCount <= 1 || typeof window === 'undefined') return;
     const upcoming = slides[(safeActiveIndex + 1) % slideCount];
     if (!upcoming) return;
-    const { src } = resolveCinematicSlideArtwork(upcoming);
+    const { src } = resolveCinematicSlideArtwork(upcoming, isMobilePortrait);
     if (!src) return;
     const img = new window.Image();
     img.referrerPolicy = 'no-referrer';
     img.src = src;
-  }, [slides, slideCount, safeActiveIndex]);
+  }, [slides, slideCount, safeActiveIndex, isMobilePortrait]);
+
+  const resetPointerTilt = useCallback(() => {
+    const el = sliderSectionRef.current;
+    if (!el) return;
+    el.style.setProperty('--rtv-tilt-x', '0deg');
+    el.style.setProperty('--rtv-tilt-y', '0deg');
+    el.style.setProperty('--rtv-par-x', '0px');
+    el.style.setProperty('--rtv-par-y', '0px');
+  }, []);
+
+  const handleMouseMove = (event: MouseEvent<HTMLElement>) => {
+    if (isMobilePortrait || typeof window === 'undefined') return;
+    if (
+      window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ||
+      document.documentElement.dataset.rtvLowSpec === 'true'
+    ) {
+      return;
+    }
+    const el = sliderSectionRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+
+    const normX = (event.clientX - rect.left) / rect.width - 0.5;
+    const normY = (event.clientY - rect.top) / rect.height - 0.5;
+
+    if (pointerRafRef.current !== null) {
+      cancelAnimationFrame(pointerRafRef.current);
+    }
+    pointerRafRef.current = requestAnimationFrame(() => {
+      el.style.setProperty('--rtv-tilt-x', `${(-normY * 2.2).toFixed(2)}deg`);
+      el.style.setProperty('--rtv-tilt-y', `${(normX * 2.8).toFixed(2)}deg`);
+      el.style.setProperty('--rtv-par-x', `${(-normX * 14).toFixed(1)}px`);
+      el.style.setProperty('--rtv-par-y', `${(-normY * 9).toFixed(1)}px`);
+    });
+  };
 
   if (slideCount === 0) return null;
 
@@ -219,7 +298,7 @@ export function CinematicHeroSlider({
     keySuffix: string,
     isPrimary: boolean
   ) => {
-    const { src, fallbackSrc } = resolveCinematicSlideArtwork(item);
+    const { src, fallbackSrc } = resolveCinematicSlideArtwork(item, isMobilePortrait);
     const title = resolveDisplayTitle(item);
     const hasArabic = ARABIC_CHAR_REGEX.test(title);
 
@@ -229,36 +308,42 @@ export function CinematicHeroSlider({
         className={`rtv-cinematic-slide ${roleClass}`}
         aria-hidden={!isPrimary}
       >
-        <div className="rtv-cinematic-media-frame">
-          <OptimizedImage
-            src={src}
-            fallbackSrc={fallbackSrc}
-            alt={title}
-            slot="slider_backdrop"
-            priority
-            disablePlaceholder
-            className="rtv-cinematic-img-shell"
-            imgClassName="rtv-cinematic-img"
-            sizes="100vw"
-          />
-        </div>
-
-        <div className="rtv-cinematic-scrim" aria-hidden="true" />
-
-        {title && (
-          <div className="rtv-cinematic-title-layer">
-            <div className="rtv-cinematic-title-mask">
-              <h2
-                className={`rtv-cinematic-title ${
-                  hasArabic ? 'rtv-cinematic-title--arabic' : 'rtv-cinematic-title--latin'
-                }`}
-                dir="auto"
-              >
-                {title}
-              </h2>
+        <div className="rtv-cinematic-tilt-plane">
+          <div className="rtv-cinematic-media-frame">
+            <div className="rtv-cinematic-img-parallax">
+              <OptimizedImage
+                src={src}
+                fallbackSrc={fallbackSrc}
+                alt={title}
+                slot={isMobilePortrait ? 'detail_poster' : 'slider_backdrop'}
+                priority
+                disablePlaceholder
+                className="rtv-cinematic-img-shell"
+                imgClassName="rtv-cinematic-img"
+                sizes="100vw"
+              />
             </div>
           </div>
-        )}
+
+          <div className="rtv-cinematic-scrim" aria-hidden="true" />
+
+          {title && (
+            <div className="rtv-cinematic-title-layer">
+              <div className="rtv-cinematic-title-mask">
+                <h2
+                  className={`rtv-cinematic-title ${
+                    hasArabic
+                      ? 'rtv-cinematic-title--arabic'
+                      : 'rtv-cinematic-title--latin'
+                  }`}
+                  dir="auto"
+                >
+                  {title}
+                </h2>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     );
   };
@@ -277,14 +362,21 @@ export function CinematicHeroSlider({
 
   return (
     <section
+      ref={sliderSectionRef}
       className="rtv-cinematic-slider"
       aria-roledescription="carousel"
-      aria-label="السلايدر السينمائي"
+      aria-label="السلايدر السينمائي ثلاثي الأبعاد"
       onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
+      onMouseMove={handleMouseMove}
+      onMouseLeave={() => {
+        setIsHovered(false);
+        resetPointerTilt();
+      }}
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
     >
+      <div className="rtv-cinematic-ambient" aria-hidden="true" />
+
       <div
         className="rtv-cinematic-stage"
         role="link"

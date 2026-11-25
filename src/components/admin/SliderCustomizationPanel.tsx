@@ -316,7 +316,7 @@ export function SliderCustomizationPanel({
               )}
             </div>
             <p className="text-xs text-[#b7c9ef] leading-relaxed">
-              تصميم سينمائي هادئ يعرض صورة العمل كاملة واسم الفيلم فقط في المنتصف السفلي بحركة انسيابية متزامنة، بدون أي أزرار أو تفاصيل إضافية.
+              تصميم سينمائي فاخر ثلاثي الأبعاد (Premium 3D) بعمق بصري وParallax وحركة Zoom ناعمة ولمسة إضاءة حمراء، يعرض الصورة واسم العمل فقط بدون أي أزرار.
             </p>
           </button>
         </div>
@@ -384,24 +384,31 @@ export function SliderCustomizationPanel({
         {/* Isolated Cinema Site Preview */}
         {heroSliderVariant === 'cinematic' ? (
           <div
-            className={`rtv-site-preview mx-auto rounded-2xl overflow-hidden border border-white/15 bg-[#09090b] relative transition-all ${
-              previewDevice === 'mobile' ? 'max-w-[360px] h-[420px]' : 'w-full h-[380px]'
+            className={`rtv-site-preview mx-auto rounded-2xl overflow-hidden border border-white/15 bg-[#08080a] relative transition-all ${
+              previewDevice === 'mobile' ? 'max-w-[360px] h-[440px]' : 'w-full h-[390px]'
             }`}
           >
             {activeSlide && (
               <img
-                src={optimizeTmdbUrl(activeSlide.backdrop || activeSlide.poster, 'w780')}
+                src={optimizeTmdbUrl(
+                  previewDevice === 'mobile'
+                    ? activeSlide.poster || activeSlide.backdrop
+                    : activeSlide.backdrop || activeSlide.poster,
+                  'w780'
+                )}
                 alt={activeSlide.title}
                 loading="lazy"
                 decoding="async"
-                className="pointer-events-none absolute inset-0 h-full w-full object-cover object-[50%_22%]"
+                className={`pointer-events-none absolute inset-0 h-full w-full object-cover scale-[1.03] ${
+                  previewDevice === 'mobile' ? 'object-[50%_18%]' : 'object-[50%_22%]'
+                }`}
               />
             )}
             <div
               className="pointer-events-none absolute inset-0"
               style={{
                 background:
-                  'linear-gradient(to top, #0f0f0f 0%, rgba(11,11,12,0.88) 14%, rgba(8,8,10,0.48) 32%, transparent 72%)',
+                  'linear-gradient(to bottom, rgba(8,8,10,0.48) 0%, transparent 32%), linear-gradient(to top, #0f0f0f 0%, rgba(12,12,14,0.9) 14%, rgba(10,10,12,0.52) 30%, transparent 72%), radial-gradient(ellipse 56% 24% at 50% 90%, rgba(229,9,20,0.14) 0%, transparent 78%), radial-gradient(ellipse 90% 78% at 50% 42%, transparent 54%, rgba(0,0,0,0.44) 100%)',
               }}
             />
             <div className="pointer-events-none absolute inset-x-0 bottom-6 z-10 flex justify-center px-6">
@@ -414,7 +421,7 @@ export function SliderCustomizationPanel({
                     className={`text-center font-bold text-white drop-shadow ${
                       isArabic
                         ? 'font-display text-sm sm:text-base tracking-normal'
-                        : 'font-latin uppercase text-xs sm:text-sm tracking-[0.28em]'
+                        : 'font-latin uppercase text-xs sm:text-sm tracking-[0.3em]'
                     }`}
                   >
                     {title}
