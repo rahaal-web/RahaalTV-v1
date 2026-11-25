@@ -37,7 +37,7 @@ interface SliderCustomizationPanelProps {
   isOwner?: boolean;
   onGetAuthToken?: () => Promise<string | undefined>;
   onSaveHomeConfig: (next: HomeLayoutConfig) => Promise<void>;
-  onSaveHeroSliderVariant?: (variant: HeroSliderVariant) => Promise<void> | void;
+  onSaveHeroSliderVariant?: (variant: HeroSliderVariant) => Promise<boolean | void> | boolean | void;
   onNotify: (msg: string) => void;
 }
 
@@ -128,15 +128,16 @@ export function SliderCustomizationPanel({
   const [previewSlideIdx, setPreviewSlideIdx] = useState(0);
   const [saving, setSaving] = useState(false);
 
-  const handleSelectSliderVariant = (variant: HeroSliderVariant) => {
+  const handleSelectSliderVariant = async (variant: HeroSliderVariant) => {
     setHeroSliderVariant(variant);
-    void onSaveHeroSliderVariant?.(variant);
+    const synced = await onSaveHeroSliderVariant?.(variant);
+    if (synced === false) return;
     onNotify(
       variant === 'cinematic'
-        ? 'تم تفعيل السلايدر السينمائي 3D (Cinematic Slider) على الرئيسية فوراً'
+        ? 'تم تفعيل السلايدر السينمائي 3D (Cinematic Slider) على الرئيسية ومزامنته لجميع الأجهزة فوراً'
         : variant === 'stream_v4'
-          ? 'تم تفعيل السلايدر الرابع (Cinema Logo Hero) بألوان وهوية الموقع فوراً'
-          : 'تم الرجوع إلى السلايدر الأساسي (Original Slider) كما هو تماماً'
+          ? 'تم تفعيل السلايدر الرابع (Cinema Logo Hero) بألوان وهوية الموقع ومزامنته لجميع الأجهزة فوراً'
+          : 'تم الرجوع إلى السلايدر الأساسي (Original Slider) ومزامنته لجميع الأجهزة'
     );
   };
 

@@ -1,12 +1,12 @@
 {
-  "projectId": "rahaal-8e5f1",
-  "appId": "1:382846528780:web:c915f718ca065facbbad29",
-  "apiKey": "AIzaSyCHoW0WmPdu4z4DMs8dgtpf95fWQZ9OhDs",
-  "authDomain": "rahaal-8e5f1.firebaseapp.com",
+  "projectId": "rahaaltv-v1",
+  "appId": "1:1046117254330:web:9c255dd2316917a224ae83",
+  "apiKey": "AIzaSyDbrltIt0h72oOlT65FW5_Cv3EA6eG-8fg",
+  "authDomain": "rahaaltv-v1.firebaseapp.com",
   "firestoreDatabaseId": "(default)",
-  "storageBucket": "rahaal-8e5f1.firebasestorage.app",
-  "messagingSenderId": "382846528780",
-  "measurementId": "G-Q4ZXTWJ6EV",
+  "storageBucket": "rahaaltv-v1.firebasestorage.app",
+  "messagingSenderId": "1046117254330",
+  "measurementId": "G-S8FV97NR80",
   "oAuthClientId": "",
   "recaptchaSiteKey": ""
 }

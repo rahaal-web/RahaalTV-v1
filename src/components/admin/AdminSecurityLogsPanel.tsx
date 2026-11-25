@@ -81,10 +81,12 @@ export function AdminSecurityLogsPanel({
           report.result.rejectedSections.length === 0 &&
           report.syncedImagePlaceholdersToCloud &&
           report.recentlyWatchedReady &&
-          report.recentlyWatchedUiReady;
+          report.recentlyWatchedUiReady &&
+          report.heroSliderModeReady &&
+          report.streamV4SliderReady;
         if (allSynced) {
           onNotify(
-            'قواعد firestore.rules المنشورة مطابقة بالكامل لجميع أقسام الإعدادات والخلفيات المؤقتة وسجل وشريط شاهدته مؤخراً!'
+            'قواعد firestore.rules المنشورة مطابقة بالكامل لجميع أقسام الإعدادات والسلايدر الرابع وشريط شاهدته مؤخراً!'
           );
         } else if (report.outdatedRulesDetected) {
           onNotify(
@@ -96,6 +98,8 @@ export function AdminSecurityLogsPanel({
             ...(!report.syncedImagePlaceholdersToCloud ? ['settings/image_placeholders'] : []),
             ...(!report.recentlyWatchedReady ? ['recently_watched'] : []),
             ...(!report.recentlyWatchedUiReady ? ['settings/recently_watched_ui'] : []),
+            ...(!report.heroSliderModeReady ? ['settings/hero_slider_mode'] : []),
+            ...(!report.streamV4SliderReady ? ['settings/stream_v4_slider'] : []),
           ];
           onNotify(
             `بعض الأقسام مرفوضة من قواعد Firebase (${missingList.join(', ')}) — راجع نتيجة الفحص أدناه.`
@@ -132,7 +136,9 @@ export function AdminSecurityLogsPanel({
       diagnosticReport.result.rejectedSections.length === 0 &&
       diagnosticReport.syncedImagePlaceholdersToCloud &&
       diagnosticReport.recentlyWatchedReady &&
-      diagnosticReport.recentlyWatchedUiReady;
+      diagnosticReport.recentlyWatchedUiReady &&
+      diagnosticReport.heroSliderModeReady &&
+      diagnosticReport.streamV4SliderReady;
 
     return (
       <div className="space-y-6">
@@ -308,6 +314,22 @@ export function AdminSecurityLogsPanel({
                             : `مرفوض (${diagnosticReport.recentlyWatchedUiErrorCode || 'permission-denied'})`,
                           ok: diagnosticReport.recentlyWatchedUiReady,
                         },
+                        {
+                          key: 'heroSliderMode',
+                          label: 'نمط السلايدر النشط (Hero Mode)',
+                          sub: diagnosticReport.heroSliderModeReady
+                            ? 'settings/hero_slider_mode جاهز'
+                            : `مرفوض (${diagnosticReport.heroSliderModeErrorCode || 'permission-denied'})`,
+                          ok: diagnosticReport.heroSliderModeReady,
+                        },
+                        {
+                          key: 'streamV4Slider',
+                          label: 'إعدادات السلايدر الرابع (Stream V4)',
+                          sub: diagnosticReport.streamV4SliderReady
+                            ? 'settings/stream_v4_slider جاهز'
+                            : `مرفوض (${diagnosticReport.streamV4SliderErrorCode || 'permission-denied'})`,
+                          ok: diagnosticReport.streamV4SliderReady,
+                        },
                       ] as Array<{ key: string; label: string; sub?: string; ok: boolean }>
                     ).map((row) => (
                       <div
@@ -400,11 +422,15 @@ export function AdminSecurityLogsPanel({
                       <p className="text-[11px] leading-relaxed">
                         {!diagnosticReport.syncedImagePlaceholdersToCloud ||
                         !diagnosticReport.recentlyWatchedReady ||
-                        !diagnosticReport.recentlyWatchedUiReady
+                        !diagnosticReport.recentlyWatchedUiReady ||
+                        !diagnosticReport.heroSliderModeReady ||
+                        !diagnosticReport.streamV4SliderReady
                           ? `القواعد المنشورة على Firebase حالياً تسمح بالإعدادات الأساسية، لكنها ما زالت تحتاج نشر التحديث الأخير لـ (${[
                               !diagnosticReport.syncedImagePlaceholdersToCloud ? 'settings/image_placeholders' : '',
                               !diagnosticReport.recentlyWatchedReady ? 'recently_watched' : '',
                               !diagnosticReport.recentlyWatchedUiReady ? 'settings/recently_watched_ui' : '',
+                              !diagnosticReport.heroSliderModeReady ? 'settings/hero_slider_mode' : '',
+                              !diagnosticReport.streamV4SliderReady ? 'settings/stream_v4_slider' : '',
                             ]
                               .filter(Boolean)
                               .join(' و ')}) — انسخ النص الكامل الحالي (${rulesLineCount} سطراً) واضغط Publish في Firebase Console.`

@@ -284,7 +284,7 @@ export function loadDatabaseRegistry(): DatabaseConnectionRegistryState {
         ? parsed.previousConnectionId
         : null;
 
-    const state: DatabaseConnectionRegistryState = {
+    const rawState: DatabaseConnectionRegistryState = {
       version: 1,
       activeConnectionId,
       previousConnectionId,
@@ -302,6 +302,10 @@ export function loadDatabaseRegistry(): DatabaseConnectionRegistryState {
         : [],
       profiles: normalizedProfiles,
     };
+    const { state, changed } = consolidateBuiltInDuplicates(rawState);
+    if (changed) {
+      return saveDatabaseRegistry(state);
+    }
     inMemoryRegistry = state;
     return state;
   } catch {
@@ -1259,6 +1263,36 @@ export function createOrUpdateConnectionProfile(
     lastStatusMessage: 'تم تعديل البيانات — يُرجى إعادة اختبار الاتصال.',
   });
 
+  const builtInFp = getFirebaseTargetFingerprint(buildDefaultBuiltInProfile());
+  if (
+    normalized.id !== BUILTIN_DEFAULT_CONNECTION_ID &&
+    builtInFp &&
+    getFirebaseTargetFingerprint(normalized) === builtInFp
+  ) {
+    const builtInProfile =
+      reg.profiles.find((p) => p.id === BUILTIN_DEFAULT_CONNECTION_ID) ||
+      buildDefaultBuiltInProfile();
+    const { state: consolidated } = consolidateBuiltInDuplicates({
+      ...reg,
+      updatedAtMs: Date.now(),
+      profiles: reg.profiles.filter((p) => p.id !== normalized.id),
+    });
+    const nextReg = saveDatabaseRegistry(consolidated);
+    const finalBuiltIn =
+      nextReg.profiles.find((p) => p.id === BUILTIN_DEFAULT_CONNECTION_ID) || builtInProfile;
+    appendDatabaseConnectionLog({
+      event: 'update',
+      connectionId: finalBuiltIn.id,
+      connectionName: finalBuiltIn.name,
+      status: 'info',
+      actorUid: actor?.uid,
+      actorName: actor?.name,
+      message: 'تم توحيد الاتصال مع قاعدة البيانات الرئيسية المدمجة لمنع التكرار.',
+    });
+    notifyRegistryChanged();
+    return { registry: nextReg, profile: finalBuiltIn, isNew: false };
+  }
+
   const nextProfiles = [...reg.profiles];
   if (isNew) {
     nextProfiles.push(normalized);
@@ -2025,11 +2059,91 @@ function parseIsoMs(iso?: string): number {
   return Number.isFinite(ms) ? ms : 0;
 }
 
+function mergeBuiltInHealthFromDuplicate(
+  builtIn: DatabaseConnectionProfile,
+  dup: DatabaseConnectionProfile
+): DatabaseConnectionProfile {
+  const dupTestedMs = parseIsoMs(dup.lastTestedAt);
+  const builtInTestedMs = parseIsoMs(builtIn.lastTestedAt);
+  if (
+    dup.lastStatus === 'connected' &&
+    (builtIn.lastStatus !== 'connected' || dupTestedMs > builtInTestedMs)
+  ) {
+    return {
+      ...builtIn,
+      lastStatus: dup.lastStatus,
+      lastStatusMessage: dup.lastStatusMessage,
+      lastLatencyMs: dup.lastLatencyMs,
+      lastConnectedAt: dup.lastConnectedAt,
+      lastTestedAt: dup.lastTestedAt,
+    };
+  }
+  return builtIn;
+}
+
+export function consolidateBuiltInDuplicates(
+  state: DatabaseConnectionRegistryState
+): { state: DatabaseConnectionRegistryState; changed: boolean } {
+  const builtInDefault = buildDefaultBuiltInProfile();
+  const builtInFp = getFirebaseTargetFingerprint(builtInDefault);
+  if (!builtInFp) return { state, changed: false };
+
+  let builtInEntry =
+    state.profiles.find((p) => p.id === BUILTIN_DEFAULT_CONNECTION_ID) || builtInDefault;
+  const duplicateIds = new Set<string>();
+  const keptProfiles: DatabaseConnectionProfile[] = [];
+
+  for (const rawProf of state.profiles) {
+    const prof = normalizeConnectionProfile(rawProf);
+    if (prof.id === BUILTIN_DEFAULT_CONNECTION_ID) {
+      continue;
+    }
+    if (getFirebaseTargetFingerprint(prof) === builtInFp) {
+      duplicateIds.add(prof.id);
+      builtInEntry = mergeBuiltInHealthFromDuplicate(builtInEntry, prof);
+      continue;
+    }
+    keptProfiles.push(prof);
+  }
+
+  if (duplicateIds.size === 0) {
+    return { state, changed: false };
+  }
+
+  const remap = (id: string | null | undefined, fallback: string): string => {
+    if (!id) return fallback;
+    return duplicateIds.has(id) ? BUILTIN_DEFAULT_CONNECTION_ID : id;
+  };
+
+  const activeConnectionId = remap(state.activeConnectionId, BUILTIN_DEFAULT_CONNECTION_ID);
+  const defaultConnectionId = remap(state.defaultConnectionId, BUILTIN_DEFAULT_CONNECTION_ID);
+  const lastGoodConnectionId = remap(state.lastGoodConnectionId, activeConnectionId);
+  const rawPrev = state.previousConnectionId ? remap(state.previousConnectionId, '') : null;
+  const previousConnectionId =
+    rawPrev && rawPrev !== activeConnectionId ? rawPrev : null;
+
+  return {
+    changed: true,
+    state: {
+      ...state,
+      activeConnectionId,
+      defaultConnectionId,
+      lastGoodConnectionId,
+      previousConnectionId,
+      deletedProfileIds: (state.deletedProfileIds || []).filter(
+        (id) => !duplicateIds.has(id) && id !== BUILTIN_DEFAULT_CONNECTION_ID
+      ),
+      profiles: [builtInEntry, ...keptProfiles],
+    },
+  };
+}
+
 export function mergeRemoteDatabaseRegistry(
   local: DatabaseConnectionRegistryState,
   remoteRaw: Partial<DatabaseConnectionRegistryState>
 ): DatabaseConnectionRegistryState {
-  const builtIn = buildDefaultBuiltInProfile();
+  let builtIn = buildDefaultBuiltInProfile();
+  const builtInFp = getFirebaseTargetFingerprint(builtIn);
   const remoteProfiles = (Array.isArray(remoteRaw.profiles) ? remoteRaw.profiles : []).map((p) =>
     normalizeConnectionProfile(p)
   );
@@ -2050,24 +2164,45 @@ export function mergeRemoteDatabaseRegistry(
   );
 
   const byId = new Map<string, DatabaseConnectionProfile>();
+  const idRemap = new Map<string, string>();
+  const localBuiltIn = local.profiles.find((p) => p.id === BUILTIN_DEFAULT_CONNECTION_ID);
+  if (localBuiltIn) {
+    builtIn = mergeBuiltInHealthFromDuplicate(builtIn, normalizeConnectionProfile(localBuiltIn));
+  }
   byId.set(BUILTIN_DEFAULT_CONNECTION_ID, builtIn);
 
   const localCustomByFingerprint = new Map<string, DatabaseConnectionProfile>();
   for (const lp of local.profiles) {
     const norm = normalizeConnectionProfile(lp);
     if (norm.id === BUILTIN_DEFAULT_CONNECTION_ID) continue;
+    const fp = getFirebaseTargetFingerprint(norm);
+    if (builtInFp && fp === builtInFp) {
+      builtIn = mergeBuiltInHealthFromDuplicate(builtIn, norm);
+      byId.set(BUILTIN_DEFAULT_CONNECTION_ID, builtIn);
+      idRemap.set(norm.id, BUILTIN_DEFAULT_CONNECTION_ID);
+      continue;
+    }
     const lpUpdatedMs = parseIsoMs(norm.updatedAt);
     if (remoteDeleted.has(norm.id) && remoteUpdatedAtMs >= lpUpdatedMs) {
       continue;
     }
     byId.set(norm.id, norm);
-    const fp = getFirebaseTargetFingerprint(norm);
     if (fp) localCustomByFingerprint.set(fp, norm);
   }
 
-  const idRemap = new Map<string, string>();
   for (const rp of remoteProfiles) {
-    if (rp.id === BUILTIN_DEFAULT_CONNECTION_ID) continue;
+    if (rp.id === BUILTIN_DEFAULT_CONNECTION_ID) {
+      builtIn = mergeBuiltInHealthFromDuplicate(builtIn, rp);
+      byId.set(BUILTIN_DEFAULT_CONNECTION_ID, builtIn);
+      continue;
+    }
+    const fp = getFirebaseTargetFingerprint(rp);
+    if (builtInFp && fp === builtInFp) {
+      builtIn = mergeBuiltInHealthFromDuplicate(builtIn, rp);
+      byId.set(BUILTIN_DEFAULT_CONNECTION_ID, builtIn);
+      idRemap.set(rp.id, BUILTIN_DEFAULT_CONNECTION_ID);
+      continue;
+    }
     const rpUpdatedMs = parseIsoMs(rp.updatedAt);
     if (localDeleted.has(rp.id) && localUpdatedAtMs > remoteUpdatedAtMs && localUpdatedAtMs > rpUpdatedMs) {
       continue;
@@ -2081,7 +2216,6 @@ export function mergeRemoteDatabaseRegistry(
     }
 
     // Deduplicate if user manually added the exact same Firebase project on another device
-    const fp = getFirebaseTargetFingerprint(rp);
     const dupLocal = fp ? localCustomByFingerprint.get(fp) : undefined;
     if (dupLocal) {
       const dupUpdatedMs = parseIsoMs(dupLocal.updatedAt);
@@ -2132,7 +2266,7 @@ export function mergeRemoteDatabaseRegistry(
   const mergedDeleted = Array.from(
     new Set([...(local.deletedProfileIds || []), ...(remoteRaw.deletedProfileIds || [])])
   )
-    .filter((id) => !validIds.has(id) && id !== BUILTIN_DEFAULT_CONNECTION_ID)
+    .filter((id) => !validIds.has(id) && id !== BUILTIN_DEFAULT_CONNECTION_ID && !idRemap.has(id))
     .slice(-40);
 
   return {
@@ -2189,13 +2323,22 @@ export function applyRemoteActiveDatabasePointer(
     return { switched: false };
   }
 
-  const candidate = normalizeConnectionProfile({
+  const rawCandidate = normalizeConnectionProfile({
     id: pointerRaw.connectionId,
     name: pointerRaw.connectionName || 'قاعدة البيانات النشطة',
     providerType: 'firebase_firestore',
     isBuiltIn: pointerRaw.connectionId === BUILTIN_DEFAULT_CONNECTION_ID,
     firebaseConfig: pointerRaw.firebaseConfig,
   });
+
+  const builtInProfile = buildDefaultBuiltInProfile();
+  const builtInFp = getFirebaseTargetFingerprint(builtInProfile);
+  const candidate =
+    rawCandidate.id !== BUILTIN_DEFAULT_CONNECTION_ID &&
+    builtInFp &&
+    getFirebaseTargetFingerprint(rawCandidate) === builtInFp
+      ? builtInProfile
+      : rawCandidate;
 
   const validation = validateConnectionProfile(candidate);
   if (!validation.valid) {
@@ -2232,7 +2375,7 @@ export function applyRemoteActiveDatabasePointer(
     nextProfiles.splice(0, nextProfiles.length, ...filtered);
   }
 
-  saveDatabaseRegistry({
+  const { state: consolidated } = consolidateBuiltInDuplicates({
     ...reg,
     previousConnectionId:
       reg.activeConnectionId && reg.activeConnectionId !== candidate.id
@@ -2242,6 +2385,7 @@ export function applyRemoteActiveDatabasePointer(
     lastGoodConnectionId: candidate.id,
     profiles: nextProfiles,
   });
+  saveDatabaseRegistry(consolidated);
   notifyActiveDatabaseSwitched();
   return { switched: true, profile: candidate };
 }

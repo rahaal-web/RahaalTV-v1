@@ -1,7 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { normalizeHeroSliderVariant } from '../src/lib/heroSliderMode';
-import { sanitizeStreamV4SliderConfigForFirestore } from '../src/lib/streamV4SliderConfig';
+import {
+  countDroppedStreamV4Logos,
+  sanitizeStreamV4SliderConfigForFirestore,
+} from '../src/lib/streamV4SliderConfig';
 import {
   DEFAULT_MODERATOR_SUB_PERMS,
   normalizeModeratorSubPermissions,
@@ -98,3 +101,24 @@ test('normalizeModeratorSubPermissions enforces strict 7-key boolean normalizati
   assert.equal(Object.keys(normalized).length, 7);
   assert.equal('extraUnknownKey' in normalized, false);
 });
+
+test('countDroppedStreamV4Logos reports 0 for valid compact logos and flags oversized ones', () => {
+  assert.equal(
+    countDroppedStreamV4Logos({
+      titleLogos: {
+        m1: 'data:image/webp;base64,' + 'A'.repeat(12000),
+        m2: 'https://cdn.example.com/logo.png',
+      },
+    }),
+    0
+  );
+  assert.equal(
+    countDroppedStreamV4Logos({
+      titleLogos: {
+        m1: 'data:image/png;base64,' + 'A'.repeat(260000),
+      },
+    }),
+    1
+  );
+});
+

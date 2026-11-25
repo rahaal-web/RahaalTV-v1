@@ -61,7 +61,7 @@ interface HomeBuilderPanelProps {
   onOpenTypographyTab?: () => void;
   onOpenSliderCustomization?: () => void;
   onOpenCardsAndThemesTab?: () => void;
-  onSaveHeroSliderVariant?: (variant: HeroSliderVariant) => Promise<void> | void;
+  onSaveHeroSliderVariant?: (variant: HeroSliderVariant) => Promise<boolean | void> | boolean | void;
   onNotify: (msg: string) => void;
 }
 
@@ -442,15 +442,16 @@ export function HomeBuilderPanel({
                 <button
                   key={styleOpt.id}
                   type="button"
-                  onClick={() => {
+                  onClick={async () => {
                     setHeroSliderVariant(styleOpt.id);
-                    void onSaveHeroSliderVariant?.(styleOpt.id);
+                    const synced = await onSaveHeroSliderVariant?.(styleOpt.id);
+                    if (synced === false) return;
                     onNotify(
                       styleOpt.id === 'cinematic'
-                        ? 'تم التبديل إلى السلايدر السينمائي 3D'
+                        ? 'تم التبديل إلى السلايدر السينمائي 3D ومزامنته لجميع الأجهزة'
                         : styleOpt.id === 'stream_v4'
-                          ? 'تم التبديل إلى السلايدر الرابع (Cinema V4)'
-                          : 'تم الرجوع إلى السلايدر الأساسي'
+                          ? 'تم التبديل إلى السلايدر الرابع (Cinema V4) ومزامنته لجميع الأجهزة'
+                          : 'تم الرجوع إلى السلايدر الأساسي ومزامنته لجميع الأجهزة'
                     );
                   }}
                   className={`rounded-xl border px-3 py-2 text-xs font-extrabold transition-colors cursor-pointer text-right flex items-center justify-between gap-2 ${

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { shouldSkipBackendApiCalls } from './clientScraper';
 import { sanitizeSvgContent } from './imageCompressor';
 
 export type StreamV4ColorMode = 'site_theme' | 'custom';
@@ -495,6 +496,9 @@ export function useStreamV4SliderConfig(): [
   return [config, updateConfig, resetConfig];
 }
 
+const MAX_COMPACT_LOGO_DATA_URL_CHARS = 210000;
+const FIRESTORE_LOGO_URL_LIMIT_CHARS = 250000;
+
 async function encodeTransparentLogoDataUrl(file: File): Promise<string> {
   const mime = (file.type || '').toLowerCase();
   const isSvg = mime.includes('svg') || file.name.toLowerCase().endsWith('.svg');
@@ -503,6 +507,21 @@ async function encodeTransparentLogoDataUrl(file: File): Promise<string> {
     const rawSvg = await file.text();
     const cleanSvg = sanitizeSvgContent(rawSvg);
     return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(cleanSvg)}`;
+  }
+
+  if (
+    file.size <= 145 * 1024 &&
+    (mime === 'image/png' || mime === 'image/webp')
+  ) {
+    const directDataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ''));
+      reader.onerror = () => reject(new Error('تعذر قراءة بيانات ملف PNG.'));
+      reader.readAsDataURL(file);
+    });
+    if (directDataUrl.length <= MAX_COMPACT_LOGO_DATA_URL_CHARS) {
+      return directDataUrl;
+    }
   }
 
   const objectUrl = URL.createObjectURL(file);
@@ -514,50 +533,62 @@ async function encodeTransparentLogoDataUrl(file: File): Promise<string> {
       el.src = objectUrl;
     });
 
-    const maxW = 720;
-    const maxH = 280;
     const srcW = img.naturalWidth || 360;
     const srcH = img.naturalHeight || 140;
-    const scale = Math.min(maxW / srcW, maxH / srcH, 1);
-    const targetW = Math.max(1, Math.round(srcW * scale));
-    const targetH = Math.max(1, Math.round(srcH * scale));
+    const dimensionCandidates: Array<[number, number]> = [
+      [720, 280],
+      [560, 220],
+      [440, 172],
+      [340, 134],
+      [260, 104],
+    ];
 
-    if (
-      scale >= 0.99 &&
-      file.size <= 220 * 1024 &&
-      (mime === 'image/png' || mime === 'image/webp')
-    ) {
-      return await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result || ''));
-        reader.onerror = () => reject(new Error('تعذر قراءة بيانات ملف PNG.'));
-        reader.readAsDataURL(file);
-      });
+    let smallestCandidate = '';
+    for (const [maxW, maxH] of dimensionCandidates) {
+      const scale = Math.min(maxW / srcW, maxH / srcH, 1);
+      const targetW = Math.max(1, Math.round(srcW * scale));
+      const targetH = Math.max(1, Math.round(srcH * scale));
+
+      const canvas = document.createElement('canvas');
+      canvas.width = targetW;
+      canvas.height = targetH;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('متصفحك لا يدعم معالجة الصور.');
+      ctx.clearRect(0, 0, targetW, targetH);
+      ctx.drawImage(img, 0, 0, targetW, targetH);
+
+      const pngData = canvas.toDataURL('image/png');
+      if (!smallestCandidate || pngData.length < smallestCandidate.length) {
+        smallestCandidate = pngData;
+      }
+      if (pngData.length <= MAX_COMPACT_LOGO_DATA_URL_CHARS) {
+        return pngData;
+      }
+
+      for (const quality of [0.9, 0.8, 0.7]) {
+        const webpData = canvas.toDataURL('image/webp', quality);
+        if (webpData.startsWith('data:image/webp')) {
+          if (webpData.length < smallestCandidate.length) {
+            smallestCandidate = webpData;
+          }
+          if (webpData.length <= MAX_COMPACT_LOGO_DATA_URL_CHARS) {
+            return webpData;
+          }
+        }
+      }
     }
 
-    const canvas = document.createElement('canvas');
-    canvas.width = targetW;
-    canvas.height = targetH;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) throw new Error('متصفحك لا يدعم معالجة الصور.');
-    ctx.clearRect(0, 0, targetW, targetH);
-    ctx.drawImage(img, 0, 0, targetW, targetH);
-
-    const pngData = canvas.toDataURL('image/png');
-    const webpData = canvas.toDataURL('image/webp', 0.92);
-    if (webpData.startsWith('data:image/webp') && webpData.length < pngData.length) {
-      return webpData;
-    }
-    return pngData;
+    return smallestCandidate;
   } finally {
     URL.revokeObjectURL(objectUrl);
   }
 }
 
 /**
- * Processes an uploaded transparent PNG/WebP/SVG title logo for the 4th Slider,
- * uploads it to `/api/images/upload` (`slot: 'logo'`) when an authenticated token
- * is available for persistent server hosting, or falls back to compact local data URL.
+ * Processes an uploaded transparent PNG/WebP/SVG title logo for the 4th Slider.
+ * Compact logos (<= 210KB data URL) are stored self-contained directly in Firestore
+ * so PC, mobile, and hosted deployments all render them without depending on ephemeral
+ * local server uploads; larger images fall back to `/api/images/upload` when reachable.
  */
 export async function uploadTransparentSliderPng(
   file: File,
@@ -565,7 +596,16 @@ export async function uploadTransparentSliderPng(
 ): Promise<{ url: string; storage: 'server' | 'local' }> {
   const dataUrl = await encodeTransparentLogoDataUrl(file);
 
-  if (idToken && dataUrl.startsWith('data:image/') && !dataUrl.startsWith('data:image/svg+xml;charset=')) {
+  if (dataUrl.length <= MAX_COMPACT_LOGO_DATA_URL_CHARS) {
+    return { url: dataUrl, storage: 'local' };
+  }
+
+  if (
+    idToken &&
+    !shouldSkipBackendApiCalls() &&
+    dataUrl.startsWith('data:image/') &&
+    !dataUrl.startsWith('data:image/svg+xml;charset=')
+  ) {
     try {
       const res = await fetch('/api/images/upload', {
         method: 'POST',
@@ -585,8 +625,14 @@ export async function uploadTransparentSliderPng(
         }
       }
     } catch {
-      // Graceful fallback to local compact transparent dataUrl
+      // Graceful fallback check below
     }
+  }
+
+  if (dataUrl.length > FIRESTORE_LOGO_URL_LIMIT_CHARS) {
+    throw new Error(
+      'حجم شعار PNG كبير جداً للمزامنة السحابية عبر الأجهزة — استخدم صورة أقل حجماً أو رابطاً مباشراً.'
+    );
   }
 
   return { url: dataUrl, storage: 'local' };
@@ -602,7 +648,7 @@ export function sanitizeStreamV4SliderConfigForFirestore(
     if (Object.keys(titleLogos).length >= 60) break;
     const cleanId = id.trim().slice(0, 128);
     const cleanUrl = url.trim();
-    if (!cleanId || !cleanUrl || cleanUrl.length > 250000) continue;
+    if (!cleanId || !cleanUrl || cleanUrl.length > FIRESTORE_LOGO_URL_LIMIT_CHARS) continue;
     if (totalChars + cleanUrl.length > 750000) break;
     titleLogos[cleanId] = cleanUrl;
     totalChars += cleanUrl.length;
@@ -624,4 +670,16 @@ export function sanitizeStreamV4SliderConfigForFirestore(
     slideDurations,
   };
 }
+
+export function countDroppedStreamV4Logos(
+  raw: Partial<StreamV4SliderConfig> | null | undefined
+): number {
+  const normalized = normalizeStreamV4SliderConfig(raw);
+  const sanitized = sanitizeStreamV4SliderConfigForFirestore(normalized);
+  return Math.max(
+    0,
+    Object.keys(normalized.titleLogos).length - Object.keys(sanitized.titleLogos).length
+  );
+}
+
 

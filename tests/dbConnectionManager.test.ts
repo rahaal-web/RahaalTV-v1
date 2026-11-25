@@ -3,10 +3,12 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import {
+  applyRemoteActiveDatabasePointer,
   buildConnectionBackupBundle,
   buildDefaultBuiltInProfile,
   BUILTIN_DEFAULT_CONNECTION_ID,
   classifyConnectionFailure,
+  consolidateBuiltInDuplicates,
   createOrUpdateConnectionProfile,
   deleteConnectionProfile,
   getActiveConnectionProfile,
@@ -441,4 +443,79 @@ test('mergeRemoteDatabaseRegistry deduplicates identical Firebase targets, remap
   assert.equal(merged.lastGoodConnectionId, 'pc-canonical-id');
   assert.equal(merged.autoRetryEnabled, false);
 });
+
+test('built-in config matches rahaaltv-v1 and duplicate manual entries consolidate onto BUILTIN_DEFAULT_CONNECTION_ID', () => {
+  const builtIn = buildDefaultBuiltInProfile();
+  assert.equal(builtIn.firebaseConfig.projectId, 'rahaaltv-v1');
+  assert.equal(builtIn.firebaseConfig.appId, '1:1046117254330:web:9c255dd2316917a224ae83');
+  assert.equal(builtIn.firebaseConfig.firestoreDatabaseId, '(default)');
+
+  // Manually adding the same built-in rahaaltv-v1 target consolidates onto BUILTIN_DEFAULT_CONNECTION_ID
+  const dupCreate = createOrUpdateConnectionProfile(
+    {
+      name: 'RahaL TV Mobile Manual Add',
+      providerType: 'firebase_firestore',
+      firebaseConfig: { ...builtIn.firebaseConfig },
+    },
+    { uid: 'owner-1', name: 'Owner' }
+  );
+  assert.equal(dupCreate.isNew, false);
+  assert.equal(dupCreate.profile.id, BUILTIN_DEFAULT_CONNECTION_ID);
+  assert.equal(dupCreate.registry.profiles.length, 1);
+
+  // Consolidating an existing dirty registry removes duplicate rahaaltv-v1 entries and remaps pointers
+  const dupProfile: DatabaseConnectionProfile = {
+    ...builtIn,
+    id: 'db_mobile_duplicate_123',
+    name: 'Mobile Added Copy',
+    isBuiltIn: false,
+    lastStatus: 'connected',
+    lastTestedAt: '2026-11-25T10:00:00.000Z',
+  };
+  const dirtyState: DatabaseConnectionRegistryState = {
+    version: 1,
+    activeConnectionId: 'db_mobile_duplicate_123',
+    previousConnectionId: BUILTIN_DEFAULT_CONNECTION_ID,
+    defaultConnectionId: 'db_mobile_duplicate_123',
+    lastGoodConnectionId: 'db_mobile_duplicate_123',
+    autoRetryEnabled: true,
+    updatedAtMs: 1000,
+    deletedProfileIds: [],
+    profiles: [builtIn, dupProfile],
+  };
+
+  const consolidated = consolidateBuiltInDuplicates(dirtyState);
+  assert.equal(consolidated.changed, true);
+  assert.equal(consolidated.state.profiles.length, 1);
+  assert.equal(consolidated.state.profiles[0].id, BUILTIN_DEFAULT_CONNECTION_ID);
+  assert.equal(consolidated.state.profiles[0].lastStatus, 'connected');
+  assert.equal(consolidated.state.activeConnectionId, BUILTIN_DEFAULT_CONNECTION_ID);
+  assert.equal(consolidated.state.defaultConnectionId, BUILTIN_DEFAULT_CONNECTION_ID);
+  assert.equal(consolidated.state.lastGoodConnectionId, BUILTIN_DEFAULT_CONNECTION_ID);
+  assert.equal(consolidated.state.previousConnectionId, null);
+
+  // Remote merge with duplicate built-in target also converges onto BUILTIN_DEFAULT_CONNECTION_ID
+  const mergedDup = mergeRemoteDatabaseRegistry(dirtyState, {
+    ...dirtyState,
+    activeConnectionId: 'db_pc_duplicate_456',
+    defaultConnectionId: 'db_pc_duplicate_456',
+    lastGoodConnectionId: 'db_pc_duplicate_456',
+    updatedAtMs: 2000,
+    profiles: [builtIn, { ...dupProfile, id: 'db_pc_duplicate_456', name: 'PC Copy' }],
+  });
+  assert.equal(mergedDup.profiles.length, 1);
+  assert.equal(mergedDup.activeConnectionId, BUILTIN_DEFAULT_CONNECTION_ID);
+  assert.equal(mergedDup.defaultConnectionId, BUILTIN_DEFAULT_CONNECTION_ID);
+
+  // Remote active database pointer matching built-in config resolves cleanly to BUILTIN_DEFAULT_CONNECTION_ID
+  const pointerRes = applyRemoteActiveDatabasePointer({
+    connectionId: 'db_remote_alias_789',
+    connectionName: 'Remote PC Alias',
+    providerType: 'firebase_firestore',
+    firebaseConfig: { ...builtIn.firebaseConfig },
+  });
+  assert.equal(pointerRes.switched, false);
+  assert.equal(getActiveConnectionProfile().id, BUILTIN_DEFAULT_CONNECTION_ID);
+});
+
 

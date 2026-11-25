@@ -1,7 +1,11 @@
 import { ChangeEvent, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  AlertTriangle,
+  CheckCircle2,
   Clock,
+  Cloud,
   Image as ImageIcon,
+  Loader2,
   Move,
   Palette,
   RotateCcw,
@@ -15,6 +19,7 @@ import {
 import { HomeLayoutConfig, MediaItem } from '../../types/media';
 import { saveStreamV4SliderConfigToFirestore } from '../../lib/firebase';
 import {
+  countDroppedStreamV4Logos,
   DEFAULT_STREAM_V4_SLIDER_CONFIG,
   normalizeStreamV4SliderConfig,
   StreamV4SliderConfig,
@@ -63,6 +68,8 @@ const VISIBILITY_CONTROLS: Array<{
   { key: 'showNavArrows', label: 'أسهم التنقل الجانبية', desc: 'أزرار التالي والسابق على جانبي السلايدر' },
 ];
 
+type SyncStatus = 'idle' | 'syncing' | 'synced' | 'error';
+
 export function StreamV4SliderSettingsPanel({
   homeConfig,
   catalog,
@@ -75,6 +82,9 @@ export function StreamV4SliderSettingsPanel({
   const [cfg, updateCfg, resetCfg] = useStreamV4SliderConfig();
   const [searchQuery, setSearchQuery] = useState('');
   const [uploadingId, setUploadingId] = useState<string | null>(null);
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle');
+  const [syncErrorMsg, setSyncErrorMsg] = useState('');
+  const [lastSyncedAt, setLastSyncedAt] = useState('');
 
   const cfgRef = useRef(cfg);
   cfgRef.current = cfg;
@@ -82,36 +92,104 @@ export function StreamV4SliderSettingsPanel({
   actorRef.current = { actorUid, hasActor, isOwner };
   const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasPendingSyncRef = useRef(false);
+  const isMountedRef = useRef(true);
 
-  const pushConfigToCloud = async (nextCfg: StreamV4SliderConfig, silentError = false) => {
+  const pushConfigToCloud = async (
+    nextCfg: StreamV4SliderConfig,
+    silentError = false
+  ): Promise<boolean> => {
     const actor = actorRef.current;
-    if (!actor.isOwner || !actor.hasActor || !actor.actorUid) return;
+    if (!actor.hasActor || !actor.actorUid) {
+      const msg =
+        'تم الحفظ محلياً فقط — يجب تسجيل الدخول بحساب المالك لمزامنة السلايدر الرابع مع الموبايل';
+      if (isMountedRef.current) {
+        setSyncStatus('error');
+        setSyncErrorMsg(msg);
+      }
+      if (!silentError) onNotify(msg);
+      return false;
+    }
+    if (!actor.isOwner) {
+      const msg =
+        'تم الحفظ محلياً فقط — يلزم صلاحية المالك (Owner) لحفظ إعدادات السلايدر الرابع على السحابة للموبايل';
+      if (isMountedRef.current) {
+        setSyncStatus('error');
+        setSyncErrorMsg(msg);
+      }
+      if (!silentError) onNotify(msg);
+      return false;
+    }
+
+    const droppedLogos = countDroppedStreamV4Logos(nextCfg);
+    if (isMountedRef.current) {
+      setSyncStatus('syncing');
+      setSyncErrorMsg('');
+    }
+
     try {
       const res = await saveStreamV4SliderConfigToFirestore(nextCfg, actor.actorUid);
-      if (!res.ok && !silentError) {
-        onNotify(
-          `تم حفظ إعدادات السلايدر الرابع محلياً — تعذرت المزامنة السحابية (${res.projectId}/${res.databaseId})`
+      if (!res.ok) {
+        const msg = `تعذرت المزامنة مع السحابة (${res.projectId}/${res.databaseId}): قواعد Firestore رفضت الكتابة إلى settings/stream_v4_slider. انسخ firestore.rules من إدارة قاعدة البيانات واضغط Publish في Firebase Console.`;
+        if (isMountedRef.current) {
+          setSyncStatus('error');
+          setSyncErrorMsg(msg);
+        }
+        if (!silentError) {
+          onNotify(msg);
+        }
+        return false;
+      }
+
+      if (isMountedRef.current) {
+        setSyncStatus('synced');
+        setLastSyncedAt(
+          new Date().toLocaleTimeString('ar-EG', {
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+          })
         );
+        if (droppedLogos > 0) {
+          const warnMsg = `تمت مزامنة الإعدادات، لكن ${droppedLogos} شعاراً تجاوز الحد الأقصى للحجم وتم استبعاده من السحابة`;
+          setSyncErrorMsg(warnMsg);
+          if (!silentError) onNotify(warnMsg);
+        } else {
+          setSyncErrorMsg('');
+        }
       }
+      return true;
     } catch {
-      if (!silentError) {
-        onNotify('تم حفظ إعدادات السلايدر الرابع محلياً — تعذرت المزامنة مع Firestore');
+      const msg = 'تم حفظ إعدادات السلايدر الرابع محلياً — تعذرت المزامنة مع Firestore';
+      if (isMountedRef.current) {
+        setSyncStatus('error');
+        setSyncErrorMsg(msg);
       }
+      if (!silentError) {
+        onNotify(msg);
+      }
+      return false;
     }
   };
 
-  const triggerImmediateSync = (nextCfg: StreamV4SliderConfig) => {
+  const triggerImmediateSync = (nextCfg: StreamV4SliderConfig, notifyOnSuccess = false) => {
     if (syncTimerRef.current) {
       clearTimeout(syncTimerRef.current);
       syncTimerRef.current = null;
     }
     hasPendingSyncRef.current = false;
-    void pushConfigToCloud(nextCfg);
+    void pushConfigToCloud(nextCfg, false).then((ok) => {
+      if (ok && notifyOnSuccess) {
+        onNotify('تم حفظ إعدادات السلايدر الرابع ومزامنتها مع الموبايل وجميع الأجهزة بنجاح');
+      }
+    });
   };
 
   const scheduleDebouncedSync = (nextCfg: StreamV4SliderConfig) => {
     cfgRef.current = nextCfg;
     hasPendingSyncRef.current = true;
+    if (isMountedRef.current) {
+      setSyncStatus('syncing');
+    }
     if (syncTimerRef.current) {
       clearTimeout(syncTimerRef.current);
     }
@@ -123,15 +201,35 @@ export function StreamV4SliderSettingsPanel({
   };
 
   useEffect(() => {
-    return () => {
+    isMountedRef.current = true;
+    const flushPendingSync = (silentError: boolean) => {
       if (syncTimerRef.current) {
         clearTimeout(syncTimerRef.current);
         syncTimerRef.current = null;
       }
       if (hasPendingSyncRef.current) {
         hasPendingSyncRef.current = false;
-        void pushConfigToCloud(cfgRef.current, true);
+        void pushConfigToCloud(cfgRef.current, silentError);
       }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        flushPendingSync(true);
+      }
+    };
+    const handlePageHide = () => {
+      flushPendingSync(true);
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('pagehide', handlePageHide);
+
+    return () => {
+      isMountedRef.current = false;
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('pagehide', handlePageHide);
+      flushPendingSync(true);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -241,7 +339,7 @@ export function StreamV4SliderSettingsPanel({
       onNotify(
         result.storage === 'server'
           ? 'تم رفع صورة الشعار (PNG) على الخادم للسلايدر الرابع ومزامنتها'
-          : 'تم حفظ صورة الشعار (PNG) للسلايدر الرابع ومزامنتها'
+          : 'تم تجهيز صورة الشعار (PNG) ومزامنتها سحابياً لجميع الأجهزة'
       );
     } catch (err) {
       onNotify(
@@ -255,39 +353,83 @@ export function StreamV4SliderSettingsPanel({
   return (
     <div className="space-y-6">
       {/* Header & Quick Reset */}
-      <div className="rounded-3xl bg-[#0c1821] border border-white/[0.08] p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="flex items-start gap-3">
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl rtv-admin-accent-soft border rtv-admin-accent-text">
-            <SlidersHorizontal className="w-5 h-5" />
+      <div className="rounded-3xl bg-[#0c1821] border border-white/[0.08] p-6 space-y-4">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl rtv-admin-accent-soft border rtv-admin-accent-text">
+              <SlidersHorizontal className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="font-display text-base sm:text-lg font-extrabold text-white">
+                  إعدادات السلايدر الرابع (Cinema Logo Hero) — تحكم كامل ومستقل
+                </h3>
+                {syncStatus === 'syncing' && (
+                  <span className="inline-flex items-center gap-1 rounded-lg bg-sky-500/15 border border-sky-400/35 px-2.5 py-0.5 text-[10px] font-extrabold text-sky-300">
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    جاري المزامنة السحابية...
+                  </span>
+                )}
+                {syncStatus === 'synced' && (
+                  <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-500/15 border border-emerald-400/35 px-2.5 py-0.5 text-[10px] font-extrabold text-emerald-300">
+                    <CheckCircle2 className="w-3 h-3" />
+                    متزامن لجميع الأجهزة {lastSyncedAt ? `(${lastSyncedAt})` : ''}
+                  </span>
+                )}
+                {syncStatus === 'error' && (
+                  <span className="inline-flex items-center gap-1 rounded-lg bg-rose-500/15 border border-rose-400/35 px-2.5 py-0.5 text-[10px] font-extrabold text-rose-300">
+                    <AlertTriangle className="w-3 h-3" />
+                    محفوظ محلياً فقط
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-[#b7c9ef] mt-1">
+                مبني على تصميم السلايدر المرفق بألوان وهوية موقع Rahaal TV، مع مزامنة فورية لـ PNG والأحجام والألوان بين الكمبيوتر والموبايل.
+              </p>
+            </div>
           </div>
-          <div>
-            <h3 className="font-display text-base sm:text-lg font-extrabold text-white">
-              إعدادات السلايدر الرابع (Cinema Logo Hero) — تحكم كامل ومستقل
-            </h3>
-            <p className="text-xs text-[#b7c9ef] mt-1">
-              مبني على تصميم السلايدر المرفق بألوان وهوية موقع Rahaal TV، مع إمكانية رفع شعار PNG لكل فيلم يظهر حصرياً داخل السلايدر عند إضافته إليه دون التأثير على باقي السلايدرات أو بطاقات الموقع.
-            </p>
+
+          <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+            <button
+              type="button"
+              disabled={syncStatus === 'syncing'}
+              onClick={() => triggerImmediateSync(cfgRef.current, true)}
+              className="rtv-admin-btn-height inline-flex items-center gap-1.5 rounded-xl bg-[#4CAF50] hover:bg-[#43a047] disabled:opacity-50 px-4 py-2 text-xs font-extrabold text-white shadow cursor-pointer"
+            >
+              {syncStatus === 'syncing' ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Cloud className="w-3.5 h-3.5" />
+              )}
+              <span>حفظ ومزامنة لجميع الأجهزة</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                const nextCfg = normalizeStreamV4SliderConfig({
+                  ...DEFAULT_STREAM_V4_SLIDER_CONFIG,
+                  titleLogos: cfgRef.current.titleLogos,
+                  slideDurations: cfgRef.current.slideDurations,
+                });
+                cfgRef.current = nextCfg;
+                resetCfg();
+                triggerImmediateSync(nextCfg, true);
+              }}
+              className="rtv-admin-btn-height inline-flex items-center gap-1.5 rounded-xl bg-[#1a242e] hover:bg-white/10 border border-white/10 px-3.5 py-2 text-xs font-bold text-[#b7c9ef] hover:text-white cursor-pointer shrink-0"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>استعادة الافتراضي</span>
+            </button>
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={() => {
-            const nextCfg = normalizeStreamV4SliderConfig({
-              ...DEFAULT_STREAM_V4_SLIDER_CONFIG,
-              titleLogos: cfgRef.current.titleLogos,
-              slideDurations: cfgRef.current.slideDurations,
-            });
-            cfgRef.current = nextCfg;
-            resetCfg();
-            triggerImmediateSync(nextCfg);
-            onNotify('تمت استعادة الإعدادات الافتراضية للسلايدر الرابع ومزامنتها');
-          }}
-          className="rtv-admin-btn-height inline-flex items-center gap-1.5 rounded-xl bg-[#1a242e] hover:bg-white/10 border border-white/10 px-3.5 py-2 text-xs font-bold text-[#b7c9ef] hover:text-white cursor-pointer shrink-0"
-        >
-          <RotateCcw className="w-3.5 h-3.5" />
-          <span>استعادة الافتراضي</span>
-        </button>
+        {syncErrorMsg && (
+          <div className="rounded-2xl bg-rose-500/10 border border-rose-400/35 px-4 py-3 text-xs text-rose-200 flex items-start gap-2.5">
+            <AlertTriangle className="w-4 h-4 text-rose-300 shrink-0 mt-0.5" />
+            <span className="leading-relaxed">{syncErrorMsg}</span>
+          </div>
+        )}
       </div>
 
       {/* A. Per-Movie PNG Logo Manager (Slider-Only Replacement) */}

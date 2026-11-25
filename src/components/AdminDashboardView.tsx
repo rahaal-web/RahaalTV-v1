@@ -2864,18 +2864,32 @@ export function AdminDashboardView({
   };
 
   const handleSaveHeroSliderVariant = useCallback(
-    async (variant: HeroSliderVariant) => {
+    async (variant: HeroSliderVariant): Promise<boolean> => {
       const clean = saveHeroSliderVariant(variant);
-      if (!isOwner || !hasActor || !activeActorUid) return;
+      if (!hasActor || !activeActorUid) {
+        onNotifyRef.current(
+          'تم تفعيل نمط السلايدر محلياً فقط — يرجى تسجيل الدخول بحساب المالك لمزامنته مع الموبايل'
+        );
+        return false;
+      }
+      if (!isOwner) {
+        onNotifyRef.current(
+          'تم تفعيل نمط السلايدر محلياً فقط — يلزم حساب المالك لحفظه على السحابة للموبايل'
+        );
+        return false;
+      }
       try {
         const res = await saveHeroSliderVariantToFirestore(clean, activeActorUid);
         if (!res.ok) {
           onNotifyRef.current(
-            `تم تفعيل نمط السلايدر محلياً — قواعد (${res.projectId}/${res.databaseId}) رفضت الكتابة إلى settings/hero_slider_mode`
+            `تم تفعيل نمط السلايدر محلياً — قواعد (${res.projectId}/${res.databaseId}) رفضت الكتابة إلى settings/hero_slider_mode. انسخ firestore.rules واضغط Publish في Firebase Console.`
           );
+          return false;
         }
+        return true;
       } catch {
         onNotifyRef.current('تم تفعيل نمط السلايدر محلياً — تعذرت المزامنة مع Firestore');
+        return false;
       }
     },
     [isOwner, hasActor, activeActorUid]
@@ -7644,13 +7658,19 @@ export function AdminDashboardView({
                                         res.url
                                       );
                                       if (isOwner && hasActor && activeActorUid) {
-                                        void saveStreamV4SliderConfigToFirestore(
+                                        const syncRes = await saveStreamV4SliderConfigToFirestore(
                                           nextV4Cfg,
                                           activeActorUid
-                                        );
+                                        ).catch(() => null);
+                                        if (!syncRes?.ok) {
+                                          onNotify(
+                                            'تم حفظ الشعار محلياً، لكن تعذرت المزامنة السحابية للسلايدر الرابع'
+                                          );
+                                          return;
+                                        }
                                       }
                                     }
-                                    onNotify('تم تجهيز صورة الشعار PNG للسلايدر بنجاح');
+                                    onNotify('تم تجهيز صورة الشعار PNG للسلايدر ومزامنتها بنجاح');
                                   } catch (err) {
                                     onNotify(
                                       err instanceof Error
@@ -7666,18 +7686,24 @@ export function AdminDashboardView({
                             {editingSliderPngUrl && (
                               <button
                                 type="button"
-                                onClick={() => {
+                                onClick={async () => {
                                   setEditingSliderPngUrl('');
                                   if (!isCreatingNew && editingItem?.id) {
                                     const nextV4Cfg = setStreamV4MoviePngLogo(editingItem.id, '');
                                     if (isOwner && hasActor && activeActorUid) {
-                                      void saveStreamV4SliderConfigToFirestore(
+                                      const syncRes = await saveStreamV4SliderConfigToFirestore(
                                         nextV4Cfg,
                                         activeActorUid
-                                      );
+                                      ).catch(() => null);
+                                      if (!syncRes?.ok) {
+                                        onNotify(
+                                          'تمت إزالة الشعار محلياً، لكن تعذرت المزامنة السحابية للسلايدر الرابع'
+                                        );
+                                        return;
+                                      }
                                     }
                                   }
-                                  onNotify('تمت إزالة شعار السلايدر PNG');
+                                  onNotify('تمت إزالة شعار السلايدر PNG ومزامنته');
                                 }}
                                 className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-[#1a242e] hover:bg-red-600/25 border border-white/10 text-red-400 cursor-pointer shrink-0"
                                 title="إزالة صورة PNG"

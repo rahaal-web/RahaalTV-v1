@@ -97,8 +97,14 @@ import {
   saveStoredWebsiteBranding,
 } from './websiteBranding';
 import { evaluateImageQuality } from './mediaImages';
-import { HeroSliderVariant, normalizeHeroSliderVariant } from './heroSliderMode';
 import {
+  HeroSliderVariant,
+  loadHeroSliderVariant,
+  normalizeHeroSliderVariant,
+} from './heroSliderMode';
+import {
+  loadStreamV4SliderConfig,
+  normalizeStreamV4SliderConfig,
   sanitizeStreamV4SliderConfigForFirestore,
   StreamV4SliderConfig,
 } from './streamV4SliderConfig';
@@ -1279,6 +1285,10 @@ export type RulesDiagnosticReport =
       recentlyWatchedUiReady: boolean;
       recentlyWatchedUiErrorCode?: string;
       recentlyWatchedUiErrorMessage?: string;
+      heroSliderModeReady: boolean;
+      heroSliderModeErrorCode?: string;
+      streamV4SliderReady: boolean;
+      streamV4SliderErrorCode?: string;
       userEmail: string | null;
       emailVerified: boolean;
     }
@@ -1524,6 +1534,37 @@ export async function diagnoseFirestoreSettingsRules(
       actorUid
     );
 
+    let targetSliderVariant = loadHeroSliderVariant();
+    try {
+      const existingModeSnap = await getDoc(doc(activeDb, 'settings', 'hero_slider_mode'));
+      if (existingModeSnap.exists()) {
+        const modeData = existingModeSnap.data() as { variant?: unknown };
+        targetSliderVariant = normalizeHeroSliderVariant(modeData.variant);
+      }
+    } catch {
+      // Fallback to local variant
+    }
+    const heroSliderModeProbeRes = await saveHeroSliderVariantToFirestore(
+      targetSliderVariant,
+      actorUid
+    );
+
+    let targetStreamV4Cfg = loadStreamV4SliderConfig();
+    try {
+      const existingV4Snap = await getDoc(doc(activeDb, 'settings', 'stream_v4_slider'));
+      if (existingV4Snap.exists()) {
+        targetStreamV4Cfg = normalizeStreamV4SliderConfig(
+          existingV4Snap.data() as Partial<StreamV4SliderConfig>
+        );
+      }
+    } catch {
+      // Fallback to local config
+    }
+    const streamV4ProbeRes = await saveStreamV4SliderConfigToFirestore(
+      targetStreamV4Cfg,
+      actorUid
+    );
+
     const rejectedSections = (
       ['homeConfig', 'typography', 'popupShield', 'branding'] as SettingsOptionalSection[]
     ).filter((k) => {
@@ -1552,7 +1593,9 @@ export async function diagnoseFirestoreSettingsRules(
         !syncedBrandingToCloud ||
         !placeholderProbeRes.ok ||
         !recentlyWatchedReady ||
-        !rwUiProbeRes.ok);
+        !rwUiProbeRes.ok ||
+        !heroSliderModeProbeRes.ok ||
+        !streamV4ProbeRes.ok);
 
     if (rejectedSections.length === 0) {
       // Immediately synchronize live settings across settings/general and split docs
@@ -1587,6 +1630,10 @@ export async function diagnoseFirestoreSettingsRules(
       recentlyWatchedUiReady: rwUiProbeRes.ok,
       recentlyWatchedUiErrorCode: rwUiProbeRes.errorCode,
       recentlyWatchedUiErrorMessage: rwUiProbeRes.errorMessage,
+      heroSliderModeReady: heroSliderModeProbeRes.ok,
+      heroSliderModeErrorCode: heroSliderModeProbeRes.errorCode,
+      streamV4SliderReady: streamV4ProbeRes.ok,
+      streamV4SliderErrorCode: streamV4ProbeRes.errorCode,
       userEmail,
       emailVerified,
     };

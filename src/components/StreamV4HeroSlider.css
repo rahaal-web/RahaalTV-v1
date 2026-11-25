@@ -11,14 +11,14 @@
    ============================================================================ */
 
 .rtv-v4-slider {
-  --rtv-v4-effective-overlap: min(24px, var(--rtv-v4-bottom-overlap, 46px));
+  --rtv-v4-effective-overlap: min(64px, var(--rtv-v4-bottom-overlap, 26px));
   position: relative;
   z-index: 0;
   width: 100vw;
   max-width: 100vw;
   margin-inline: calc(50% - 50vw);
   margin-bottom: calc(-1 * var(--rtv-v4-effective-overlap));
-  min-height: calc(clamp(520px, 76svh, 640px) + var(--rtv-v4-effective-overlap));
+  min-height: calc(clamp(460px, calc(var(--rtv-v4-height, 680px) * 0.88), 760px) + var(--rtv-v4-effective-overlap));
   background-color: var(--rtv-site-bg, #0f0f0f);
   color: var(--rtv-site-text, #ffffff);
   overflow: hidden;
@@ -29,27 +29,27 @@
 
 @media (max-width: 767px) and (orientation: landscape) {
   .rtv-v4-slider {
-    min-height: calc(clamp(410px, 90svh, 520px) + var(--rtv-v4-effective-overlap));
+    min-height: calc(clamp(410px, calc(var(--rtv-v4-height, 680px) * 0.72), 620px) + var(--rtv-v4-effective-overlap));
   }
 }
 
 @media (min-width: 640px) {
   .rtv-v4-slider {
-    --rtv-v4-effective-overlap: min(36px, var(--rtv-v4-bottom-overlap, 46px));
-    min-height: calc(clamp(540px, 64vw, var(--rtv-v4-height, 680px)) + var(--rtv-v4-effective-overlap));
+    --rtv-v4-effective-overlap: min(80px, var(--rtv-v4-bottom-overlap, 26px));
+    min-height: calc(clamp(480px, calc(var(--rtv-v4-height, 680px) * 0.94), 860px) + var(--rtv-v4-effective-overlap));
   }
 }
 
 @media (min-width: 768px) {
   .rtv-v4-slider {
-    --rtv-v4-effective-overlap: var(--rtv-v4-bottom-overlap, 46px);
+    --rtv-v4-effective-overlap: var(--rtv-v4-bottom-overlap, 26px);
   }
 }
 
 @media (min-width: 1024px) {
   .rtv-v4-slider {
-    height: calc(clamp(580px, 52vw, var(--rtv-v4-height, 680px)) + var(--rtv-v4-effective-overlap));
-    min-height: calc(580px + var(--rtv-v4-effective-overlap));
+    height: calc(var(--rtv-v4-height, 680px) + var(--rtv-v4-effective-overlap));
+    min-height: calc(480px + var(--rtv-v4-effective-overlap));
   }
 }
 
@@ -244,8 +244,8 @@
 .rtv-v4-article {
   position: absolute;
   inset-inline: 0;
-  top: clamp(68px, 8vw, var(--rtv-v4-article-top, 84px));
-  bottom: calc(var(--rtv-v4-effective-overlap, 24px) + max(96px, calc(var(--rtv-v4-article-bottom, 134px) - 18px)));
+  top: var(--rtv-v4-article-top, 84px);
+  bottom: calc(var(--rtv-v4-effective-overlap, 26px) + clamp(52px, calc(var(--rtv-v4-article-bottom, 134px) * 0.85), 280px));
   z-index: 5;
   display: flex;
   flex-direction: column;
@@ -253,7 +253,7 @@
   align-items: flex-start;
   max-width: 1440px;
   margin-inline: auto;
-  padding-inline: clamp(16px, 3vw, var(--rtv-v4-article-side, 40px));
+  padding-inline: clamp(12px, calc(var(--rtv-v4-article-side, 40px) * 0.65), 140px);
   pointer-events: none;
 }
 
@@ -261,7 +261,7 @@
   .rtv-v4-article {
     top: var(--rtv-v4-article-top, 84px);
     bottom: calc(var(--rtv-v4-effective-overlap, 26px) + var(--rtv-v4-article-bottom, 134px));
-    padding-inline: clamp(24px, 3vw, var(--rtv-v4-article-side, 40px));
+    padding-inline: clamp(12px, calc(var(--rtv-v4-article-side, 40px) * 0.85), 180px);
   }
 }
 
@@ -402,8 +402,8 @@
   display: block;
   width: auto;
   height: auto;
-  max-height: clamp(54px, 15vw, var(--rtv-v4-logo-h, 130px));
-  max-width: min(80vw, var(--rtv-v4-logo-w, 360px));
+  max-height: clamp(44px, calc(var(--rtv-v4-logo-h, 130px) * 0.78), 200px);
+  max-width: min(88vw, var(--rtv-v4-logo-w, 360px));
   object-fit: contain;
   object-position: right center;
   filter: drop-shadow(0 2px 10px rgba(0, 0, 0, 0.38));
@@ -422,11 +422,17 @@
   color: #ffffff;
   font-family: var(--font-display, "Cairo", "Tajawal", system-ui, sans-serif);
   font-weight: 900;
-  font-size: clamp(24px, 6vw, var(--rtv-v4-title-size, 44px));
+  font-size: clamp(20px, calc(var(--rtv-v4-title-size, 44px) * 0.78), 64px);
   line-height: 1.08;
   text-wrap: balance;
   text-shadow: 0 4px 20px rgba(0, 0, 0, 0.78);
   cursor: pointer;
+}
+
+@media (min-width: 640px) {
+  .rtv-v4-title-fallback {
+    font-size: var(--rtv-v4-title-size, 44px);
+  }
 }
 
 .rtv-v4-title-fallback--latin {
@@ -437,14 +443,14 @@
 
 /* Metadata & Cast Typography */
 .rtv-v4-meta {
-  font-size: clamp(11px, 2.8vw, var(--rtv-v4-meta-size, 13px));
+  font-size: var(--rtv-v4-meta-size, 13px);
   font-weight: 700;
   color: rgba(255, 255, 255, 0.95);
   text-shadow: 0 2px 10px rgba(0, 0, 0, 0.85);
 }
 
 .rtv-v4-story {
-  font-size: clamp(12px, 3vw, var(--rtv-v4-story-size, 14px));
+  font-size: var(--rtv-v4-story-size, 14px);
   color: rgba(240, 242, 248, 0.88);
   line-height: 1.62;
   max-width: 460px;
@@ -452,7 +458,7 @@
 }
 
 .rtv-v4-cast {
-  font-size: clamp(11px, 2.8vw, var(--rtv-v4-cast-size, 13px));
+  font-size: var(--rtv-v4-cast-size, 13px);
   font-weight: 700;
   color: rgba(255, 255, 255, 0.94);
   text-shadow: 0 2px 10px rgba(0, 0, 0, 0.85);
@@ -679,7 +685,7 @@
 .rtv-v4-dot-logo {
   display: block;
   width: auto;
-  height: clamp(26px, 7vw, var(--rtv-v4-strip-logo-h, 44px));
+  height: clamp(20px, calc(var(--rtv-v4-strip-logo-h, 44px) * 0.82), 68px);
   max-width: 170px;
   object-fit: contain;
   filter: none;
@@ -688,13 +694,19 @@
   pointer-events: none;
 }
 
+@media (min-width: 640px) {
+  .rtv-v4-dot-logo {
+    height: var(--rtv-v4-strip-logo-h, 44px);
+  }
+}
+
 .rtv-v4-dot-text {
   display: block;
   max-width: 195px;
   color: rgba(255, 255, 255, 0.88);
   font-family: var(--font-display, "Cairo", "Tajawal", system-ui, sans-serif);
   font-weight: 900;
-  font-size: clamp(12px, 3vw, var(--rtv-v4-strip-text-size, 15px));
+  font-size: var(--rtv-v4-strip-text-size, 15px);
   line-height: 1.12;
   white-space: nowrap;
   overflow: hidden;
