@@ -525,20 +525,21 @@ export function RecentlyWatchedSection({
         onTouchStart={() => setIsPaused(true)}
         onTouchEnd={() => setIsPaused(false)}
       >
-        {/* Floating Side Arrows (Desktop & TV) */}
-        {uiConfig.showArrows && canScrollBackward && (
+        {/* Floating Side Arrows (Mobile, Desktop & TV) */}
+        {uiConfig.showArrows && displayedItems.length > 1 && (
           <button
             type="button"
             onClick={() => scrollStep('backward')}
+            disabled={!canScrollBackward}
             aria-label="التمرير للخلف"
-            className={`hidden md:flex absolute top-[42%] -translate-y-1/2 z-30 h-11 w-11 items-center justify-center rounded-full bg-black/80 hover:bg-[#E50914] border border-white/15 text-white opacity-0 group-hover/carousel:opacity-100 focus:opacity-100 transition-all cursor-pointer shadow-2xl ${
-              uiConfig.scrollDirection === 'rtl' ? 'right-2' : 'left-2'
+            className={`flex absolute top-[40%] sm:top-[42%] -translate-y-1/2 z-30 h-9 w-9 sm:h-10 sm:w-10 md:h-11 md:w-11 items-center justify-center rounded-full bg-black/80 backdrop-blur-sm hover:bg-[#E50914] active:bg-[#E50914] active:scale-95 disabled:opacity-40 disabled:hover:bg-black/80 border border-white/20 text-white opacity-95 md:opacity-0 md:group-hover/carousel:opacity-100 md:focus:opacity-100 transition-all cursor-pointer shadow-2xl ${
+              uiConfig.scrollDirection === 'rtl' ? 'right-1.5 sm:right-2' : 'left-1.5 sm:left-2'
             }`}
           >
             {uiConfig.scrollDirection === 'rtl' ? (
-              <ChevronRight className="w-5 h-5" />
+              <ChevronRight className="w-4 h-4 sm:w-5 sm:h-5" />
             ) : (
-              <ChevronLeft className="w-5 h-5" />
+              <ChevronLeft className="w-4 h-4 sm:w-5 sm:h-5" />
             )}
           </button>
         )}
@@ -754,19 +755,20 @@ export function RecentlyWatchedSection({
         </div>
 
         {/* Floating Forward Arrow */}
-        {uiConfig.showArrows && canScrollForward && (
+        {uiConfig.showArrows && displayedItems.length > 1 && (
           <button
             type="button"
             onClick={() => scrollStep('forward')}
+            disabled={!canScrollForward}
             aria-label="التمرير للأمام"
-            className={`hidden md:flex absolute top-[42%] -translate-y-1/2 z-30 h-11 w-11 items-center justify-center rounded-full bg-black/80 hover:bg-[#E50914] border border-white/15 text-white opacity-0 group-hover/carousel:opacity-100 focus:opacity-100 transition-all cursor-pointer shadow-2xl ${
-              uiConfig.scrollDirection === 'rtl' ? 'left-2' : 'right-2'
+            className={`flex absolute top-[40%] sm:top-[42%] -translate-y-1/2 z-30 h-9 w-9 sm:h-10 sm:w-10 md:h-11 md:w-11 items-center justify-center rounded-full bg-black/80 backdrop-blur-sm hover:bg-[#E50914] active:bg-[#E50914] active:scale-95 disabled:opacity-40 disabled:hover:bg-black/80 border border-white/20 text-white opacity-95 md:opacity-0 md:group-hover/carousel:opacity-100 md:focus:opacity-100 transition-all cursor-pointer shadow-2xl ${
+              uiConfig.scrollDirection === 'rtl' ? 'left-1.5 sm:left-2' : 'right-1.5 sm:right-2'
             }`}
           >
             {uiConfig.scrollDirection === 'rtl' ? (
-              <ChevronLeft className="w-5 h-5" />
+              <ChevronLeft className="w-4 h-4 sm:w-5 sm:h-5" />
             ) : (
-              <ChevronRight className="w-5 h-5" />
+              <ChevronRight className="w-4 h-4 sm:w-5 sm:h-5" />
             )}
           </button>
         )}

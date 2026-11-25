@@ -213,14 +213,16 @@ function SectionHorizontalRow({
 
   return (
     <div className="relative group/row">
-      <button
-        type="button"
-        onClick={() => scrollByDir('prev')}
-        aria-label="التمرير لليمين"
-        className="hidden md:flex absolute right-2 top-[42%] -translate-y-1/2 z-20 h-11 w-11 items-center justify-center rounded-full bg-black/80 border border-white/15 text-white opacity-0 group-hover/row:opacity-100 hover:bg-[#E50914] transition-all cursor-pointer shadow-xl"
-      >
-        <ChevronRight className="w-5 h-5" />
-      </button>
+      {items.length > 1 && (
+        <button
+          type="button"
+          onClick={() => scrollByDir('prev')}
+          aria-label="التمرير لليمين"
+          className="flex absolute right-1.5 sm:right-2 top-[40%] sm:top-[42%] -translate-y-1/2 z-20 h-9 w-9 sm:h-10 sm:w-10 md:h-11 md:w-11 items-center justify-center rounded-full bg-black/80 backdrop-blur-sm border border-white/20 text-white opacity-95 md:opacity-0 md:group-hover/row:opacity-100 md:focus-visible:opacity-100 hover:bg-[#E50914] active:bg-[#E50914] active:scale-95 transition-all cursor-pointer shadow-xl"
+        >
+          <ChevronRight className="w-4 h-4 sm:w-5 sm:h-5" />
+        </button>
+      )}
 
       <div
         ref={scrollerRef}
@@ -243,14 +245,16 @@ function SectionHorizontalRow({
         ))}
       </div>
 
-      <button
-        type="button"
-        onClick={() => scrollByDir('next')}
-        aria-label="التمرير لليسار"
-        className="hidden md:flex absolute left-2 top-[42%] -translate-y-1/2 z-20 h-11 w-11 items-center justify-center rounded-full bg-black/80 border border-white/15 text-white opacity-0 group-hover/row:opacity-100 hover:bg-[#E50914] transition-all cursor-pointer shadow-xl"
-      >
-        <ChevronLeft className="w-5 h-5" />
-      </button>
+      {items.length > 1 && (
+        <button
+          type="button"
+          onClick={() => scrollByDir('next')}
+          aria-label="التمرير لليسار"
+          className="flex absolute left-1.5 sm:left-2 top-[40%] sm:top-[42%] -translate-y-1/2 z-20 h-9 w-9 sm:h-10 sm:w-10 md:h-11 md:w-11 items-center justify-center rounded-full bg-black/80 backdrop-blur-sm border border-white/20 text-white opacity-95 md:opacity-0 md:group-hover/row:opacity-100 md:focus-visible:opacity-100 hover:bg-[#E50914] active:bg-[#E50914] active:scale-95 transition-all cursor-pointer shadow-xl"
+        >
+          <ChevronLeft className="w-4 h-4 sm:w-5 sm:h-5" />
+        </button>
+      )}
     </div>
   );
 }
