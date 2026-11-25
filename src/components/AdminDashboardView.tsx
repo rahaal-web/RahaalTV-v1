@@ -250,7 +250,9 @@ import {
   saveStoredHomeConfig,
 } from '../lib/homeConfig';
 import {
+  getStreamV4MovieDuration,
   getStreamV4MoviePngLogo,
+  setStreamV4MovieDuration,
   setStreamV4MoviePngLogo,
   uploadTransparentSliderPng,
 } from '../lib/streamV4SliderConfig';
@@ -1202,6 +1204,7 @@ export function AdminDashboardView({
   const [kindFilter, setKindFilter] = useState<string>('all');
   const [editingItem, setEditingItem] = useState<MediaItem | null>(null);
   const [editingSliderPngUrl, setEditingSliderPngUrl] = useState('');
+  const [editingSliderDurationSec, setEditingSliderDurationSec] = useState('');
   const [uploadingSliderPng, setUploadingSliderPng] = useState(false);
   const [editorTab, setEditorTab] = useState<EditorSubTab>('basic');
   const [isCreatingNew, setIsCreatingNew] = useState(false);
@@ -1671,6 +1674,7 @@ export function AdminDashboardView({
     setIsCreatingNew(true);
     setEditingItem(fresh);
     setEditingSliderPngUrl('');
+    setEditingSliderDurationSec('');
     setEditorImageProposal(null);
     setEditorTab('basic');
     setCategoriesText(fresh.categories.join('، '));
@@ -1681,6 +1685,8 @@ export function AdminDashboardView({
     setIsCreatingNew(false);
     setEditorImageProposal(null);
     setEditingSliderPngUrl(getStreamV4MoviePngLogo(item.id));
+    const existingDuration = getStreamV4MovieDuration(item.id);
+    setEditingSliderDurationSec(existingDuration ? String(existingDuration) : '');
     const resolvedPoster = getPosterUrl(item);
     const backdropInfo = getBackdropInfo(item);
     setEditingItem({
@@ -1709,6 +1715,7 @@ export function AdminDashboardView({
     setIsCreatingNew(true);
     setEditingItem(draft);
     setEditingSliderPngUrl('');
+    setEditingSliderDurationSec('');
     setEditorImageProposal(null);
     setEditorTab('basic');
     setCategoriesText(draft.categories.join('، '));
@@ -1889,6 +1896,10 @@ export function AdminDashboardView({
         !existsInDb
       );
       setStreamV4MoviePngLogo(verification.cleanedItem.id, editingSliderPngUrl);
+      const parsedDuration = editingSliderDurationSec.trim()
+        ? Number(editingSliderDurationSec.trim())
+        : null;
+      setStreamV4MovieDuration(verification.cleanedItem.id, parsedDuration);
       const removedNote =
         verification.removedCount > 0
           ? ` (تم منع واستبعاد ${verification.removedCount} سيرفر معطل أو صفحة موقع تلقائياً)`
@@ -7589,6 +7600,33 @@ export function AdminDashboardView({
                                 <Trash2 className="w-4 h-4" />
                               </button>
                             )}
+                          </div>
+
+                          <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-white/[0.06]">
+                            <span className="text-[11px] font-bold text-[#b7c9ef]">
+                              وقت ظهور الفيلم في السلايدر الرابع (ثانية — اتركه فارغاً للافتراضي):
+                            </span>
+                            <div className="flex items-center gap-1.5">
+                              <input
+                                type="number"
+                                min={2}
+                                max={60}
+                                value={editingSliderDurationSec}
+                                onChange={(e) => setEditingSliderDurationSec(e.target.value)}
+                                placeholder={String(activeHomeConfig.heroSlideIntervalSec || 6)}
+                                className="w-20 rounded-lg bg-[#1a242e] border border-white/10 px-2.5 py-1 text-center font-latin text-xs font-bold text-white tabular-nums focus:border-[#E50914] focus:outline-none"
+                              />
+                              <span className="text-[11px] text-[#b7c9ef]">ثانية</span>
+                              {editingSliderDurationSec && (
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingSliderDurationSec('')}
+                                  className="rounded-lg bg-[#1a242e] hover:bg-white/10 border border-white/10 px-2 py-1 text-[10px] font-bold text-[#b7c9ef] hover:text-white cursor-pointer"
+                                >
+                                  افتراضي
+                                </button>
+                              )}
+                            </div>
                           </div>
                         </div>
 

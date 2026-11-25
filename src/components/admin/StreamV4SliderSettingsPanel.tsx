@@ -1,5 +1,6 @@
 import { ChangeEvent, useMemo, useState } from 'react';
 import {
+  Clock,
   Image as ImageIcon,
   Palette,
   RotateCcw,
@@ -35,6 +36,7 @@ const VISIBILITY_CONTROLS: Array<{
     | 'showWatchlistBtn'
     | 'showTagline'
     | 'showBottomStrip'
+    | 'showProgressBar'
     | 'showNavArrows'
     | 'enableShineEffect'
   >;
@@ -50,6 +52,7 @@ const VISIBILITY_CONTROLS: Array<{
   { key: 'showWatchlistBtn', label: 'زر قائمة المشاهدة الدائري (+)', desc: 'أيقونة الإضافة السريعة لقائمتي' },
   { key: 'showTagline', label: 'الملاحظة الجانبية أسفل الزر', desc: 'السطر المميز بخط ملون بهوية الموقع أسفل الأزرار' },
   { key: 'showBottomStrip', label: 'الشريط السفلي لشعارات PNG', desc: 'شريط أسماء وشعارات الأعمال أسفل السلايدر' },
+  { key: 'showProgressBar', label: 'بار التقدم أسفل الصورة', desc: 'شريط أسفل السلايدر يعرض مدة وتقدم عرض كل فيلم' },
   { key: 'showNavArrows', label: 'أسهم التنقل الجانبية', desc: 'أزرار التالي والسابق على جانبي السلايدر' },
 ];
 
@@ -113,6 +116,8 @@ export function StreamV4SliderSettingsPanel({
       .slice(0, 16);
   }, [catalog, searchQuery, sliderMovies]);
 
+  const defaultIntervalSec = Math.max(2, Number(homeConfig.heroSlideIntervalSec) || 6);
+
   const setMovieLogo = (mediaId: string, url: string) => {
     const nextLogos = { ...cfg.titleLogos };
     const clean = url.trim();
@@ -122,6 +127,17 @@ export function StreamV4SliderSettingsPanel({
       delete nextLogos[mediaId];
     }
     updateCfg({ titleLogos: nextLogos });
+  };
+
+  const setMovieDuration = (mediaId: string, durationSec?: number | null) => {
+    const nextDurations = { ...cfg.slideDurations };
+    const num = Number(durationSec);
+    if (durationSec != null && Number.isFinite(num) && num >= 2) {
+      nextDurations[mediaId] = Math.min(60, Math.max(2, Math.round(num)));
+    } else {
+      delete nextDurations[mediaId];
+    }
+    updateCfg({ slideDurations: nextDurations });
   };
 
   const handleUploadPng = async (mediaId: string, event: ChangeEvent<HTMLInputElement>) => {
@@ -186,10 +202,10 @@ export function StreamV4SliderSettingsPanel({
             <ImageIcon className="w-5 h-5 rtv-admin-accent-text" />
             <div>
               <h4 className="font-display text-base font-extrabold text-white">
-                1. صور شعارات الأفلام الشفافة PNG (تظهر في السلايدر فقط مكان الاسم)
+                1. شعارات PNG ووقت ظهور كل فيلم في السلايدر الرابع
               </h4>
               <p className="text-[11px] text-[#b7c9ef] mt-0.5">
-                يمكنك رفع الشعار من هنا أو مباشرة من نافذة تعديل/إضافة أي فيلم، ولا يظهر إلا عند إدراج الفيلم في السلايدر.
+                ارفع صورة PNG تظهر حصرياً داخل السلايدر، وحدد مدة ظهور كل فيلم بالثواني بشكل مستقل عن باقي الأفلام.
               </p>
             </div>
           </div>
@@ -227,9 +243,11 @@ export function StreamV4SliderSettingsPanel({
           />
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 max-h-[420px] overflow-y-auto pr-1">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 max-h-[460px] overflow-y-auto pr-1">
           {displayedLogoItems.map((item) => {
             const logoUrl = cfg.titleLogos[item.id] || '';
+            const customDuration = cfg.slideDurations[item.id];
+            const effectiveDuration = customDuration || defaultIntervalSec;
             const isUploading = uploadingId === item.id;
             return (
               <div
@@ -296,6 +314,65 @@ export function StreamV4SliderSettingsPanel({
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   )}
+                </div>
+
+                {/* Per-Movie Display Duration Control */}
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-white/[0.06]">
+                  <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-[#b7c9ef]">
+                    <Clock className="w-3.5 h-3.5 rtv-admin-accent-text" />
+                    <span>وقت ظهور الفيلم:</span>
+                    <span className="text-white font-extrabold tabular-nums">
+                      {customDuration ? `${customDuration} ثانية` : `افتراضي (${defaultIntervalSec} ث)`}
+                    </span>
+                  </span>
+
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setMovieDuration(item.id, Math.max(2, effectiveDuration - 1))
+                      }
+                      aria-label="تقليل مدة الظهور"
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-[#0c1821] hover:bg-white/10 border border-white/10 text-xs font-extrabold text-white cursor-pointer"
+                    >
+                      -
+                    </button>
+                    <input
+                      type="number"
+                      min={2}
+                      max={60}
+                      value={customDuration ?? ''}
+                      placeholder={String(defaultIntervalSec)}
+                      onChange={(e) => {
+                        const raw = e.target.value.trim();
+                        if (!raw) {
+                          setMovieDuration(item.id, null);
+                        } else {
+                          setMovieDuration(item.id, Number(raw));
+                        }
+                      }}
+                      className="w-14 rounded-lg bg-[#0c1821] border border-white/10 px-2 py-1 text-center font-latin text-xs font-bold text-white tabular-nums focus:border-[var(--rtv-admin-accent)] focus:outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setMovieDuration(item.id, Math.min(60, effectiveDuration + 1))
+                      }
+                      aria-label="زيادة مدة الظهور"
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-[#0c1821] hover:bg-white/10 border border-white/10 text-xs font-extrabold text-white cursor-pointer"
+                    >
+                      +
+                    </button>
+                    {customDuration && (
+                      <button
+                        type="button"
+                        onClick={() => setMovieDuration(item.id, null)}
+                        className="rounded-lg bg-[#0c1821] hover:bg-white/10 border border-white/10 px-2 py-1 text-[10px] font-bold text-[#b7c9ef] hover:text-white cursor-pointer"
+                      >
+                        افتراضي
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             );
@@ -640,6 +717,78 @@ export function StreamV4SliderSettingsPanel({
               step={1}
               value={cfg.maxStripItems}
               onChange={(e) => updateCfg({ maxStripItems: Number(e.target.value) })}
+              className="w-full accent-[var(--rtv-admin-accent)] cursor-pointer"
+            />
+          </div>
+
+          <div className="rounded-2xl bg-[#1a242e]/80 border border-white/[0.07] p-4 space-y-2">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-bold text-white">سمك بار التقدم أسفل الصورة</span>
+              <span className="font-latin font-black rtv-admin-accent-text tabular-nums">
+                {cfg.progressBarHeightPx}px
+              </span>
+            </div>
+            <input
+              type="range"
+              min={2}
+              max={8}
+              step={1}
+              value={cfg.progressBarHeightPx}
+              onChange={(e) => updateCfg({ progressBarHeightPx: Number(e.target.value) })}
+              className="w-full accent-[var(--rtv-admin-accent)] cursor-pointer"
+            />
+          </div>
+
+          <div className="rounded-2xl bg-[#1a242e]/80 border border-white/[0.07] p-4 space-y-2">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-bold text-white">ارتفاع التمويه والتدرج السفلي</span>
+              <span className="font-latin font-black rtv-admin-accent-text tabular-nums">
+                {cfg.bottomBlendHeightPx}px
+              </span>
+            </div>
+            <input
+              type="range"
+              min={60}
+              max={280}
+              step={5}
+              value={cfg.bottomBlendHeightPx}
+              onChange={(e) => updateCfg({ bottomBlendHeightPx: Number(e.target.value) })}
+              className="w-full accent-[var(--rtv-admin-accent)] cursor-pointer"
+            />
+          </div>
+
+          <div className="rounded-2xl bg-[#1a242e]/80 border border-white/[0.07] p-4 space-y-2">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-bold text-white">درجة تمويه الحافة السفلية (Blur)</span>
+              <span className="font-latin font-black rtv-admin-accent-text tabular-nums">
+                {cfg.bottomBlurPx}px
+              </span>
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={22}
+              step={1}
+              value={cfg.bottomBlurPx}
+              onChange={(e) => updateCfg({ bottomBlurPx: Number(e.target.value) })}
+              className="w-full accent-[var(--rtv-admin-accent)] cursor-pointer"
+            />
+          </div>
+
+          <div className="rounded-2xl bg-[#1a242e]/80 border border-white/[0.07] p-4 space-y-2">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-bold text-white">ترابط وتداخل السلايدر مع الموقع</span>
+              <span className="font-latin font-black rtv-admin-accent-text tabular-nums">
+                {cfg.bottomOverlapPx}px
+              </span>
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={96}
+              step={2}
+              value={cfg.bottomOverlapPx}
+              onChange={(e) => updateCfg({ bottomOverlapPx: Number(e.target.value) })}
               className="w-full accent-[var(--rtv-admin-accent)] cursor-pointer"
             />
           </div>

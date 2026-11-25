@@ -701,7 +701,31 @@ export function SliderCustomizationPanel({
               style={{
                 opacity: v4Config.scrimIntensityPct / 100,
                 background:
-                  'linear-gradient(to left, rgba(15,15,15,0.96) 0%, rgba(15,15,15,0.82) 28%, rgba(15,15,15,0.38) 56%, transparent 82%), linear-gradient(to top, #0f0f0f 0%, rgba(15,15,15,0.9) 18%, transparent 56%)',
+                  'linear-gradient(to left, color-mix(in srgb, var(--rtv-site-bg, #0f0f0f) 96%, transparent) 0%, color-mix(in srgb, var(--rtv-site-bg, #0f0f0f) 82%, transparent) 28%, color-mix(in srgb, var(--rtv-site-bg, #0f0f0f) 38%, transparent) 56%, transparent 82%), linear-gradient(to top, var(--rtv-site-bg, #0f0f0f) 0%, color-mix(in srgb, var(--rtv-site-bg, #0f0f0f) 90%, transparent) 20%, transparent 58%)',
+              }}
+            />
+            {v4Config.bottomBlurPx > 0 && (
+              <div
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-x-0 bottom-0"
+                style={{
+                  height: `${Math.round(v4Config.bottomBlendHeightPx * 0.72)}px`,
+                  backdropFilter: `blur(${v4Config.bottomBlurPx}px)`,
+                  WebkitBackdropFilter: `blur(${v4Config.bottomBlurPx}px)`,
+                  maskImage:
+                    'linear-gradient(to top, rgba(0,0,0,1) 0%, rgba(0,0,0,0.7) 40%, transparent 100%)',
+                  WebkitMaskImage:
+                    'linear-gradient(to top, rgba(0,0,0,1) 0%, rgba(0,0,0,0.7) 40%, transparent 100%)',
+                }}
+              />
+            )}
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-x-0 bottom-0"
+              style={{
+                height: `${Math.round(v4Config.bottomBlendHeightPx * 0.75)}px`,
+                background:
+                  'linear-gradient(to top, var(--rtv-site-bg, #0f0f0f) 0%, color-mix(in srgb, var(--rtv-site-bg, #0f0f0f) 88%, transparent) 42%, transparent 100%)',
               }}
             />
             {(() => {
@@ -710,8 +734,12 @@ export function SliderCustomizationPanel({
                   ? v4Config.customAccentColor
                   : 'var(--rtv-site-accent, #E50914)';
               const activePng = activeSlide ? v4Config.titleLogos[activeSlide.id] : '';
+              const activeSlideDuration =
+                (activeSlide && v4Config.slideDurations[activeSlide.id]) ||
+                Number(draft.heroSlideIntervalSec) ||
+                6;
               return (
-                <div className="relative z-10 p-5 sm:p-7 space-y-3">
+                <div className="relative z-10 p-5 sm:p-7 pb-4 space-y-2.5">
                   <div className="max-w-[340px] space-y-2 text-right">
                     {v4Config.showTitle &&
                       (v4Config.usePngLogoInHero && activePng ? (
@@ -859,6 +887,27 @@ export function SliderCustomizationPanel({
                             </div>
                           );
                         })}
+                    </div>
+                  )}
+
+                  {v4Config.showProgressBar && (
+                    <div className="space-y-1 pt-0.5">
+                      <div className="flex items-center justify-between text-[10px] font-bold text-white/70 font-latin tabular-nums">
+                        <span>مدة ظهور العمل: {activeSlideDuration}s</span>
+                        <span>
+                          {(previewSlideIdx % Math.max(1, previewSlides.length)) + 1} /{' '}
+                          {Math.max(1, previewSlides.length)}
+                        </span>
+                      </div>
+                      <div
+                        className="w-full rounded-full bg-white/15 overflow-hidden"
+                        style={{ height: `${v4Config.progressBarHeightPx}px` }}
+                      >
+                        <div
+                          className="h-full w-3/5 rounded-full"
+                          style={{ backgroundColor: previewAccent }}
+                        />
+                      </div>
                     </div>
                   )}
                 </div>

@@ -6,6 +6,8 @@ export type StreamV4ColorMode = 'site_theme' | 'custom';
 export interface StreamV4SliderConfig {
   /** Per-media transparent PNG logo URLs (shown ONLY inside the slider), keyed by MediaItem.id */
   titleLogos: Record<string, string>;
+  /** Per-media custom display duration in seconds (2..60) for the 4th slider only */
+  slideDurations: Record<string, number>;
   usePngLogoInHero: boolean;
   usePngLogoInStrip: boolean;
   showTitle: boolean;
@@ -18,11 +20,16 @@ export interface StreamV4SliderConfig {
   showWatchlistBtn: boolean;
   showTagline: boolean;
   showBottomStrip: boolean;
+  showProgressBar: boolean;
+  progressBarHeightPx: number;
   showNavArrows: boolean;
   enableShineEffect: boolean;
   colorMode: StreamV4ColorMode;
   customAccentColor: string;
   scrimIntensityPct: number;
+  bottomBlendHeightPx: number;
+  bottomBlurPx: number;
+  bottomOverlapPx: number;
   sliderHeightDesktopPx: number;
   logoMaxHeightPx: number;
   logoMaxWidthPx: number;
@@ -40,6 +47,7 @@ const STREAM_V4_SLIDER_CONFIG_EVENT = 'rahaltv:stream-v4-slider-config-change';
 
 export const DEFAULT_STREAM_V4_SLIDER_CONFIG: StreamV4SliderConfig = {
   titleLogos: {},
+  slideDurations: {},
   usePngLogoInHero: true,
   usePngLogoInStrip: true,
   showTitle: true,
@@ -52,11 +60,16 @@ export const DEFAULT_STREAM_V4_SLIDER_CONFIG: StreamV4SliderConfig = {
   showWatchlistBtn: true,
   showTagline: true,
   showBottomStrip: true,
+  showProgressBar: true,
+  progressBarHeightPx: 3,
   showNavArrows: false,
   enableShineEffect: true,
   colorMode: 'site_theme',
   customAccentColor: '#E50914',
   scrimIntensityPct: 88,
+  bottomBlendHeightPx: 165,
+  bottomBlurPx: 10,
+  bottomOverlapPx: 46,
   sliderHeightDesktopPx: 680,
   logoMaxHeightPx: 135,
   logoMaxWidthPx: 380,
@@ -94,8 +107,20 @@ export function normalizeStreamV4SliderConfig(
     }
   }
 
+  const rawDurations =
+    src.slideDurations && typeof src.slideDurations === 'object' ? src.slideDurations : {};
+  const slideDurations: Record<string, number> = {};
+  for (const [id, sec] of Object.entries(rawDurations)) {
+    const cleanId = String(id || '').trim();
+    const num = Number(sec);
+    if (cleanId && Number.isFinite(num) && num >= 2) {
+      slideDurations[cleanId] = Math.min(60, Math.max(2, Math.round(num)));
+    }
+  }
+
   return {
     titleLogos,
+    slideDurations,
     usePngLogoInHero:
       typeof src.usePngLogoInHero === 'boolean'
         ? src.usePngLogoInHero
@@ -146,6 +171,16 @@ export function normalizeStreamV4SliderConfig(
       typeof src.showBottomStrip === 'boolean'
         ? src.showBottomStrip
         : DEFAULT_STREAM_V4_SLIDER_CONFIG.showBottomStrip,
+    showProgressBar:
+      typeof src.showProgressBar === 'boolean'
+        ? src.showProgressBar
+        : DEFAULT_STREAM_V4_SLIDER_CONFIG.showProgressBar,
+    progressBarHeightPx: clampInt(
+      src.progressBarHeightPx,
+      2,
+      8,
+      DEFAULT_STREAM_V4_SLIDER_CONFIG.progressBarHeightPx
+    ),
     showNavArrows:
       typeof src.showNavArrows === 'boolean'
         ? src.showNavArrows
@@ -164,6 +199,24 @@ export function normalizeStreamV4SliderConfig(
       35,
       100,
       DEFAULT_STREAM_V4_SLIDER_CONFIG.scrimIntensityPct
+    ),
+    bottomBlendHeightPx: clampInt(
+      src.bottomBlendHeightPx,
+      60,
+      280,
+      DEFAULT_STREAM_V4_SLIDER_CONFIG.bottomBlendHeightPx
+    ),
+    bottomBlurPx: clampInt(
+      src.bottomBlurPx,
+      0,
+      22,
+      DEFAULT_STREAM_V4_SLIDER_CONFIG.bottomBlurPx
+    ),
+    bottomOverlapPx: clampInt(
+      src.bottomOverlapPx,
+      0,
+      96,
+      DEFAULT_STREAM_V4_SLIDER_CONFIG.bottomOverlapPx
     ),
     sliderHeightDesktopPx: clampInt(
       src.sliderHeightDesktopPx,
@@ -294,6 +347,29 @@ export function setStreamV4MoviePngLogo(mediaId: string, url: string): StreamV4S
   return saveStreamV4SliderConfig({ ...current, titleLogos: nextLogos });
 }
 
+export function getStreamV4MovieDuration(mediaId: string): number | undefined {
+  const cleanId = String(mediaId || '').trim();
+  if (!cleanId) return undefined;
+  return loadStreamV4SliderConfig().slideDurations[cleanId];
+}
+
+export function setStreamV4MovieDuration(
+  mediaId: string,
+  durationSec?: number | null
+): StreamV4SliderConfig {
+  const cleanId = String(mediaId || '').trim();
+  const current = loadStreamV4SliderConfig();
+  if (!cleanId) return current;
+  const nextDurations = { ...current.slideDurations };
+  const num = Number(durationSec);
+  if (durationSec != null && Number.isFinite(num) && num >= 2) {
+    nextDurations[cleanId] = Math.min(60, Math.max(2, Math.round(num)));
+  } else {
+    delete nextDurations[cleanId];
+  }
+  return saveStreamV4SliderConfig({ ...current, slideDurations: nextDurations });
+}
+
 export function subscribeStreamV4SliderConfig(
   listener: (cfg: StreamV4SliderConfig) => void
 ): () => void {
@@ -350,6 +426,7 @@ export function useStreamV4SliderConfig(): [
       saveStreamV4SliderConfig({
         ...DEFAULT_STREAM_V4_SLIDER_CONFIG,
         titleLogos: prev.titleLogos,
+        slideDurations: prev.slideDurations,
       })
     );
   }, []);

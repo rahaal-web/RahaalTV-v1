@@ -111,6 +111,17 @@ export function StreamV4HeroSlider({
   const visibleSlides = slides.slice(0, Math.max(1, cfg.maxStripItems || 8));
   const slideCount = visibleSlides.length;
   const safeActiveIndex = slideCount > 0 ? activeIndex % slideCount : 0;
+  const activeSlide = visibleSlides[safeActiveIndex];
+  const customDurationSec = activeSlide ? cfg.slideDurations[activeSlide.id] : undefined;
+  const currentSlideDurationSec =
+    customDurationSec && customDurationSec >= 2
+      ? customDurationSec
+      : Math.max(2, slideIntervalSec);
+  const isPaused = Boolean(pauseOnHover && isHovered);
+
+  const cycleSignature = `${activeSlide?.id || ''}:${safeActiveIndex}:${currentSlideDurationSec}`;
+  const remainingMsRef = useRef<number>(currentSlideDurationSec * 1000);
+  const lastCycleSigRef = useRef<string>(cycleSignature);
 
   useEffect(() => {
     if (typeof document === 'undefined') return;
@@ -131,18 +142,30 @@ export function StreamV4HeroSlider({
     setBrokenLogos({});
   }, [cfg.titleLogos]);
 
-  // Continuous autoplay
+  // Continuous autoplay with per-movie duration and hover-pause sync
   useEffect(() => {
-    if (!autoPlayEnabled || slideCount <= 1) return undefined;
-    if (pauseOnHover && isHovered) return undefined;
+    if (lastCycleSigRef.current !== cycleSignature) {
+      lastCycleSigRef.current = cycleSignature;
+      remainingMsRef.current = currentSlideDurationSec * 1000;
+    }
 
-    const intervalMs = Math.max(2, slideIntervalSec) * 1000;
+    if (!autoPlayEnabled || slideCount <= 1 || isPaused) {
+      return undefined;
+    }
+
+    const startedAt = Date.now();
+    const waitMs = Math.max(120, remainingMsRef.current);
     const timer = setTimeout(() => {
+      remainingMsRef.current = currentSlideDurationSec * 1000;
       setActiveIndex((prev) => (prev + 1) % slideCount);
-    }, intervalMs);
+    }, waitMs);
 
-    return () => clearTimeout(timer);
-  }, [autoPlayEnabled, slideCount, pauseOnHover, isHovered, slideIntervalSec, safeActiveIndex]);
+    return () => {
+      clearTimeout(timer);
+      const elapsed = Date.now() - startedAt;
+      remainingMsRef.current = Math.max(120, remainingMsRef.current - elapsed);
+    };
+  }, [autoPlayEnabled, slideCount, isPaused, currentSlideDurationSec, cycleSignature]);
 
   // Keep active PNG dot centered in horizontal bottom bar without scrolling the page
   useEffect(() => {
@@ -245,6 +268,10 @@ export function StreamV4HeroSlider({
     '--rtv-v4-cast-size': `${cfg.castSizePx}px`,
     '--rtv-v4-strip-logo-h': `${cfg.stripLogoHeightPx}px`,
     '--rtv-v4-strip-text-size': `${cfg.stripTextSizePx}px`,
+    '--rtv-v4-progress-h': `${cfg.progressBarHeightPx}px`,
+    '--rtv-v4-blend-h': `${cfg.bottomBlendHeightPx}px`,
+    '--rtv-v4-bottom-blur': `${cfg.bottomBlurPx}px`,
+    '--rtv-v4-bottom-overlap': `${cfg.bottomOverlapPx}px`,
     '--rtv-v4-scrim-opacity': String(Math.max(0.35, Math.min(1, cfg.scrimIntensityPct / 100))),
     ...(cfg.colorMode === 'custom'
       ? {
@@ -487,6 +514,12 @@ export function StreamV4HeroSlider({
         </div>
       </div>
 
+      {/* Seamless Bottom Blur Mist + Page Background Dissolve */}
+      {cfg.bottomBlurPx > 0 && (
+        <div className="rtv-v4-bottom-mist" aria-hidden="true" />
+      )}
+      <div className="rtv-v4-bottom-fade" aria-hidden="true" />
+
       {/* Optional Prev/Next Owl Arrows */}
       {cfg.showNavArrows && slideCount > 1 && (
         <>
@@ -584,6 +617,29 @@ export function StreamV4HeroSlider({
                 </button>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {/* Bottom Progress Bar Reflecting Active Movie's Display Time */}
+      {cfg.showProgressBar && (
+        <div className="rtv-v4-progress-wrap" aria-hidden="true">
+          <div className="rtv-v4-progress-track">
+            <div
+              key={`rtv-v4-bar-${cycleSignature}-${autoPlayEnabled}`}
+              className="rtv-v4-progress-fill"
+              style={
+                autoPlayEnabled && slideCount > 1
+                  ? {
+                      animationDuration: `${currentSlideDurationSec}s`,
+                      animationPlayState: isPaused ? 'paused' : 'running',
+                    }
+                  : {
+                      animation: 'none',
+                      transform: `scaleX(${slideCount > 1 ? (safeActiveIndex + 1) / slideCount : 1})`,
+                    }
+              }
+            />
           </div>
         </div>
       )}
