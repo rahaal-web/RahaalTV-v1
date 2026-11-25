@@ -7,7 +7,6 @@ import {
   LayoutGrid,
   Monitor,
   Palette,
-  Play,
   RotateCcw,
   Save,
   Smartphone,
@@ -304,16 +303,23 @@ export function AdminCardsAndThemesPanel({
             </div>
           </div>
 
-          {/* Grid of All 20 Professional 3D Card Styles */}
+          {/* Grid of All 20 Professional 3D Card Styles (Live Visual Previews) */}
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4">
             {MAIN_3D_CARD_STYLES.map((styleMeta) => {
               const selected = cfg.cardStyle === styleMeta.id;
               return (
-                <button
+                <div
                   key={styleMeta.id}
-                  type="button"
+                  role="button"
+                  tabIndex={0}
                   onClick={() => void handleSelectMainCardStyle(styleMeta.id, false)}
-                  className={`group relative flex flex-col rounded-2xl border p-2.5 text-right transition-all cursor-pointer ${
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      void handleSelectMainCardStyle(styleMeta.id, false);
+                    }
+                  }}
+                  className={`relative flex flex-col rounded-2xl border p-2.5 text-right transition-all cursor-pointer ${
                     selected
                       ? 'bg-[#D92321]/15 border-[#f9c400] ring-2 ring-[#f9c400]/40 shadow-xl'
                       : 'bg-[#1a242e]/60 border-white/10 hover:border-white/30'
@@ -333,49 +339,26 @@ export function AdminCardsAndThemesPanel({
                     )}
                   </div>
 
-                  {/* Mini 3D Preview Stage */}
-                  <div
-                    className={`rtv-card-3d-wrap rtv-card-3d--${styleMeta.id} relative mx-auto w-full aspect-[2/2.3] mb-2.5 overflow-hidden rounded-xl`}
-                  >
-                    <div
-                      className="rtv-card-3d-inner h-full w-full flex flex-col justify-between p-2"
-                      style={
-                        styleMeta.id === 'classic' || styleMeta.id === 'showcase'
-                          ? {
-                              background: `linear-gradient(160deg, ${styleMeta.surfaceHex}, #0b0f17)`,
-                              border: `1px solid ${styleMeta.accentHex}66`,
-                              borderRadius: '14px',
-                            }
-                          : undefined
-                      }
-                    >
-                      <div className="flex items-center justify-between">
-                        <span
-                          className="h-2.5 w-8 rounded-full"
-                          style={{ backgroundColor: styleMeta.accentHex }}
-                        />
-                        <span className="font-latin text-[9px] font-black text-[#f9c400]">★ 8.6</span>
-                      </div>
-                      <div className="my-auto flex items-center justify-center">
-                        <span
-                          className="flex h-8 w-8 items-center justify-center rounded-full text-white shadow-lg"
-                          style={{ backgroundColor: styleMeta.accentHex }}
-                        >
-                          <Play className="w-3.5 h-3.5 fill-current" />
-                        </span>
-                      </div>
-                      <div className="space-y-1">
-                        <div className="h-2 w-4/5 rounded bg-white/80" />
-                        <div className="h-1.5 w-1/2 rounded bg-white/35" />
-                      </div>
-                    </div>
+                  {/* Live Interactive Card Preview */}
+                  <div className="mb-2.5 flex-1">
+                    <MovieCard
+                      item={previewItem}
+                      onSelect={() => {
+                        void handleSelectMainCardStyle(styleMeta.id, false);
+                      }}
+                      isInWatchlist={true}
+                      onToggleWatchlist={() => {
+                        void handleSelectMainCardStyle(styleMeta.id, false);
+                      }}
+                      variant={styleMeta.id}
+                    />
                   </div>
 
                   <p className="text-xs font-extrabold text-white line-clamp-1">{styleMeta.name}</p>
                   <p className="font-latin text-[10px] text-[#b7c9ef]/75 truncate mt-0.5">
                     {styleMeta.englishName}
                   </p>
-                </button>
+                </div>
               );
             })}
           </div>

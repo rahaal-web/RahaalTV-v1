@@ -1197,165 +1197,167 @@ html[data-rtv-low-spec="true"] .rtv-placeholder-shimmer {
   opacity: 1;
 }
 
-/* Individual 3D Architectural Identities (Styles 3..20) */
+/* Individual 18 Distinct Architectural Card Identities (Styles 3..20 — RahaL TV Original Palette) */
 .rtv-card-3d--3d-obsidian-tilt .rtv-card-3d-inner {
-  background: linear-gradient(160deg, #131823 0%, #090c12 100%);
-  border: 1px solid rgba(239, 68, 68, 0.3);
-  border-radius: 20px;
-  box-shadow: 0 20px 40px -12px rgba(0, 0, 0, 0.85), inset 0 1px 0 rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 22px 44px -12px rgba(0, 0, 0, 0.88);
+}
+
+.rtv-curtain-drawer {
+  background: linear-gradient(180deg, rgba(15, 15, 15, 0) 0%, rgba(15, 15, 15, 0.92) 38%, #0f0f0f 100%);
 }
 
 .rtv-card-3d--3d-cinema-stage .rtv-card-3d-inner {
-  background: linear-gradient(180deg, #1b1b24 0%, #101017 100%);
-  border: 1px solid rgba(245, 158, 11, 0.28);
-  border-radius: 22px;
-  box-shadow: 0 22px 38px -10px rgba(0, 0, 0, 0.82), 0 8px 0 -2px rgba(245, 158, 11, 0.22);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.85), inset 0 2px 0 rgba(229, 9, 20, 0.45);
 }
 
-.rtv-card-3d--3d-neon-prism .rtv-card-3d-inner {
-  background: linear-gradient(155deg, #0b1623 0%, #070d16 100%);
-  border: 1.5px solid rgba(6, 182, 212, 0.45);
-  border-radius: 18px;
-  box-shadow: 0 16px 36px rgba(6, 182, 212, 0.18), 0 20px 42px rgba(0, 0, 0, 0.8);
+.rtv-chamfer-frame {
+  clip-path: polygon(16px 0, 100% 0, 100% calc(100% - 16px), calc(100% - 16px) 100%, 0 100%, 0 16px);
+  border: 1px solid rgba(229, 9, 20, 0.42);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.85);
 }
 
 .rtv-card-3d--3d-glass-float .rtv-card-3d-inner {
-  background: linear-gradient(175deg, rgba(24, 38, 56, 0.92), rgba(11, 18, 28, 0.96));
-  border: 1px solid rgba(125, 211, 252, 0.3);
-  border-radius: 24px;
-  box-shadow: 0 24px 44px -12px rgba(2, 132, 199, 0.28), inset 0 1px 1px rgba(255, 255, 255, 0.22);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 24px 44px -12px rgba(0, 0, 0, 0.88);
 }
 
 .rtv-card-3d--3d-gold-bevel .rtv-card-3d-inner {
-  background: linear-gradient(165deg, #211b10 0%, #110d07 100%);
-  border: 1.5px solid rgba(234, 179, 8, 0.52);
-  border-radius: 18px;
-  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.85), inset 0 0 0 1px rgba(253, 224, 71, 0.16);
+  border: 1.5px solid rgba(249, 196, 0, 0.5);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.85), inset 0 0 0 1px rgba(249, 196, 0, 0.14);
 }
 
-.rtv-card-3d--3d-stacked-deck::before,
-.rtv-card-3d--3d-stacked-deck::after {
-  content: "";
-  position: absolute;
-  inset: 4px 8px -6px 8px;
-  border-radius: 18px;
-  background: #231928;
-  border: 1px solid rgba(244, 63, 94, 0.25);
-  transform: translateZ(-12px) translateY(5px);
-  z-index: 0;
-  pointer-events: none;
+.rtv-deck-back-left {
+  transform: rotate(-3.5deg) translateX(-4px) translateY(3px);
 }
 
-.rtv-card-3d--3d-stacked-deck::after {
-  inset: 8px 14px -10px 14px;
-  background: #17101c;
-  transform: translateZ(-22px) translateY(9px);
-  opacity: 0.8;
+.rtv-deck-back-right {
+  transform: rotate(3.5deg) translateX(4px) translateY(3px);
+}
+
+@media (hover: hover) {
+  .rtv-card-3d--3d-stacked-deck:hover .rtv-deck-back-left {
+    transform: rotate(-7deg) translateX(-9px) translateY(6px);
+  }
+  .rtv-card-3d--3d-stacked-deck:hover .rtv-deck-back-right {
+    transform: rotate(7deg) translateX(9px) translateY(6px);
+  }
 }
 
 .rtv-card-3d--3d-stacked-deck .rtv-card-3d-inner {
-  z-index: 2;
-  background: #18131d;
-  border: 1px solid rgba(244, 63, 94, 0.36);
-  border-radius: 18px;
-  box-shadow: 0 18px 34px rgba(0, 0, 0, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 18px 34px rgba(0, 0, 0, 0.85);
 }
 
 .rtv-card-3d--3d-hologram-edge .rtv-card-3d-inner {
-  background: linear-gradient(145deg, #17122b 0%, #0d0a1a 100%);
-  border: 1.5px solid rgba(168, 85, 247, 0.48);
-  border-radius: 22px;
-  box-shadow: 0 20px 44px rgba(168, 85, 247, 0.22), 0 14px 28px rgba(0, 0, 0, 0.8);
-}
-
-.rtv-card-3d--3d-hologram-edge .rtv-card-3d-sheen {
-  background: linear-gradient(125deg, rgba(168, 85, 247, 0.28), rgba(56, 189, 248, 0.22), rgba(244, 63, 94, 0.25));
-  opacity: 0.35;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 20px 42px rgba(0, 0, 0, 0.86);
 }
 
 .rtv-card-3d--3d-theater-curtain .rtv-card-3d-inner {
-  background: linear-gradient(180deg, #241016 0%, #12080b 100%);
-  border: 1.5px solid rgba(220, 38, 38, 0.45);
-  border-radius: 20px;
-  box-shadow: 0 22px 42px rgba(0, 0, 0, 0.88), inset 0 2px 14px rgba(220, 38, 38, 0.22);
+  border: 1px solid rgba(229, 9, 20, 0.42);
+  box-shadow: 0 22px 42px rgba(0, 0, 0, 0.88);
+}
+
+.rtv-curtain-panel-left {
+  background: repeating-linear-gradient(
+    90deg,
+    #450a0a 0px,
+    #7f1d1d 4px,
+    #2a0606 8px
+  );
+  box-shadow: 4px 0 14px rgba(0, 0, 0, 0.75);
+}
+
+.rtv-curtain-panel-right {
+  background: repeating-linear-gradient(
+    90deg,
+    #2a0606 0px,
+    #7f1d1d 4px,
+    #450a0a 8px
+  );
+  box-shadow: -4px 0 14px rgba(0, 0, 0, 0.75);
 }
 
 .rtv-card-3d--3d-poster-lift .rtv-card-3d-inner {
-  background: #101915;
-  border: 1px solid rgba(34, 197, 94, 0.34);
-  border-radius: 20px;
-  box-shadow: 0 18px 36px rgba(0, 0, 0, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 16px 32px rgba(0, 0, 0, 0.8);
 }
 
 @media (hover: hover) {
   .rtv-card-3d--3d-poster-lift:hover .rtv-card-3d-poster-pop {
-    transform: translateZ(34px) translateY(-10px) scale(1.03);
-    box-shadow: 0 20px 35px rgba(0, 0, 0, 0.78);
+    transform: translateZ(34px) translateY(-12px) scale(1.03);
+    box-shadow: 0 24px 38px rgba(0, 0, 0, 0.88);
   }
 }
 
-.rtv-card-3d--3d-dual-flip .rtv-card-3d-inner {
-  background: linear-gradient(160deg, #10192d 0%, #090e1c 100%);
-  border: 1px solid rgba(59, 130, 246, 0.38);
-  border-radius: 18px;
-  box-shadow: 0 20px 38px rgba(0, 0, 0, 0.82), 0 0 22px rgba(59, 130, 246, 0.16);
-}
-
 .rtv-card-3d--3d-corner-fold .rtv-card-3d-inner {
-  background: linear-gradient(170deg, #211713 0%, #130d0b 100%);
-  border: 1px solid rgba(251, 146, 60, 0.4);
-  border-radius: 20px 6px 20px 20px;
-  box-shadow: 0 18px 38px rgba(0, 0, 0, 0.84);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 18px 36px rgba(0, 0, 0, 0.84);
 }
 
 .rtv-card-3d--3d-cyber-frame .rtv-card-3d-inner {
-  background: linear-gradient(180deg, #0b1f1f 0%, #061011 100%);
-  border: 1.5px solid rgba(20, 184, 166, 0.48);
-  border-radius: 14px;
-  box-shadow: 0 18px 36px rgba(0, 0, 0, 0.86), 0 0 18px rgba(20, 184, 166, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 18px 36px rgba(0, 0, 0, 0.88);
 }
 
 .rtv-card-3d--3d-velvet-depth .rtv-card-3d-inner {
-  background: linear-gradient(165deg, #21121e 0%, #110910 100%);
-  border: 1px solid rgba(236, 72, 153, 0.36);
-  border-radius: 24px;
-  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.88), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(229, 9, 20, 0.35);
+  box-shadow: 0 22px 44px rgba(0, 0, 0, 0.88), inset 0 1px 0 rgba(255, 255, 255, 0.14);
 }
 
 .rtv-card-3d--3d-chrome-plate .rtv-card-3d-inner {
-  background: linear-gradient(145deg, #222730 0%, #12151a 100%);
-  border: 1.5px solid rgba(148, 163, 184, 0.44);
-  border-radius: 16px;
-  box-shadow: 0 18px 38px rgba(0, 0, 0, 0.82), inset 0 1px 1px rgba(255, 255, 255, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 18px 38px rgba(0, 0, 0, 0.84);
+}
+
+.rtv-film-sprocket {
+  background-color: #0b0b0b;
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0px,
+    transparent 5px,
+    rgba(255, 255, 255, 0.24) 5px,
+    rgba(255, 255, 255, 0.24) 11px,
+    transparent 11px,
+    transparent 16px
+  );
+  background-size: 7px 16px;
+  background-position: center;
+  background-repeat: repeat-y;
 }
 
 .rtv-card-3d--3d-spotlight-arc .rtv-card-3d-inner {
-  background: radial-gradient(circle at 50% -10%, rgba(250, 204, 21, 0.24), transparent 58%), #141418;
-  border: 1px solid rgba(250, 204, 21, 0.35);
-  border-radius: 22px;
+  background: radial-gradient(circle at 50% 0%, rgba(229, 9, 20, 0.24), transparent 55%), #141414;
+  border: 1px solid rgba(255, 255, 255, 0.1);
   box-shadow: 0 22px 42px rgba(0, 0, 0, 0.86);
 }
 
 .rtv-card-3d--3d-polaroid-slab .rtv-card-3d-inner {
-  background: #1f1d24;
-  border: 2px solid rgba(255, 255, 255, 0.18);
-  border-radius: 18px;
-  padding: 6px;
-  box-shadow: 0 20px 42px rgba(0, 0, 0, 0.88), 0 6px 0 rgba(225, 29, 72, 0.42);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow: 0 20px 42px rgba(0, 0, 0, 0.88);
 }
 
 .rtv-card-3d--3d-split-slice .rtv-card-3d-inner {
-  background: linear-gradient(155deg, #171429 0%, #0d0b18 100%);
-  border: 1px solid rgba(139, 92, 246, 0.4);
-  border-radius: 20px;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.84);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.85);
 }
 
 .rtv-card-3d--3d-metallic-crest .rtv-card-3d-inner {
-  background: linear-gradient(170deg, #211a14 0%, #100d0a 100%);
-  border: 2px solid rgba(245, 158, 11, 0.45);
-  border-radius: 20px;
-  box-shadow: 0 22px 44px rgba(0, 0, 0, 0.88), inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.85);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rtv-deck-back-left,
+  .rtv-deck-back-right,
+  .rtv-curtain-panel-left,
+  .rtv-curtain-panel-right,
+  .rtv-card-3d-poster-pop {
+    transition: none !important;
+    transform: none !important;
+  }
 }
 
 /* ============================================================
