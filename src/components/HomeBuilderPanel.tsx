@@ -420,16 +420,20 @@ export function HomeBuilderPanel({
                 تبديل فوري مع إبقاء الأساسي كما هو
               </span>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               {(
                 [
                   {
                     id: 'original',
-                    label: 'السلايدر الأساسي (Original Slider)',
+                    label: '1. السلايدر الأساسي (Original)',
                   },
                   {
                     id: 'cinematic',
-                    label: 'السلايدر السينمائي الجديد (Cinematic Slider)',
+                    label: '2. السينمائي 3D (Cinematic)',
+                  },
+                  {
+                    id: 'showcase',
+                    label: '3. الاستعراضي (Showcase)',
                   },
                 ] as Array<{ id: HeroSliderVariant; label: string }>
               ).map((styleOpt) => (
@@ -440,8 +444,10 @@ export function HomeBuilderPanel({
                     setHeroSliderVariant(styleOpt.id);
                     onNotify(
                       styleOpt.id === 'cinematic'
-                        ? 'تم التبديل إلى السلايدر السينمائي الجديد'
-                        : 'تم الرجوع إلى السلايدر الأساسي'
+                        ? 'تم التبديل إلى السلايدر السينمائي 3D'
+                        : styleOpt.id === 'showcase'
+                          ? 'تم التبديل إلى السلايدر الاستعراضي الثالث'
+                          : 'تم الرجوع إلى السلايدر الأساسي'
                     );
                   }}
                   className={`rounded-xl border px-3 py-2 text-xs font-extrabold transition-colors cursor-pointer text-right flex items-center justify-between gap-2 ${

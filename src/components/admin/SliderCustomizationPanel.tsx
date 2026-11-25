@@ -119,8 +119,10 @@ export function SliderCustomizationPanel({
     setHeroSliderVariant(variant);
     onNotify(
       variant === 'cinematic'
-        ? 'تم تفعيل السلايدر السينمائي الجديد (Cinematic Slider) على الرئيسية فوراً'
-        : 'تم الرجوع إلى السلايدر الأساسي (Original Slider) كما هو تماماً'
+        ? 'تم تفعيل السلايدر السينمائي 3D (Cinematic Slider) على الرئيسية فوراً'
+        : variant === 'showcase'
+          ? 'تم تفعيل السلايدر الاستعراضي الثالث (Showcase Slider) على الرئيسية فوراً'
+          : 'تم الرجوع إلى السلايدر الأساسي (Original Slider) كما هو تماماً'
     );
   };
 
@@ -269,7 +271,7 @@ export function SliderCustomizationPanel({
           </span>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3.5">
           <button
             type="button"
             onClick={() => handleSelectSliderVariant('original')}
@@ -284,7 +286,7 @@ export function SliderCustomizationPanel({
                 1. السلايدر الأساسي (Original Slider)
               </span>
               {heroSliderVariant === 'original' && (
-                <span className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2 py-0.5 text-[10px] font-extrabold text-white">
+                <span className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2 py-0.5 text-[10px] font-extrabold text-white shrink-0">
                   <CheckCircle2 className="w-3 h-3" />
                   مفعّل الآن
                 </span>
@@ -306,17 +308,42 @@ export function SliderCustomizationPanel({
           >
             <div className="flex items-center justify-between gap-2">
               <span className="text-sm font-extrabold text-white">
-                2. السلايدر السينمائي الجديد (Cinematic Slider)
+                2. السلايدر السينمائي 3D (Cinematic)
               </span>
               {heroSliderVariant === 'cinematic' && (
-                <span className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2 py-0.5 text-[10px] font-extrabold text-white">
+                <span className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2 py-0.5 text-[10px] font-extrabold text-white shrink-0">
                   <CheckCircle2 className="w-3 h-3" />
                   مفعّل الآن
                 </span>
               )}
             </div>
             <p className="text-xs text-[#b7c9ef] leading-relaxed">
-              تصميم سينمائي فاخر ثلاثي الأبعاد (Premium 3D) بعمق بصري وParallax وحركة Zoom ناعمة ولمسة إضاءة حمراء، يعرض الصورة واسم العمل فقط بدون أي أزرار.
+              تصميم سينمائي فاخر ثلاثي الأبعاد (Premium 3D) بعمق بصري وحركة Zoom ناعمة، يعرض الصورة واسم العمل فقط بدون أزرار.
+            </p>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleSelectSliderVariant('showcase')}
+            className={`rounded-2xl border p-4 text-right transition-all cursor-pointer flex flex-col gap-2 ${
+              heroSliderVariant === 'showcase'
+                ? 'rtv-admin-accent-soft border-sky-400/50 shadow-md'
+                : 'bg-[#1a242e]/65 border-white/[0.08] hover:border-white/20'
+            }`}
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm font-extrabold text-white">
+                3. السلايدر الاستعراضي (Showcase)
+              </span>
+              {heroSliderVariant === 'showcase' && (
+                <span className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2 py-0.5 text-[10px] font-extrabold text-white shrink-0">
+                  <CheckCircle2 className="w-3 h-3" />
+                  مفعّل الآن
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-[#b7c9ef] leading-relaxed">
+              تصميم استعراضي مطابق لمنصات العرض الكبرى: عنوان ضخم على اليمين مع النبذة وطاقم العمل وزر «شاهد وحمل الان» وشريط أسماء الأعمال بالأسفل.
             </p>
           </button>
         </div>
@@ -428,6 +455,74 @@ export function SliderCustomizationPanel({
                   </h4>
                 );
               })()}
+            </div>
+          </div>
+        ) : heroSliderVariant === 'showcase' ? (
+          <div
+            className={`rtv-site-preview mx-auto rounded-2xl overflow-hidden border border-white/15 bg-[#0b0a10] relative transition-all flex flex-col justify-end ${
+              previewDevice === 'mobile' ? 'max-w-[360px] h-[440px]' : 'w-full h-[390px]'
+            }`}
+          >
+            {activeSlide && (
+              <img
+                src={optimizeTmdbUrl(activeSlide.backdrop || activeSlide.poster, 'w780')}
+                alt={activeSlide.title}
+                loading="lazy"
+                decoding="async"
+                className={`pointer-events-none absolute inset-0 h-full w-full object-cover ${
+                  previewDevice === 'mobile' ? 'object-[50%_18%]' : 'object-[28%_20%]'
+                }`}
+              />
+            )}
+            <div
+              className="pointer-events-none absolute inset-0"
+              style={{
+                background:
+                  'linear-gradient(to left, rgba(11,9,22,0.94) 0%, rgba(13,10,26,0.78) 32%, rgba(13,10,26,0.34) 60%, transparent 82%), linear-gradient(to top, #0f0f0f 0%, rgba(12,10,22,0.92) 20%, transparent 56%)',
+              }}
+            />
+            <div className="relative z-10 p-5 sm:p-7 space-y-3">
+              <div className="max-w-[320px] space-y-2 text-right">
+                <h4 className="font-display text-xl sm:text-2xl font-black text-white leading-tight drop-shadow">
+                  {activeSlide?.title || 'Heart of the Beast'}
+                </h4>
+                <p className="text-[11px] font-bold text-white/90">
+                  {activeSlide?.kind === 'series' ? 'مسلسلات' : 'افلام'} •{' '}
+                  {activeSlide?.genres?.slice(0, 2).join(' ، ') || 'اكشن ، اثارة'} •{' '}
+                  {activeSlide?.year || '2026'}
+                </p>
+                <p className="text-[11px] text-[#e2e2e8]/90 line-clamp-2 leading-relaxed">
+                  {activeSlide?.story ||
+                    'عرض سينمائي مباشر بجودة عالية وتفاصيل واضحة.'}
+                </p>
+                <div className="flex items-center gap-2 pt-1">
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-[#f44336] px-4 py-1.5 text-[11px] font-extrabold text-white">
+                    <Play className="w-3 h-3 fill-current" />
+                    <span>شاهد وحمل الان</span>
+                  </span>
+                  <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/15 border border-white/20 text-xs font-bold text-white">
+                    +
+                  </span>
+                </div>
+              </div>
+              <div className="border-t border-white/10 pt-2.5 flex items-center justify-between gap-3 overflow-hidden">
+                {previewSlides.slice(0, previewDevice === 'mobile' ? 3 : 5).map((s, idx) => (
+                  <div key={s.id} className="relative pb-1.5 text-center truncate">
+                    <span
+                      className={`text-[10px] sm:text-xs font-black truncate ${
+                        idx === previewSlideIdx % previewSlides.length
+                          ? 'text-white'
+                          : 'text-white/55'
+                      }`}
+                    >
+                      {s.englishTitle || s.title}
+                    </span>
+                    {idx === previewSlideIdx % previewSlides.length && (
+                      <span className="block mx-auto mt-1 h-[2px] w-6 rounded-full bg-[#f44336]" />
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         ) : (
@@ -620,9 +715,13 @@ export function SliderCustomizationPanel({
         )}
       </div>
 
-      {heroSliderVariant === 'cinematic' && (
+      {heroSliderVariant !== 'original' && (
         <div className="rounded-2xl bg-amber-500/10 border border-amber-400/25 px-4 py-3 text-xs text-amber-200 leading-relaxed">
-          ملاحظة: التصميم السينمائي الجديد يعرض الصورة واسم العمل فقط دون أي أزرار أو تفاصيل. الإعدادات أدناه خاصة بتخصيص <strong className="text-white">السلايدر الأساسي</strong> وتظل محفوظة كما هي عند الرجوع إليه.
+          ملاحظة:{' '}
+          {heroSliderVariant === 'cinematic'
+            ? 'التصميم السينمائي 3D يعرض الصورة واسم العمل فقط دون أي أزرار أو تفاصيل.'
+            : 'التصميم الاستعراضي الثالث (Showcase) له تخطيطه وتنسيقاته المستقلة المطابقة لمعاينة المنصة أعلاه.'}{' '}
+          الإعدادات أدناه خاصة بتخصيص <strong className="text-white">السلايدر الأساسي</strong> وتظل محفوظة كما هي عند الرجوع إليه.
         </div>
       )}
 

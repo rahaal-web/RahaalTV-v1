@@ -47,6 +47,7 @@ import { MovieCard } from './MovieCard';
 import { OptimizedImage } from './OptimizedImage';
 import { RunningRabbitLoader } from './RunningRabbitLoader';
 import { CinematicHeroSlider } from './CinematicHeroSlider';
+import { ShowcaseHeroSlider } from './ShowcaseHeroSlider';
 import { useHeroSliderVariant } from '../lib/heroSliderMode';
 
 interface HomeViewProps {
@@ -517,6 +518,17 @@ export function HomeView({
             slideIntervalSec={slideIntervalSec}
             pauseOnHover={pauseOnHover}
             onSelectMedia={onSelectMedia}
+          />
+        ) : heroSliderVariant === 'showcase' ? (
+          <ShowcaseHeroSlider
+            slides={heroSlides}
+            autoPlayEnabled={autoPlayEnabled}
+            slideIntervalSec={slideIntervalSec}
+            pauseOnHover={pauseOnHover}
+            watchlistIds={watchlistIds}
+            onSelectMedia={onSelectMedia}
+            onPlayNow={onPlayNow}
+            onToggleWatchlist={onToggleWatchlist}
           />
         ) : (() => {
         const backdropInfo = getBackdropInfo(activeHero);
