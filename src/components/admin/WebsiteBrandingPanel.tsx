@@ -7,7 +7,6 @@ import {
   FileUp,
   Globe,
   Image as ImageIcon,
-  Layers,
   RotateCcw,
   Trash2,
   Type,
@@ -307,9 +306,11 @@ export function WebsiteBrandingPanel({
                 />
               ) : (
                 <img
-                  src="/icon.svg"
+                  src="/favicon.png"
                   alt="Default Favicon"
-                  className="h-4 w-4 object-contain shrink-0"
+                  draggable={false}
+                  onContextMenu={(e) => e.preventDefault()}
+                  className="pointer-events-none select-none h-4 w-4 rounded-full object-contain shrink-0"
                 />
               )}
               <span className="text-[11px] font-bold text-white truncate">
@@ -341,28 +342,19 @@ export function WebsiteBrandingPanel({
                   }`}
                   style={{ gap: `${draft.logoTextGapPx}px` }}
                 >
-                  {(draft.logoMode === 'image_and_text' || draft.logoMode === 'image_only') &&
-                    (resolvedLogoSrc ? (
-                      <img
-                        src={resolvedLogoSrc}
-                        alt={draft.siteName}
-                        style={{
-                          width: `${draft.logoWidthPx}px`,
-                          height: `${draft.logoHeightPx}px`,
-                        }}
-                        className="object-contain shrink-0"
-                      />
-                    ) : (
-                      <div
-                        style={{
-                          width: `${draft.logoWidthPx}px`,
-                          height: `${draft.logoHeightPx}px`,
-                        }}
-                        className="flex items-center justify-center rounded-xl bg-gradient-to-br from-[#e50914] to-[#9b070e] shadow-md shrink-0"
-                      >
-                        <Layers className="w-1/2 h-1/2 text-white" />
-                      </div>
-                    ))}
+                  {(draft.logoMode === 'image_and_text' || draft.logoMode === 'image_only') && (
+                    <img
+                      src={resolvedLogoSrc || '/brand-logo.png'}
+                      alt={draft.siteName}
+                      draggable={false}
+                      onContextMenu={(e) => e.preventDefault()}
+                      style={{
+                        width: `${draft.logoWidthPx}px`,
+                        height: `${draft.logoHeightPx}px`,
+                      }}
+                      className="pointer-events-none select-none object-contain shrink-0"
+                    />
+                  )}
 
                   {(draft.logoMode === 'image_and_text' || draft.logoMode === 'text_only') && (
                     <span

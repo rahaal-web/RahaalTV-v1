@@ -128,9 +128,18 @@ export function PWAInstallButton({
           >
             <div className="w-full max-w-sm rounded-2xl bg-[#181818] border border-white/10 p-6 shadow-2xl text-right">
               <div className="flex items-center justify-between mb-3">
-                <h3 className="font-display text-base font-extrabold text-white">
-                  تثبيت RahaL TV على iPhone / iPad
-                </h3>
+                <div className="flex items-center gap-2.5">
+                  <img
+                    src="/pwa-192x192.png"
+                    alt="RahaL TV"
+                    draggable={false}
+                    onContextMenu={(e) => e.preventDefault()}
+                    className="pointer-events-none select-none h-7 w-7 rounded-full object-contain shrink-0"
+                  />
+                  <h3 className="font-display text-base font-extrabold text-white">
+                    تثبيت RahaL TV على iPhone / iPad
+                  </h3>
+                </div>
                 <button
                   type="button"
                   onClick={closeIOSGuide}

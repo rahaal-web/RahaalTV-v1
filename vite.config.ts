@@ -17,7 +17,16 @@ export default defineConfig(() => {
       tailwindcss(),
       VitePWA({
         registerType: 'autoUpdate',
-        includeAssets: ['icon.svg', 'apple-touch-icon.png', 'og-cover.jpg'],
+        includeAssets: [
+          'brand-logo.png',
+          'favicon.png',
+          'icon.svg',
+          'apple-touch-icon.png',
+          'pwa-192x192.png',
+          'pwa-512x512.png',
+          'pwa-maskable-512x512.png',
+          'og-cover.jpg',
+        ],
         manifest: {
           id: base,
           name: 'RahaL TV — مشاهدة وتحميل أحدث الأفلام والمسلسلات',

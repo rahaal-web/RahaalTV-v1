@@ -405,11 +405,26 @@ export function applyWebsiteFaviconToDocument(rawBranding?: Partial<WebsiteBrand
     }
   }
 
-  // Default fallback icon
+  // Default fallback icon (circular emblem for browser & external app)
   const appleDefault = document.createElement('link');
   appleDefault.rel = 'apple-touch-icon';
+  appleDefault.setAttribute('sizes', '180x180');
   appleDefault.href = '/apple-touch-icon.png';
   head.appendChild(appleDefault);
+
+  const png192Default = document.createElement('link');
+  png192Default.rel = 'icon';
+  png192Default.type = 'image/png';
+  png192Default.setAttribute('sizes', '192x192');
+  png192Default.href = '/pwa-192x192.png';
+  head.appendChild(png192Default);
+
+  const png64Default = document.createElement('link');
+  png64Default.rel = 'icon';
+  png64Default.type = 'image/png';
+  png64Default.setAttribute('sizes', '64x64');
+  png64Default.href = '/favicon.png';
+  head.appendChild(png64Default);
 
   const svgDefault = document.createElement('link');
   svgDefault.rel = 'icon';

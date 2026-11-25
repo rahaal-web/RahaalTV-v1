@@ -58,27 +58,18 @@ export function Logo({
       style={{ gap: `${Math.round(cfg.logoTextGapPx)}px` }}
     >
       {showImage && (
-        logoSrc ? (
-          <img
-            src={logoSrc}
-            alt={cfg.siteName || 'Logo'}
-            loading="eager"
-            decoding="async"
-            draggable={false}
-            onContextMenu={(e) => e.preventDefault()}
-            style={{ width: `${scaledWidth}px`, height: `${scaledHeight}px` }}
-            className="pointer-events-none select-none object-contain shrink-0 rounded-lg"
-          />
-        ) : (
-          <div
-            style={{ width: `${scaledWidth}px`, height: `${scaledHeight}px` }}
-            className="relative flex items-center justify-center rounded-xl bg-[#E50914] shadow-[0_4px_16px_rgba(229,9,20,0.4)] shrink-0"
-          >
-            <svg viewBox="0 0 24 24" className="w-5 h-5 text-white fill-current" aria-hidden="true">
-              <path d="M8 5.5v13l10-6.5-10-6.5z" />
-            </svg>
-          </div>
-        )
+        <img
+          src={logoSrc || '/brand-logo.png'}
+          alt={cfg.siteName || 'Logo'}
+          loading="eager"
+          decoding="async"
+          draggable={false}
+          onContextMenu={(e) => e.preventDefault()}
+          style={{ width: `${scaledWidth}px`, height: `${scaledHeight}px` }}
+          className={`pointer-events-none select-none object-contain shrink-0 ${
+            logoSrc ? 'rounded-lg' : 'drop-shadow-[0_2px_10px_rgba(229,9,20,0.3)]'
+          }`}
+        />
       )}
 
       {showText && (
