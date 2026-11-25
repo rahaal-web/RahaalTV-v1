@@ -1,5 +1,6 @@
 import { doc, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore';
 import { CustomFontFormat, CustomFontRecord } from '../types/media';
+import { reportClientError } from './clientLogger';
 import { getActiveDb } from './dbConnectionManager';
 import { detectFontFormat, MAX_CUSTOM_FONT_FILE_BYTES } from './typographyConfig';
 
@@ -682,7 +683,13 @@ export async function syncAdminAppearanceToFirestore(
       updatedAt: serverTimestamp(),
     });
     return true;
-  } catch {
+  } catch (error) {
+    reportClientError({
+      source: 'firestore.admin_workspace.appearance',
+      level: 'warn',
+      message: `Failed to sync admin appearance to Firestore: ${error instanceof Error ? error.message : String(error)}`,
+      context: { uid },
+    });
     return false;
   }
 }
@@ -703,8 +710,12 @@ export function subscribeAdminAppearanceFromFirestore(
         const normalized = saveAdminAppearance(data.config);
         onRemote(normalized);
       },
-      () => {
-        // Ignore permission/offline errors silently — localStorage keeps admin functional
+      (error) => {
+        reportClientError({
+          source: 'firestore.admin_workspace.appearance',
+          level: 'warn',
+          message: `Admin appearance listener error: ${error instanceof Error ? error.message : String(error)}`,
+        });
       }
     );
   } catch {

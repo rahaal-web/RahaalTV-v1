@@ -13,6 +13,9 @@
 9. **Admin Workspace Appearance & Nav Layout Isolation**: Only verified owner admins (`isOwnerAdmin()`) may read, create, update, or delete `/admin_workspace/appearance` and `/admin_workspace/nav_layout`, with strict key whitelisting (`kind`, `config`, `updatedBy`, `updatedAt`).
 10. **Image Placeholder Settings Integrity**: Public visitors have read-only (`get`) access to `/settings/image_placeholders`, while only verified owner admins (`isOwnerAdmin()`) may list or write validated hex colors, shimmer presets, and per-slot overrides (`poster`, `backdrop`, `cast`, `episode`).
 11. **Recently Watched Ownership & Privacy**: `/recently_watched/{uid}__{mediaId}` documents are strictly owner-only (`request.auth.uid == userId`) across `get`, `list`, `create`, `update`, and `delete`, with immutable `id`, `userId`, `mediaId`, and `createdAt`, preventing cross-user history leakage or enumeration.
+12. **Database Connections & Active Pointer Isolation**: `/admin_workspace/db_connections` is strictly owner-only (`isOwnerAdmin()`) for reads and writes and stores only public connection metadata (never server secrets). `/settings/active_database` allows public `get` (so visitors and mobile devices connect to the active database) while writes require `isOwnerAdmin()`.
+13. **Moderator Sub-Permissions Integrity**: `/admin_workspace/moderator_perms` may be read by verified staff (`isStaffAdmin()`) so moderators enforce live owner restrictions across devices, while writes are restricted to `isOwnerAdmin()` with strict 7-key boolean schema enforcement.
+14. **Hero Slider Modes & Bounded Media Maps**: `/settings/hero_slider_mode`, `/settings/showcase_slider`, and `/settings/stream_v4_slider` allow public `get` and `isOwnerAdmin()` writes with bounded slider dimensions, enum validation, and capped map key counts (`<= 60`).
 
 ## 2. The "Dirty Dozen" Attack Payloads
 1. Unauthenticated write to `/media/fake-movie` -> DENIED.
@@ -35,5 +38,10 @@
 18. Staff mutating immutable version snapshot in `/scraper_adapters/{id}/versions/{versionId}` (`update`) -> DENIED.
 19. Signed-in User A attempting to read, write, or delete User B's `/recently_watched/userB__movie` -> DENIED.
 20. Non-owner moderator attempting to write `/settings/image_placeholders` with invalid hex color -> DENIED.
+21. Moderator or regular user attempting to read or overwrite `/admin_workspace/db_connections` -> DENIED.
+22. Moderator attempting to elevate permissions by writing `/admin_workspace/moderator_perms` -> DENIED.
+23. Non-owner or shadow-field payload attempting to switch `/settings/active_database` -> DENIED.
+24. Oversized (> 60 entries) `titleLogos` map or invalid hex color written to `/settings/stream_v4_slider` -> DENIED.
+
 
 

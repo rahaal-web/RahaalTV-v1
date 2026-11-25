@@ -207,11 +207,13 @@ import {
   grantAdminRoleInFirestore,
   revokeAdminRoleFromFirestore,
   saveCustomFontToFirestore,
+  saveHeroSliderVariantToFirestore,
   saveImagePlaceholderConfigToFirestore,
   saveMediaToFirestore,
   saveRecentlyWatchedUiConfigToFirestore,
   saveSiteSettingsToFirestore,
   saveSiteThemeToFirestore,
+  saveStreamV4SliderConfigToFirestore,
   seedCatalogToFirestore,
   signInWithEmailPassword,
   signInWithGoogle,
@@ -280,14 +282,21 @@ import {
   syncAdaptersToBackendRegistry,
 } from '../lib/scraperAdaptersDb';
 import {
+  HeroSliderVariant,
+  saveHeroSliderVariant,
+} from '../lib/heroSliderMode';
+import {
   AdminWorkspacePrefs,
   CatalogTablePrefs,
   DEFAULT_MODERATOR_SUB_PERMS,
   loadAdminNotifications,
   loadAdminWorkspacePrefs,
   ModeratorSubPermissions,
+  normalizeModeratorSubPermissions,
   pushAdminNotification,
   saveAdminWorkspacePrefs,
+  subscribeModeratorPermissionsFromFirestore,
+  syncModeratorPermissionsToFirestore,
 } from '../lib/adminPreferences';
 import {
   cancelTrackedCrawlTask,
@@ -849,19 +858,27 @@ export function AdminDashboardView({
 
   const updateModeratorPerm = useCallback(
     (key: keyof ModeratorSubPermissions, value: boolean) => {
+      const nextPerms = normalizeModeratorSubPermissions({
+        ...workspacePrefs.moderatorSubPermissions,
+        [key]: value,
+      });
       setWorkspacePrefs((prev) => {
         const next: AdminWorkspacePrefs = {
           ...prev,
-          moderatorSubPermissions: {
-            ...prev.moderatorSubPermissions,
-            [key]: value,
-          },
+          moderatorSubPermissions: nextPerms,
         };
         saveAdminWorkspacePrefs(next);
         return next;
       });
+      if (isOwner && activeActorUid) {
+        void syncModeratorPermissionsToFirestore(nextPerms, activeActorUid).then((ok) => {
+          if (!ok) {
+            onNotifyRef.current('تم حفظ الصلاحية محلياً — تعذرت المزامنة مع Firestore');
+          }
+        });
+      }
     },
-    []
+    [workspacePrefs.moderatorSubPermissions, isOwner, activeActorUid]
   );
 
   const [activeTab, setActiveTab] = useState<AdminTab>(() => {
@@ -965,6 +982,20 @@ export function AdminDashboardView({
       unsubNav();
     };
   }, [isOwner, dbConnectionStatus]);
+
+  useEffect(() => {
+    const enabled = Boolean(isAdmin && dbConnectionStatus === 'connected');
+    return subscribeModeratorPermissionsFromFirestore(enabled, (remotePerms) => {
+      setWorkspacePrefs((prev) => {
+        const next: AdminWorkspacePrefs = {
+          ...prev,
+          moderatorSubPermissions: remotePerms,
+        };
+        saveAdminWorkspacePrefs(next);
+        return next;
+      });
+    });
+  }, [isAdmin, dbConnectionStatus]);
 
   const adminCssVars = useMemo(
     () => buildAdminAppearanceCssVars(adminAppearance) as CSSProperties,
@@ -1900,7 +1931,10 @@ export function AdminDashboardView({
       const parsedDuration = editingSliderDurationSec.trim()
         ? Number(editingSliderDurationSec.trim())
         : null;
-      setStreamV4MovieDuration(verification.cleanedItem.id, parsedDuration);
+      const nextV4Cfg = setStreamV4MovieDuration(verification.cleanedItem.id, parsedDuration);
+      if (isOwner && hasActor && activeActorUid) {
+        void saveStreamV4SliderConfigToFirestore(nextV4Cfg, activeActorUid);
+      }
       const removedNote =
         verification.removedCount > 0
           ? ` (تم منع واستبعاد ${verification.removedCount} سيرفر معطل أو صفحة موقع تلقائياً)`
@@ -2828,6 +2862,24 @@ export function AdminDashboardView({
       setBusyAction(false);
     }
   };
+
+  const handleSaveHeroSliderVariant = useCallback(
+    async (variant: HeroSliderVariant) => {
+      const clean = saveHeroSliderVariant(variant);
+      if (!isOwner || !hasActor || !activeActorUid) return;
+      try {
+        const res = await saveHeroSliderVariantToFirestore(clean, activeActorUid);
+        if (!res.ok) {
+          onNotifyRef.current(
+            `تم تفعيل نمط السلايدر محلياً — قواعد (${res.projectId}/${res.databaseId}) رفضت الكتابة إلى settings/hero_slider_mode`
+          );
+        }
+      } catch {
+        onNotifyRef.current('تم تفعيل نمط السلايدر محلياً — تعذرت المزامنة مع Firestore');
+      }
+    },
+    [isOwner, hasActor, activeActorUid]
+  );
 
   const handleSaveTypography = async (nextTypography: TypographyConfig) => {
     const cleanTypography = saveStoredTypographyConfig(nextTypography);
@@ -4861,6 +4913,9 @@ export function AdminDashboardView({
                   homeConfig={activeHomeConfig}
                   catalog={catalog}
                   busy={busyAction}
+                  actorUid={activeActorUid}
+                  hasActor={hasActor}
+                  isOwner={isOwner}
                   onGetAuthToken={async () => {
                     if (user && typeof (user as User).getIdToken === 'function') {
                       return await (user as User).getIdToken();
@@ -4868,6 +4923,7 @@ export function AdminDashboardView({
                     return undefined;
                   }}
                   onSaveHomeConfig={handleSaveHomeConfig}
+                  onSaveHeroSliderVariant={handleSaveHeroSliderVariant}
                   onNotify={onNotify}
                 />
               )}
@@ -4920,6 +4976,7 @@ export function AdminDashboardView({
                   onOpenTypographyTab={() => navigateToTab('typography')}
                   onOpenSliderCustomization={() => navigateToTab('slider_customization')}
                   onOpenCardsAndThemesTab={() => navigateToTab('cards_themes')}
+                  onSaveHeroSliderVariant={handleSaveHeroSliderVariant}
                   onNotify={onNotify}
                 />
               )}
@@ -6494,9 +6551,21 @@ export function AdminDashboardView({
                     <button
                       type="button"
                       onClick={() => {
+                        const defaults = { ...DEFAULT_MODERATOR_SUB_PERMS };
                         updateWorkspacePrefs({
-                          moderatorSubPermissions: { ...DEFAULT_MODERATOR_SUB_PERMS },
+                          moderatorSubPermissions: defaults,
                         });
+                        if (isOwner && activeActorUid) {
+                          void syncModeratorPermissionsToFirestore(defaults, activeActorUid).then(
+                            (ok) => {
+                              if (!ok) {
+                                onNotifyRef.current(
+                                  'تمت استعادة الصلاحيات محلياً — تعذرت المزامنة مع Firestore'
+                                );
+                              }
+                            }
+                          );
+                        }
                         onNotify('تمت استعادة الصلاحيات الافتراضية للمشرفين');
                       }}
                       className="rounded-xl bg-[#1a242e] hover:bg-white/10 border border-white/10 px-3 py-1.5 text-[11px] font-bold text-[#b7c9ef] hover:text-white cursor-pointer"
@@ -7570,7 +7639,16 @@ export function AdminDashboardView({
                                     const res = await uploadTransparentSliderPng(file, token);
                                     setEditingSliderPngUrl(res.url);
                                     if (!isCreatingNew && editingItem?.id) {
-                                      setStreamV4MoviePngLogo(editingItem.id, res.url);
+                                      const nextV4Cfg = setStreamV4MoviePngLogo(
+                                        editingItem.id,
+                                        res.url
+                                      );
+                                      if (isOwner && hasActor && activeActorUid) {
+                                        void saveStreamV4SliderConfigToFirestore(
+                                          nextV4Cfg,
+                                          activeActorUid
+                                        );
+                                      }
                                     }
                                     onNotify('تم تجهيز صورة الشعار PNG للسلايدر بنجاح');
                                   } catch (err) {
@@ -7591,7 +7669,13 @@ export function AdminDashboardView({
                                 onClick={() => {
                                   setEditingSliderPngUrl('');
                                   if (!isCreatingNew && editingItem?.id) {
-                                    setStreamV4MoviePngLogo(editingItem.id, '');
+                                    const nextV4Cfg = setStreamV4MoviePngLogo(editingItem.id, '');
+                                    if (isOwner && hasActor && activeActorUid) {
+                                      void saveStreamV4SliderConfigToFirestore(
+                                        nextV4Cfg,
+                                        activeActorUid
+                                      );
+                                    }
                                   }
                                   onNotify('تمت إزالة شعار السلايدر PNG');
                                 }}

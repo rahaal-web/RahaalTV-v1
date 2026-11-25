@@ -8,6 +8,7 @@ import {
   isTabAccessible,
 } from '../components/admin/adminNavigation';
 import type { ModeratorSubPermissions } from './adminPreferences';
+import { reportClientError } from './clientLogger';
 import { getActiveDb } from './dbConnectionManager';
 
 export const ADMIN_NAV_LAYOUT_STORAGE_KEY = 'rahaltv_admin_nav_layout_v1';
@@ -569,7 +570,13 @@ export async function syncAdminNavLayoutToFirestore(
       updatedAt: serverTimestamp(),
     });
     return true;
-  } catch {
+  } catch (error) {
+    reportClientError({
+      source: 'firestore.admin_workspace.nav_layout',
+      level: 'warn',
+      message: `Failed to sync admin nav layout to Firestore: ${error instanceof Error ? error.message : String(error)}`,
+      context: { uid },
+    });
     return false;
   }
 }
@@ -590,8 +597,12 @@ export function subscribeAdminNavLayoutFromFirestore(
         const normalized = saveAdminNavLayout(data.config);
         onRemote(normalized);
       },
-      () => {
-        // Ignore permission/offline errors silently — localStorage keeps admin functional
+      (error) => {
+        reportClientError({
+          source: 'firestore.admin_workspace.nav_layout',
+          level: 'warn',
+          message: `Admin nav layout listener error: ${error instanceof Error ? error.message : String(error)}`,
+        });
       }
     );
   } catch {

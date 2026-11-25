@@ -54,6 +54,8 @@ import {
   setDefaultConnectionProfile,
   subscribeDatabaseRegistryUi,
   switchActiveDatabaseConnection,
+  syncActiveDatabasePointerToFirestore,
+  syncDatabaseRegistryToFirestore,
   testDatabaseConnection,
 } from '../../lib/dbConnectionManager';
 import { FirestoreConnectionStatus } from '../../lib/firebase';
@@ -420,6 +422,17 @@ export function AdminDatabaseManagerPanel({
     }
   };
 
+  const syncDbWorkspaceInCloud = async (includeActivePointer = false) => {
+    const regRes = await syncDatabaseRegistryToFirestore(user?.uid);
+    const ptrRes = includeActivePointer
+      ? await syncActiveDatabasePointerToFirestore(user?.uid)
+      : null;
+    return {
+      regOk: regRes.ok,
+      ptrOk: ptrRes ? ptrRes.ok : true,
+    };
+  };
+
   const handleSaveDraft = async (testFirst: boolean) => {
     if (!draft.name.trim()) {
       onNotify('يرجى إدخال اسم واضح لاتصال قاعدة البيانات.');
@@ -447,10 +460,14 @@ export function AdminDatabaseManagerPanel({
 
     const { profile, isNew } = createOrUpdateConnectionProfile(built, actor);
     setEditorOpen(false);
+    const cloud = await syncDbWorkspaceInCloud(profile.id === activeProfile?.id);
+    const syncNote = !cloud.regOk
+      ? ' (محفوظة محلياً — تعذرت مزامنة قائمة القواعد سحابياً)'
+      : ' وتمت مزامنتها سحابياً للأجهزة الأخرى';
     onNotify(
-      isNew
-        ? `تمت إضافة الاتصال "${profile.name}" إلى القائمة المحفوظة.`
-        : `تم تحديث بيانات الاتصال "${profile.name}".`
+      (isNew
+        ? `تمت إضافة الاتصال "${profile.name}" إلى القائمة المحفوظة`
+        : `تم تحديث بيانات الاتصال "${profile.name}"`) + syncNote
     );
   };
 
@@ -470,7 +487,12 @@ export function AdminDatabaseManagerPanel({
         onNotify(res.error || 'فشل التبديل — تم الإبقاء على القاعدة النشطة الحالية.');
         return;
       }
-      onNotify(`تم التبديل الموحد لجميع أجزاء الموقع ولوحة الإدارة إلى "${target.name}".`);
+      const cloud = await syncDbWorkspaceInCloud(true);
+      onNotify(
+        cloud.regOk && cloud.ptrOk
+          ? `تم التبديل الموحد إلى "${target.name}" ومزامنة التحويل لجميع الأجهزة.`
+          : `تم التبديل محلياً إلى "${target.name}" — قد تحتاج لتسجيل الدخول في القاعدة الافتراضية أو نشر firestore.rules لمزامنة التبديل مع باقي الأجهزة.`
+      );
     } finally {
       setSwitchingId(null);
     }
@@ -484,7 +506,12 @@ export function AdminDatabaseManagerPanel({
         onNotify(res.error || 'لا توجد قاعدة بيانات سابقة متاحة للرجوع.');
         return;
       }
-      onNotify(`تم الرجوع الفوري إلى "${res.targetName}" وتحديث جميع اتصالات الموقع.`);
+      const cloud = await syncDbWorkspaceInCloud(true);
+      onNotify(
+        cloud.regOk && cloud.ptrOk
+          ? `تم الرجوع الفوري إلى "${res.targetName}" ومزامنته لجميع الأجهزة.`
+          : `تم الرجوع الفوري إلى "${res.targetName}" وتحديث اتصالات هذا الجهاز.`
+      );
     } finally {
       setRollingBack(false);
     }
@@ -737,9 +764,11 @@ export function AdminDatabaseManagerPanel({
                 type="checkbox"
                 checked={registry.autoRetryEnabled}
                 onChange={(e) => {
-                  setDatabaseAutoRetryEnabled(e.target.checked);
+                  const enabled = e.target.checked;
+                  setDatabaseAutoRetryEnabled(enabled);
+                  void syncDbWorkspaceInCloud(false);
                   onNotify(
-                    e.target.checked
+                    enabled
                       ? 'تم تفعيل إعادة المحاولة التلقائية عند الانقطاع المؤقت.'
                       : 'تم إيقاف إعادة المحاولة التلقائية.'
                   );
@@ -1600,7 +1629,10 @@ export function AdminDatabaseManagerPanel({
                         type="button"
                         onClick={() => {
                           const r = setDefaultConnectionProfile(profile.id, actor);
-                          if (r.ok) onNotify(`تم تعيين "${profile.name}" كقاعدة بيانات افتراضية.`);
+                          if (r.ok) {
+                            void syncDbWorkspaceInCloud(false);
+                            onNotify(`تم تعيين "${profile.name}" كقاعدة بيانات افتراضية.`);
+                          }
                         }}
                         className="inline-flex items-center gap-1 rounded-xl bg-[#0c1821] hover:bg-[#f9c400]/15 border border-white/10 px-3 py-2 text-xs font-bold text-[#f9c400] cursor-pointer"
                       >
@@ -1946,6 +1978,7 @@ export function AdminDatabaseManagerPanel({
           const res = deleteConnectionProfile(confirmDeleteProfile.id, actor);
           if (res.ok) {
             await deleteServerSecrets(confirmDeleteProfile.id, user);
+            await syncDbWorkspaceInCloud(false);
             onNotify(`تم حذف إعداد الاتصال "${confirmDeleteProfile.name}".`);
           } else {
             onNotify(res.error || 'تعذر حذف إعداد الاتصال.');
@@ -1978,11 +2011,16 @@ export function AdminDatabaseManagerPanel({
             : 'تنبيه: بصمة الملف لا تطابق (قد يكون الملف معدّلاً يدوياً). هل تريد الاستيراد بالدمج مع الإبقاء على اتصالك النشط آمناً؟'
         }
         confirmLabel="استيراد ودمج بأمان"
-        onConfirm={() => {
+        onConfirm={async () => {
           if (!confirmImportBundle) return;
           importConnectionBackupBundle(confirmImportBundle.bundle, 'merge', actor);
+          const cloud = await syncDbWorkspaceInCloud(false);
           setConfirmImportBundle(null);
-          onNotify('تم استيراد إعدادات الاتصالات ودمجها بأمان.');
+          onNotify(
+            cloud.regOk
+              ? 'تم استيراد إعدادات الاتصالات ودمجها ومزامنتها سحابياً.'
+              : 'تم استيراد إعدادات الاتصالات ودمجها محلياً.'
+          );
         }}
         onCancel={() => setConfirmImportBundle(null)}
       />

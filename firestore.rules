@@ -888,6 +888,252 @@ service cloud.firestore {
         && data.updatedAt is timestamp;
     }
 
+    function isValidDbFirebaseConfig(f) {
+      return f is map
+        && f.keys().hasAll([
+          'projectId', 'apiKey', 'authDomain', 'firestoreDatabaseId',
+          'databaseURL', 'storageBucket', 'messagingSenderId', 'appId', 'measurementId'
+        ])
+        && f.keys().hasOnly([
+          'projectId', 'apiKey', 'authDomain', 'firestoreDatabaseId',
+          'databaseURL', 'storageBucket', 'messagingSenderId', 'appId', 'measurementId'
+        ])
+        && f.projectId is string && f.projectId.size() >= 1 && f.projectId.size() <= 128
+        && f.apiKey is string && f.apiKey.size() >= 1 && f.apiKey.size() <= 200
+        && f.authDomain is string && f.authDomain.size() <= 200
+        && f.firestoreDatabaseId is string && f.firestoreDatabaseId.size() >= 1 && f.firestoreDatabaseId.size() <= 128
+        && f.databaseURL is string && f.databaseURL.size() <= 300
+        && f.storageBucket is string && f.storageBucket.size() <= 200
+        && f.messagingSenderId is string && f.messagingSenderId.size() <= 80
+        && f.appId is string && f.appId.size() <= 200
+        && f.measurementId is string && f.measurementId.size() <= 80;
+    }
+
+    function isValidActiveDatabasePointerDoc(data) {
+      return data.keys().hasAll([
+        'connectionId', 'connectionName', 'providerType', 'firebaseConfig', 'updatedBy', 'updatedAt'
+      ])
+      && data.keys().hasOnly([
+        'connectionId', 'connectionName', 'providerType', 'firebaseConfig', 'updatedBy', 'updatedAt'
+      ])
+      && data.connectionId is string && data.connectionId.size() >= 1 && data.connectionId.size() <= 96
+      && data.connectionName is string && data.connectionName.size() >= 1 && data.connectionName.size() <= 120
+      && data.providerType == 'firebase_firestore'
+      && isValidDbFirebaseConfig(data.firebaseConfig)
+      && data.updatedBy is string && data.updatedBy.size() >= 1 && data.updatedBy.size() <= 128
+      && data.updatedAt is timestamp;
+    }
+
+    function isValidHeroSliderModeDoc(data) {
+      return data.keys().hasAll(['variant', 'updatedBy', 'updatedAt'])
+        && data.keys().hasOnly(['variant', 'updatedBy', 'updatedAt'])
+        && data.variant in ['original', 'cinematic', 'showcase', 'stream_v4']
+        && data.updatedBy is string && data.updatedBy.size() >= 1 && data.updatedBy.size() <= 128
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidShowcaseSliderDoc(data) {
+      return data.keys().hasAll([
+        'titleLogos', 'usePngLogoInHero', 'usePngLogoInStrip',
+        'showTitle', 'showEnglishSubtitle', 'showMetadata', 'showStory', 'storyLines',
+        'showCast', 'showWatchBtn', 'watchBtnText', 'showWatchlistBtn',
+        'showTagline', 'showBottomStrip', 'logoMaxHeightPx', 'logoMaxWidthPx',
+        'titleSizePx', 'metaSizePx', 'storySizePx', 'stripLogoHeightPx', 'stripTextSizePx',
+        'updatedBy', 'updatedAt'
+      ])
+      && data.keys().hasOnly([
+        'titleLogos', 'usePngLogoInHero', 'usePngLogoInStrip',
+        'showTitle', 'showEnglishSubtitle', 'showMetadata', 'showStory', 'storyLines',
+        'showCast', 'showWatchBtn', 'watchBtnText', 'showWatchlistBtn',
+        'showTagline', 'showBottomStrip', 'logoMaxHeightPx', 'logoMaxWidthPx',
+        'titleSizePx', 'metaSizePx', 'storySizePx', 'stripLogoHeightPx', 'stripTextSizePx',
+        'updatedBy', 'updatedAt'
+      ])
+      && data.titleLogos is map && data.titleLogos.keys().size() <= 60
+      && data.usePngLogoInHero is bool
+      && data.usePngLogoInStrip is bool
+      && data.showTitle is bool
+      && data.showEnglishSubtitle is bool
+      && data.showMetadata is bool
+      && data.showStory is bool
+      && data.storyLines is int && data.storyLines >= 1 && data.storyLines <= 4
+      && data.showCast is bool
+      && data.showWatchBtn is bool
+      && data.watchBtnText is string && data.watchBtnText.size() >= 1 && data.watchBtnText.size() <= 60
+      && data.showWatchlistBtn is bool
+      && data.showTagline is bool
+      && data.showBottomStrip is bool
+      && (data.logoMaxHeightPx is int || data.logoMaxHeightPx is float) && data.logoMaxHeightPx >= 48 && data.logoMaxHeightPx <= 200
+      && (data.logoMaxWidthPx is int || data.logoMaxWidthPx is float) && data.logoMaxWidthPx >= 160 && data.logoMaxWidthPx <= 500
+      && (data.titleSizePx is int || data.titleSizePx is float) && data.titleSizePx >= 22 && data.titleSizePx <= 72
+      && (data.metaSizePx is int || data.metaSizePx is float) && data.metaSizePx >= 10 && data.metaSizePx <= 18
+      && (data.storySizePx is int || data.storySizePx is float) && data.storySizePx >= 11 && data.storySizePx <= 20
+      && (data.stripLogoHeightPx is int || data.stripLogoHeightPx is float) && data.stripLogoHeightPx >= 20 && data.stripLogoHeightPx <= 64
+      && (data.stripTextSizePx is int || data.stripTextSizePx is float) && data.stripTextSizePx >= 11 && data.stripTextSizePx <= 24
+      && data.updatedBy is string && data.updatedBy.size() >= 1 && data.updatedBy.size() <= 128
+      && data.updatedAt is timestamp;
+    }
+
+    function isValidStreamV4SliderDoc(data) {
+      return data.keys().hasAll([
+        'titleLogos', 'defaultSlideDurationSec', 'slideDurations',
+        'usePngLogoInHero', 'usePngLogoInStrip', 'showTitle', 'showMetadata',
+        'showStory', 'storyLines', 'showCast', 'showWatchBtn', 'watchBtnText',
+        'showWatchlistBtn', 'showTagline', 'showBottomStrip', 'showProgressBar',
+        'progressBarHeightPx', 'showNavArrows', 'enableShineEffect',
+        'colorMode', 'customAccentColor', 'scrimIntensityPct',
+        'bottomBlendHeightPx', 'bottomBlurPx', 'bottomOverlapPx',
+        'articleVerticalAlign', 'articleHorizontalAlign',
+        'articleBottomOffsetPx', 'articleTopOffsetPx', 'articleSideOffsetPx',
+        'articleMaxWidthPx', 'dotsBottomOffsetPx', 'sliderHeightDesktopPx',
+        'logoMaxHeightPx', 'logoMaxWidthPx', 'titleSizePx', 'metaSizePx',
+        'storySizePx', 'castSizePx', 'stripLogoHeightPx', 'stripTextSizePx',
+        'maxStripItems', 'updatedBy', 'updatedAt'
+      ])
+      && data.keys().hasOnly([
+        'titleLogos', 'defaultSlideDurationSec', 'slideDurations',
+        'usePngLogoInHero', 'usePngLogoInStrip', 'showTitle', 'showMetadata',
+        'showStory', 'storyLines', 'showCast', 'showWatchBtn', 'watchBtnText',
+        'showWatchlistBtn', 'showTagline', 'showBottomStrip', 'showProgressBar',
+        'progressBarHeightPx', 'showNavArrows', 'enableShineEffect',
+        'colorMode', 'customAccentColor', 'scrimIntensityPct',
+        'bottomBlendHeightPx', 'bottomBlurPx', 'bottomOverlapPx',
+        'articleVerticalAlign', 'articleHorizontalAlign',
+        'articleBottomOffsetPx', 'articleTopOffsetPx', 'articleSideOffsetPx',
+        'articleMaxWidthPx', 'dotsBottomOffsetPx', 'sliderHeightDesktopPx',
+        'logoMaxHeightPx', 'logoMaxWidthPx', 'titleSizePx', 'metaSizePx',
+        'storySizePx', 'castSizePx', 'stripLogoHeightPx', 'stripTextSizePx',
+        'maxStripItems', 'updatedBy', 'updatedAt'
+      ])
+      && data.titleLogos is map && data.titleLogos.keys().size() <= 60
+      && (data.defaultSlideDurationSec is int || data.defaultSlideDurationSec is float) && data.defaultSlideDurationSec >= 2 && data.defaultSlideDurationSec <= 60
+      && data.slideDurations is map && data.slideDurations.keys().size() <= 60
+      && data.usePngLogoInHero is bool
+      && data.usePngLogoInStrip is bool
+      && data.showTitle is bool
+      && data.showMetadata is bool
+      && data.showStory is bool
+      && data.storyLines is int && data.storyLines >= 1 && data.storyLines <= 4
+      && data.showCast is bool
+      && data.showWatchBtn is bool
+      && data.watchBtnText is string && data.watchBtnText.size() >= 1 && data.watchBtnText.size() <= 60
+      && data.showWatchlistBtn is bool
+      && data.showTagline is bool
+      && data.showBottomStrip is bool
+      && data.showProgressBar is bool
+      && (data.progressBarHeightPx is int || data.progressBarHeightPx is float) && data.progressBarHeightPx >= 2 && data.progressBarHeightPx <= 8
+      && data.showNavArrows is bool
+      && data.enableShineEffect is bool
+      && data.colorMode in ['site_theme', 'custom']
+      && isHexColorRef(data.customAccentColor)
+      && (data.scrimIntensityPct is int || data.scrimIntensityPct is float) && data.scrimIntensityPct >= 35 && data.scrimIntensityPct <= 100
+      && (data.bottomBlendHeightPx is int || data.bottomBlendHeightPx is float) && data.bottomBlendHeightPx >= 60 && data.bottomBlendHeightPx <= 280
+      && (data.bottomBlurPx is int || data.bottomBlurPx is float) && data.bottomBlurPx >= 0 && data.bottomBlurPx <= 22
+      && (data.bottomOverlapPx is int || data.bottomOverlapPx is float) && data.bottomOverlapPx >= 0 && data.bottomOverlapPx <= 96
+      && data.articleVerticalAlign in ['top', 'center', 'bottom']
+      && data.articleHorizontalAlign in ['right', 'center', 'left']
+      && (data.articleBottomOffsetPx is int || data.articleBottomOffsetPx is float) && data.articleBottomOffsetPx >= 64 && data.articleBottomOffsetPx <= 320
+      && (data.articleTopOffsetPx is int || data.articleTopOffsetPx is float) && data.articleTopOffsetPx >= 64 && data.articleTopOffsetPx <= 260
+      && (data.articleSideOffsetPx is int || data.articleSideOffsetPx is float) && data.articleSideOffsetPx >= 12 && data.articleSideOffsetPx <= 220
+      && (data.articleMaxWidthPx is int || data.articleMaxWidthPx is float) && data.articleMaxWidthPx >= 320 && data.articleMaxWidthPx <= 720
+      && (data.dotsBottomOffsetPx is int || data.dotsBottomOffsetPx is float) && data.dotsBottomOffsetPx >= 16 && data.dotsBottomOffsetPx <= 100
+      && (data.sliderHeightDesktopPx is int || data.sliderHeightDesktopPx is float) && data.sliderHeightDesktopPx >= 480 && data.sliderHeightDesktopPx <= 860
+      && (data.logoMaxHeightPx is int || data.logoMaxHeightPx is float) && data.logoMaxHeightPx >= 48 && data.logoMaxHeightPx <= 240
+      && (data.logoMaxWidthPx is int || data.logoMaxWidthPx is float) && data.logoMaxWidthPx >= 160 && data.logoMaxWidthPx <= 540
+      && (data.titleSizePx is int || data.titleSizePx is float) && data.titleSizePx >= 22 && data.titleSizePx <= 72
+      && (data.metaSizePx is int || data.metaSizePx is float) && data.metaSizePx >= 10 && data.metaSizePx <= 18
+      && (data.storySizePx is int || data.storySizePx is float) && data.storySizePx >= 11 && data.storySizePx <= 20
+      && (data.castSizePx is int || data.castSizePx is float) && data.castSizePx >= 10 && data.castSizePx <= 18
+      && (data.stripLogoHeightPx is int || data.stripLogoHeightPx is float) && data.stripLogoHeightPx >= 22 && data.stripLogoHeightPx <= 72
+      && (data.stripTextSizePx is int || data.stripTextSizePx is float) && data.stripTextSizePx >= 11 && data.stripTextSizePx <= 24
+      && (data.maxStripItems is int || data.maxStripItems is float) && data.maxStripItems >= 3 && data.maxStripItems <= 10
+      && data.updatedBy is string && data.updatedBy.size() >= 1 && data.updatedBy.size() <= 128
+      && data.updatedAt is timestamp;
+    }
+
+    function isValidModeratorPermsDoc(data) {
+      return data.keys().hasAll(['kind', 'config', 'updatedBy', 'updatedAt'])
+        && data.keys().hasOnly(['kind', 'config', 'updatedBy', 'updatedAt'])
+        && data.kind == 'moderator_perms'
+        && data.config is map
+        && data.config.keys().hasAll([
+          'allowBulkEditor', 'allowContentAudit', 'allowWatchServers',
+          'allowAnalyticsRead', 'allowCrawlOperations', 'allowSiteScraper', 'allowAdapters'
+        ])
+        && data.config.keys().hasOnly([
+          'allowBulkEditor', 'allowContentAudit', 'allowWatchServers',
+          'allowAnalyticsRead', 'allowCrawlOperations', 'allowSiteScraper', 'allowAdapters'
+        ])
+        && data.config.allowBulkEditor is bool
+        && data.config.allowContentAudit is bool
+        && data.config.allowWatchServers is bool
+        && data.config.allowAnalyticsRead is bool
+        && data.config.allowCrawlOperations is bool
+        && data.config.allowSiteScraper is bool
+        && data.config.allowAdapters is bool
+        && data.updatedBy is string && data.updatedBy.size() >= 1 && data.updatedBy.size() <= 128
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidDbProfileItem(p) {
+      return p is map
+        && p.keys().hasAll([
+          'id', 'name', 'description', 'providerType', 'isBuiltIn',
+          'firebaseConfig', 'lastStatus', 'createdAt', 'updatedAt'
+        ])
+        && p.keys().hasOnly([
+          'id', 'name', 'description', 'providerType', 'isBuiltIn',
+          'firebaseConfig', 'customApiConfig', 'lastStatus', 'lastStatusMessage',
+          'lastLatencyMs', 'lastConnectedAt', 'lastDisconnectedAt', 'lastTestedAt',
+          'createdBy', 'updatedBy', 'createdAt', 'updatedAt'
+        ])
+        && p.id is string && p.id.size() >= 1 && p.id.size() <= 96
+        && p.name is string && p.name.size() >= 1 && p.name.size() <= 120
+        && p.description is string && p.description.size() <= 260
+        && p.providerType in ['firebase_firestore', 'firebase_realtime', 'custom_api']
+        && p.isBuiltIn is bool
+        && isValidDbFirebaseConfig(p.firebaseConfig)
+        && p.lastStatus in ['connected', 'offline', 'invalid_config', 'permission_denied', 'timeout', 'quota_exceeded', 'untested']
+        && p.createdAt is string && p.createdAt.size() <= 64
+        && p.updatedAt is string && p.updatedAt.size() <= 64
+        && (!('customApiConfig' in p) || (p.customApiConfig is map && p.customApiConfig.keys().size() <= 4))
+        && (!('lastStatusMessage' in p) || (p.lastStatusMessage is string && p.lastStatusMessage.size() <= 400))
+        && (!('lastLatencyMs' in p) || (p.lastLatencyMs is int || p.lastLatencyMs is float))
+        && (!('lastConnectedAt' in p) || (p.lastConnectedAt is string && p.lastConnectedAt.size() <= 64))
+        && (!('lastDisconnectedAt' in p) || (p.lastDisconnectedAt is string && p.lastDisconnectedAt.size() <= 64))
+        && (!('lastTestedAt' in p) || (p.lastTestedAt is string && p.lastTestedAt.size() <= 64))
+        && (!('createdBy' in p) || (p.createdBy is string && p.createdBy.size() <= 128))
+        && (!('updatedBy' in p) || (p.updatedBy is string && p.updatedBy.size() <= 128));
+    }
+
+    function isValidDbConnectionsDoc(data) {
+      return data.keys().hasAll(['kind', 'config', 'updatedBy', 'updatedAt'])
+        && data.keys().hasOnly(['kind', 'config', 'updatedBy', 'updatedAt'])
+        && data.kind == 'db_connections'
+        && data.config is map
+        && data.config.keys().hasAll([
+          'version', 'activeConnectionId', 'previousConnectionId',
+          'defaultConnectionId', 'lastGoodConnectionId', 'autoRetryEnabled',
+          'updatedAtMs', 'deletedProfileIds', 'profiles'
+        ])
+        && data.config.keys().hasOnly([
+          'version', 'activeConnectionId', 'previousConnectionId',
+          'defaultConnectionId', 'lastGoodConnectionId', 'autoRetryEnabled',
+          'updatedAtMs', 'deletedProfileIds', 'profiles'
+        ])
+        && data.config.version == 1
+        && data.config.activeConnectionId is string && data.config.activeConnectionId.size() >= 1 && data.config.activeConnectionId.size() <= 96
+        && (data.config.previousConnectionId == null || (data.config.previousConnectionId is string && data.config.previousConnectionId.size() <= 96))
+        && data.config.defaultConnectionId is string && data.config.defaultConnectionId.size() >= 1 && data.config.defaultConnectionId.size() <= 96
+        && data.config.lastGoodConnectionId is string && data.config.lastGoodConnectionId.size() >= 1 && data.config.lastGoodConnectionId.size() <= 96
+        && data.config.autoRetryEnabled is bool
+        && (data.config.updatedAtMs is int || data.config.updatedAtMs is float) && data.config.updatedAtMs >= 0
+        && data.config.deletedProfileIds is list && data.config.deletedProfileIds.size() <= 40 && (data.config.deletedProfileIds.size() == 0 || data.config.deletedProfileIds[0] is string)
+        && data.config.profiles is list && data.config.profiles.size() >= 1 && data.config.profiles.size() <= 25 && isValidDbProfileItem(data.config.profiles[0])
+        && data.updatedBy is string && data.updatedBy.size() >= 1 && data.updatedBy.size() <= 128
+        && data.updatedAt is timestamp;
+    }
+
     // 4. Collection Rules
     match /media/{mediaId} {
       allow get: if isValidId(mediaId);
@@ -1046,12 +1292,56 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    match /settings/active_database {
+      allow get: if true;
+      allow list: if isOwnerAdmin();
+      allow create, update: if isOwnerAdmin()
+        && isValidActiveDatabasePointerDoc(incoming())
+        && incoming().updatedBy == request.auth.uid
+        && incoming().updatedAt == request.time;
+      allow delete: if false;
+    }
+
+    match /settings/hero_slider_mode {
+      allow get: if true;
+      allow list: if isOwnerAdmin();
+      allow create, update: if isOwnerAdmin()
+        && isValidHeroSliderModeDoc(incoming())
+        && incoming().updatedBy == request.auth.uid
+        && incoming().updatedAt == request.time;
+      allow delete: if false;
+    }
+
+    match /settings/showcase_slider {
+      allow get: if true;
+      allow list: if isOwnerAdmin();
+      allow create, update: if isOwnerAdmin()
+        && isValidShowcaseSliderDoc(incoming())
+        && incoming().updatedBy == request.auth.uid
+        && incoming().updatedAt == request.time;
+      allow delete: if false;
+    }
+
+    match /settings/stream_v4_slider {
+      allow get: if true;
+      allow list: if isOwnerAdmin();
+      allow create, update: if isOwnerAdmin()
+        && isValidStreamV4SliderDoc(incoming())
+        && incoming().updatedBy == request.auth.uid
+        && incoming().updatedAt == request.time;
+      allow delete: if false;
+    }
+
     match /settings/{settingId} {
       allow get: if isValidId(settingId);
       allow list: if isOwnerAdmin();
       allow create, update: if isOwnerAdmin()
         && isValidId(settingId)
-        && !(settingId in ['home_layout', 'slider_style', 'site_branding', 'image_placeholders', 'recently_watched_ui', 'site_theme'])
+        && !(settingId in [
+          'home_layout', 'slider_style', 'site_branding', 'image_placeholders',
+          'recently_watched_ui', 'site_theme', 'active_database',
+          'hero_slider_mode', 'showcase_slider', 'stream_v4_slider'
+        ])
         && isValidSiteSettings(incoming())
         && incoming().updatedBy == request.auth.uid
         && incoming().updatedAt == request.time;
@@ -1174,15 +1464,18 @@ service cloud.firestore {
     }
 
     match /admin_workspace/{docId} {
-      allow get: if isOwnerAdmin() && docId in ['appearance', 'nav_layout'];
+      allow get: if (docId == 'moderator_perms' && isStaffAdmin())
+        || (docId in ['appearance', 'nav_layout', 'db_connections'] && isOwnerAdmin());
       allow list: if isOwnerAdmin();
       allow create, update: if isOwnerAdmin()
-        && docId in ['appearance', 'nav_layout']
-        && isValidAdminWorkspaceDoc(incoming())
-        && incoming().kind == docId
+        && (
+          (docId in ['appearance', 'nav_layout'] && isValidAdminWorkspaceDoc(incoming()) && incoming().kind == docId)
+          || (docId == 'moderator_perms' && isValidModeratorPermsDoc(incoming()))
+          || (docId == 'db_connections' && isValidDbConnectionsDoc(incoming()))
+        )
         && incoming().updatedBy == request.auth.uid
         && incoming().updatedAt == request.time;
-      allow delete: if isOwnerAdmin() && docId in ['appearance', 'nav_layout'];
+      allow delete: if isOwnerAdmin() && docId in ['appearance', 'nav_layout', 'moderator_perms', 'db_connections'];
     }
   }
 }

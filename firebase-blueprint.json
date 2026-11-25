@@ -289,11 +289,11 @@
     },
     "AdminWorkspaceConfig": {
       "title": "AdminWorkspaceConfig",
-      "description": "Owner-only admin UI appearance and sidebar navigation ordering configuration.",
+      "description": "Admin workspace configuration for appearance, sidebar navigation layout, moderator permissions, and cross-device sanitized database connection profiles.",
       "type": "object",
       "properties": {
-        "kind": { "type": "string", "enum": ["appearance", "nav_layout"] },
-        "config": { "type": "object", "description": "Normalized appearance or nav layout JSON object" },
+        "kind": { "type": "string", "enum": ["appearance", "nav_layout", "moderator_perms", "db_connections"] },
+        "config": { "type": "object", "description": "Normalized workspace JSON object (never contains private server secrets)" },
         "updatedBy": { "type": "string", "minLength": 1, "maxLength": 128 },
         "updatedAt": { "type": "string", "format": "date-time" }
       },
@@ -556,6 +556,135 @@
         "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["siteThemeId", "updatedBy", "updatedAt"]
+    },
+    "ActiveDatabasePointer": {
+      "title": "ActiveDatabasePointer",
+      "description": "Public pointer to the currently active Firebase project/database configuration stored in /settings/active_database without any server secrets.",
+      "type": "object",
+      "properties": {
+        "connectionId": { "type": "string", "minLength": 1, "maxLength": 96 },
+        "connectionName": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "providerType": { "type": "string", "enum": ["firebase_firestore"] },
+        "firebaseConfig": { "type": "object" },
+        "updatedBy": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["connectionId", "connectionName", "providerType", "firebaseConfig", "updatedBy", "updatedAt"]
+    },
+    "HeroSliderModeSettings": {
+      "title": "HeroSliderModeSettings",
+      "description": "Selected homepage hero slider design variant stored in /settings/hero_slider_mode.",
+      "type": "object",
+      "properties": {
+        "variant": { "type": "string", "enum": ["original", "cinematic", "showcase", "stream_v4"] },
+        "updatedBy": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["variant", "updatedBy", "updatedAt"]
+    },
+    "ShowcaseSliderSettings": {
+      "title": "ShowcaseSliderSettings",
+      "description": "Configuration and bounded PNG title logo map for the 3rd Showcase Hero Slider stored in /settings/showcase_slider.",
+      "type": "object",
+      "properties": {
+        "titleLogos": { "type": "object" },
+        "usePngLogoInHero": { "type": "boolean" },
+        "usePngLogoInStrip": { "type": "boolean" },
+        "showTitle": { "type": "boolean" },
+        "showEnglishSubtitle": { "type": "boolean" },
+        "showMetadata": { "type": "boolean" },
+        "showStory": { "type": "boolean" },
+        "storyLines": { "type": "number" },
+        "showCast": { "type": "boolean" },
+        "showWatchBtn": { "type": "boolean" },
+        "watchBtnText": { "type": "string", "minLength": 1, "maxLength": 60 },
+        "showWatchlistBtn": { "type": "boolean" },
+        "showTagline": { "type": "boolean" },
+        "showBottomStrip": { "type": "boolean" },
+        "logoMaxHeightPx": { "type": "number" },
+        "logoMaxWidthPx": { "type": "number" },
+        "titleSizePx": { "type": "number" },
+        "metaSizePx": { "type": "number" },
+        "storySizePx": { "type": "number" },
+        "stripLogoHeightPx": { "type": "number" },
+        "stripTextSizePx": { "type": "number" },
+        "updatedBy": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "titleLogos", "usePngLogoInHero", "usePngLogoInStrip",
+        "showTitle", "showEnglishSubtitle", "showMetadata", "showStory", "storyLines",
+        "showCast", "showWatchBtn", "watchBtnText", "showWatchlistBtn",
+        "showTagline", "showBottomStrip", "logoMaxHeightPx", "logoMaxWidthPx",
+        "titleSizePx", "metaSizePx", "storySizePx", "stripLogoHeightPx", "stripTextSizePx",
+        "updatedBy", "updatedAt"
+      ]
+    },
+    "StreamV4SliderSettings": {
+      "title": "StreamV4SliderSettings",
+      "description": "Configuration, PNG logos, and per-movie slide durations for the 4th Cinema V4 Hero Slider stored in /settings/stream_v4_slider.",
+      "type": "object",
+      "properties": {
+        "titleLogos": { "type": "object" },
+        "defaultSlideDurationSec": { "type": "number" },
+        "slideDurations": { "type": "object" },
+        "usePngLogoInHero": { "type": "boolean" },
+        "usePngLogoInStrip": { "type": "boolean" },
+        "showTitle": { "type": "boolean" },
+        "showMetadata": { "type": "boolean" },
+        "showStory": { "type": "boolean" },
+        "storyLines": { "type": "number" },
+        "showCast": { "type": "boolean" },
+        "showWatchBtn": { "type": "boolean" },
+        "watchBtnText": { "type": "string", "minLength": 1, "maxLength": 60 },
+        "showWatchlistBtn": { "type": "boolean" },
+        "showTagline": { "type": "boolean" },
+        "showBottomStrip": { "type": "boolean" },
+        "showProgressBar": { "type": "boolean" },
+        "progressBarHeightPx": { "type": "number" },
+        "showNavArrows": { "type": "boolean" },
+        "enableShineEffect": { "type": "boolean" },
+        "colorMode": { "type": "string", "enum": ["site_theme", "custom"] },
+        "customAccentColor": { "type": "string" },
+        "scrimIntensityPct": { "type": "number" },
+        "bottomBlendHeightPx": { "type": "number" },
+        "bottomBlurPx": { "type": "number" },
+        "bottomOverlapPx": { "type": "number" },
+        "articleVerticalAlign": { "type": "string", "enum": ["top", "center", "bottom"] },
+        "articleHorizontalAlign": { "type": "string", "enum": ["right", "center", "left"] },
+        "articleBottomOffsetPx": { "type": "number" },
+        "articleTopOffsetPx": { "type": "number" },
+        "articleSideOffsetPx": { "type": "number" },
+        "articleMaxWidthPx": { "type": "number" },
+        "dotsBottomOffsetPx": { "type": "number" },
+        "sliderHeightDesktopPx": { "type": "number" },
+        "logoMaxHeightPx": { "type": "number" },
+        "logoMaxWidthPx": { "type": "number" },
+        "titleSizePx": { "type": "number" },
+        "metaSizePx": { "type": "number" },
+        "storySizePx": { "type": "number" },
+        "castSizePx": { "type": "number" },
+        "stripLogoHeightPx": { "type": "number" },
+        "stripTextSizePx": { "type": "number" },
+        "maxStripItems": { "type": "number" },
+        "updatedBy": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "titleLogos", "defaultSlideDurationSec", "slideDurations",
+        "usePngLogoInHero", "usePngLogoInStrip", "showTitle", "showMetadata",
+        "showStory", "storyLines", "showCast", "showWatchBtn", "watchBtnText",
+        "showWatchlistBtn", "showTagline", "showBottomStrip", "showProgressBar",
+        "progressBarHeightPx", "showNavArrows", "enableShineEffect",
+        "colorMode", "customAccentColor", "scrimIntensityPct",
+        "bottomBlendHeightPx", "bottomBlurPx", "bottomOverlapPx",
+        "articleVerticalAlign", "articleHorizontalAlign",
+        "articleBottomOffsetPx", "articleTopOffsetPx", "articleSideOffsetPx",
+        "articleMaxWidthPx", "dotsBottomOffsetPx", "sliderHeightDesktopPx",
+        "logoMaxHeightPx", "logoMaxWidthPx", "titleSizePx", "metaSizePx",
+        "storySizePx", "castSizePx", "stripLogoHeightPx", "stripTextSizePx",
+        "maxStripItems", "updatedBy", "updatedAt"
+      ]
     }
   },
   "firestore": {
@@ -602,6 +731,22 @@
     "/settings/site_theme": {
       "schema": { "$ref": "#/entities/SiteThemeSettings" },
       "description": "Dedicated settings document storing the active site visual theme across default and 25 alternative themes."
+    },
+    "/settings/active_database": {
+      "schema": { "$ref": "#/entities/ActiveDatabasePointer" },
+      "description": "Active Firebase connection pointer synced across visitor and admin devices."
+    },
+    "/settings/hero_slider_mode": {
+      "schema": { "$ref": "#/entities/HeroSliderModeSettings" },
+      "description": "Active homepage hero slider design variant (original, cinematic, showcase, stream_v4)."
+    },
+    "/settings/showcase_slider": {
+      "schema": { "$ref": "#/entities/ShowcaseSliderSettings" },
+      "description": "Showcase 3rd slider visual settings and bounded PNG logo map."
+    },
+    "/settings/stream_v4_slider": {
+      "schema": { "$ref": "#/entities/StreamV4SliderSettings" },
+      "description": "Cinema V4 4th slider visual settings, PNG logos, and per-movie slide durations."
     },
     "/settings/{settingId}": {
       "schema": { "$ref": "#/entities/SiteSettings" },

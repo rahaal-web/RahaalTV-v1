@@ -1,4 +1,4 @@
-import { ChangeEvent, useMemo, useState } from 'react';
+import { ChangeEvent, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Image as ImageIcon,
   Layers,
@@ -10,15 +10,22 @@ import {
   Upload,
 } from 'lucide-react';
 import { HomeLayoutConfig, MediaItem } from '../../types/media';
+import { saveShowcaseSliderConfigToFirestore } from '../../lib/firebase';
 import {
-  processTransparentLogoUpload,
+  DEFAULT_SHOWCASE_SLIDER_CONFIG,
+  normalizeShowcaseSliderConfig,
   ShowcaseSliderConfig,
+  uploadShowcaseTransparentPng,
   useShowcaseSliderConfig,
 } from '../../lib/showcaseSliderConfig';
 
 interface ShowcaseSliderSettingsPanelProps {
   homeConfig: HomeLayoutConfig;
   catalog: MediaItem[];
+  actorUid?: string;
+  hasActor?: boolean;
+  isOwner?: boolean;
+  onGetAuthToken?: () => Promise<string | undefined>;
   onNotify: (msg: string) => void;
 }
 
@@ -52,11 +59,86 @@ const VISIBILITY_CONTROLS: Array<{
 export function ShowcaseSliderSettingsPanel({
   homeConfig,
   catalog,
+  actorUid = '',
+  hasActor = false,
+  isOwner = false,
+  onGetAuthToken,
   onNotify,
 }: ShowcaseSliderSettingsPanelProps) {
   const [cfg, updateCfg, resetCfg] = useShowcaseSliderConfig();
   const [searchQuery, setSearchQuery] = useState('');
   const [uploadingId, setUploadingId] = useState<string | null>(null);
+
+  const cfgRef = useRef(cfg);
+  cfgRef.current = cfg;
+  const actorRef = useRef({ actorUid, hasActor, isOwner });
+  actorRef.current = { actorUid, hasActor, isOwner };
+  const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hasPendingSyncRef = useRef(false);
+
+  const pushConfigToCloud = async (nextCfg: ShowcaseSliderConfig, silentError = false) => {
+    const actor = actorRef.current;
+    if (!actor.isOwner || !actor.hasActor || !actor.actorUid) return;
+    try {
+      const res = await saveShowcaseSliderConfigToFirestore(nextCfg, actor.actorUid);
+      if (!res.ok && !silentError) {
+        onNotify(
+          `تم حفظ إعدادات السلايدر الثالث محلياً — تعذرت المزامنة السحابية (${res.projectId}/${res.databaseId})`
+        );
+      }
+    } catch {
+      if (!silentError) {
+        onNotify('تم حفظ إعدادات السلايدر الثالث محلياً — تعذرت المزامنة مع Firestore');
+      }
+    }
+  };
+
+  const triggerImmediateSync = (nextCfg: ShowcaseSliderConfig) => {
+    if (syncTimerRef.current) {
+      clearTimeout(syncTimerRef.current);
+      syncTimerRef.current = null;
+    }
+    hasPendingSyncRef.current = false;
+    void pushConfigToCloud(nextCfg);
+  };
+
+  const scheduleDebouncedSync = (nextCfg: ShowcaseSliderConfig) => {
+    cfgRef.current = nextCfg;
+    hasPendingSyncRef.current = true;
+    if (syncTimerRef.current) {
+      clearTimeout(syncTimerRef.current);
+    }
+    syncTimerRef.current = setTimeout(() => {
+      syncTimerRef.current = null;
+      hasPendingSyncRef.current = false;
+      void pushConfigToCloud(cfgRef.current);
+    }, 450);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (syncTimerRef.current) {
+        clearTimeout(syncTimerRef.current);
+        syncTimerRef.current = null;
+      }
+      if (hasPendingSyncRef.current) {
+        hasPendingSyncRef.current = false;
+        void pushConfigToCloud(cfgRef.current, true);
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const applyCfgPatch = (patch: Partial<ShowcaseSliderConfig>, immediate = false) => {
+    const nextCfg = normalizeShowcaseSliderConfig({ ...cfgRef.current, ...patch });
+    cfgRef.current = nextCfg;
+    updateCfg(patch);
+    if (immediate) {
+      triggerImmediateSync(nextCfg);
+    } else {
+      scheduleDebouncedSync(nextCfg);
+    }
+  };
 
   const sliderMovies = useMemo(() => {
     const byId = new Map(catalog.map((i) => [i.id, i]));
@@ -108,15 +190,15 @@ export function ShowcaseSliderSettingsPanel({
       .slice(0, 15);
   }, [catalog, searchQuery, sliderMovies]);
 
-  const setMovieLogo = (mediaId: string, url: string) => {
-    const nextLogos = { ...cfg.titleLogos };
+  const setMovieLogo = (mediaId: string, url: string, immediate = false) => {
+    const nextLogos = { ...cfgRef.current.titleLogos };
     const clean = url.trim();
     if (clean) {
       nextLogos[mediaId] = clean;
     } else {
       delete nextLogos[mediaId];
     }
-    updateCfg({ titleLogos: nextLogos });
+    applyCfgPatch({ titleLogos: nextLogos }, immediate);
   };
 
   const handleUploadPng = async (mediaId: string, event: ChangeEvent<HTMLInputElement>) => {
@@ -126,9 +208,14 @@ export function ShowcaseSliderSettingsPanel({
 
     setUploadingId(mediaId);
     try {
-      const processedUrl = await processTransparentLogoUpload(file);
-      setMovieLogo(mediaId, processedUrl);
-      onNotify('تم رفع صورة الشعار (PNG) وحفظها للسلايدر الثالث فوراً');
+      const idToken = onGetAuthToken ? await onGetAuthToken().catch(() => undefined) : undefined;
+      const result = await uploadShowcaseTransparentPng(file, idToken);
+      setMovieLogo(mediaId, result.url, true);
+      onNotify(
+        result.storage === 'server'
+          ? 'تم رفع صورة الشعار (PNG) على الخادم ومزامنتها للسلايدر الثالث'
+          : 'تم رفع صورة الشعار (PNG) وحفظها للسلايدر الثالث فوراً'
+      );
     } catch (err) {
       onNotify(
         err instanceof Error ? err.message : 'تعذر معالجة ملف الصورة، تأكد أنه بصيغة PNG صالحة.'
@@ -159,7 +246,13 @@ export function ShowcaseSliderSettingsPanel({
         <button
           type="button"
           onClick={() => {
+            const resetSnapshot = normalizeShowcaseSliderConfig({
+              ...DEFAULT_SHOWCASE_SLIDER_CONFIG,
+              titleLogos: cfgRef.current.titleLogos,
+            });
+            cfgRef.current = resetSnapshot;
             resetCfg();
+            triggerImmediateSync(resetSnapshot);
             onNotify('تمت استعادة الإعدادات الافتراضية لعناصر وأحجام السلايدر الثالث');
           }}
           className="rtv-admin-btn-height inline-flex items-center gap-1.5 rounded-xl bg-[#1a242e] hover:bg-white/10 border border-white/10 px-3.5 py-2 text-xs font-bold text-[#b7c9ef] hover:text-white cursor-pointer shrink-0"
@@ -183,7 +276,7 @@ export function ShowcaseSliderSettingsPanel({
               <input
                 type="checkbox"
                 checked={cfg.usePngLogoInHero}
-                onChange={(e) => updateCfg({ usePngLogoInHero: e.target.checked })}
+                onChange={(e) => applyCfgPatch({ usePngLogoInHero: e.target.checked }, true)}
                 className="h-4 w-4 accent-[#E50914]"
               />
               <span>في العنوان الرئيسي</span>
@@ -192,7 +285,7 @@ export function ShowcaseSliderSettingsPanel({
               <input
                 type="checkbox"
                 checked={cfg.usePngLogoInStrip}
-                onChange={(e) => updateCfg({ usePngLogoInStrip: e.target.checked })}
+                onChange={(e) => applyCfgPatch({ usePngLogoInStrip: e.target.checked }, true)}
                 className="h-4 w-4 accent-[#E50914]"
               />
               <span>في الشريط السفلي</span>
@@ -248,7 +341,7 @@ export function ShowcaseSliderSettingsPanel({
                     type="url"
                     dir="ltr"
                     value={logoUrl.startsWith('data:') ? '' : logoUrl}
-                    onChange={(e) => setMovieLogo(item.id, e.target.value)}
+                    onChange={(e) => setMovieLogo(item.id, e.target.value, false)}
                     placeholder={
                       logoUrl.startsWith('data:')
                         ? 'تم رفع صورة PNG محلياً — أو الصق رابطاً جديداً'
@@ -272,7 +365,7 @@ export function ShowcaseSliderSettingsPanel({
                     <button
                       type="button"
                       onClick={() => {
-                        setMovieLogo(item.id, '');
+                        setMovieLogo(item.id, '', true);
                         onNotify(`تمت إزالة شعار PNG لـ "${item.title}"`);
                       }}
                       title="إزالة صورة PNG والعودة للنص"
@@ -309,7 +402,7 @@ export function ShowcaseSliderSettingsPanel({
                 role="switch"
                 aria-checked={active}
                 onClick={() =>
-                  updateCfg({ [ctrl.key]: !active } as Partial<ShowcaseSliderConfig>)
+                  applyCfgPatch({ [ctrl.key]: !active } as Partial<ShowcaseSliderConfig>, true)
                 }
                 className={`rounded-2xl border p-3.5 flex items-center justify-between gap-3 text-right transition-all cursor-pointer ${
                   active
@@ -340,7 +433,7 @@ export function ShowcaseSliderSettingsPanel({
           <input
             type="text"
             value={cfg.watchBtnText}
-            onChange={(e) => updateCfg({ watchBtnText: e.target.value })}
+            onChange={(e) => applyCfgPatch({ watchBtnText: e.target.value }, false)}
             placeholder="شاهد وحمل الان"
             className="sm:w-72 rounded-xl bg-[#0c1821] border border-white/10 px-3.5 py-2 text-xs font-bold text-white focus:border-[#E50914] focus:outline-none"
           />
@@ -370,7 +463,7 @@ export function ShowcaseSliderSettingsPanel({
               max={200}
               step={2}
               value={cfg.logoMaxHeightPx}
-              onChange={(e) => updateCfg({ logoMaxHeightPx: Number(e.target.value) })}
+              onChange={(e) => applyCfgPatch({ logoMaxHeightPx: Number(e.target.value) })}
               className="w-full accent-[#E50914] cursor-pointer"
             />
           </div>
@@ -388,7 +481,7 @@ export function ShowcaseSliderSettingsPanel({
               max={500}
               step={10}
               value={cfg.logoMaxWidthPx}
-              onChange={(e) => updateCfg({ logoMaxWidthPx: Number(e.target.value) })}
+              onChange={(e) => applyCfgPatch({ logoMaxWidthPx: Number(e.target.value) })}
               className="w-full accent-[#E50914] cursor-pointer"
             />
           </div>
@@ -406,7 +499,7 @@ export function ShowcaseSliderSettingsPanel({
               max={72}
               step={1}
               value={cfg.titleSizePx}
-              onChange={(e) => updateCfg({ titleSizePx: Number(e.target.value) })}
+              onChange={(e) => applyCfgPatch({ titleSizePx: Number(e.target.value) })}
               className="w-full accent-[#E50914] cursor-pointer"
             />
           </div>
@@ -424,7 +517,7 @@ export function ShowcaseSliderSettingsPanel({
               max={18}
               step={1}
               value={cfg.metaSizePx}
-              onChange={(e) => updateCfg({ metaSizePx: Number(e.target.value) })}
+              onChange={(e) => applyCfgPatch({ metaSizePx: Number(e.target.value) })}
               className="w-full accent-[#E50914] cursor-pointer"
             />
           </div>
@@ -442,7 +535,7 @@ export function ShowcaseSliderSettingsPanel({
               max={20}
               step={1}
               value={cfg.storySizePx}
-              onChange={(e) => updateCfg({ storySizePx: Number(e.target.value) })}
+              onChange={(e) => applyCfgPatch({ storySizePx: Number(e.target.value) })}
               className="w-full accent-[#E50914] cursor-pointer"
             />
           </div>
@@ -461,7 +554,7 @@ export function ShowcaseSliderSettingsPanel({
               step={1}
               value={cfg.storyLines}
               onChange={(e) =>
-                updateCfg({ storyLines: Number(e.target.value) as 1 | 2 | 3 | 4 })
+                applyCfgPatch({ storyLines: Number(e.target.value) as 1 | 2 | 3 | 4 })
               }
               className="w-full accent-[#E50914] cursor-pointer"
             />
@@ -480,7 +573,7 @@ export function ShowcaseSliderSettingsPanel({
               max={64}
               step={2}
               value={cfg.stripLogoHeightPx}
-              onChange={(e) => updateCfg({ stripLogoHeightPx: Number(e.target.value) })}
+              onChange={(e) => applyCfgPatch({ stripLogoHeightPx: Number(e.target.value) })}
               className="w-full accent-[#E50914] cursor-pointer"
             />
           </div>
@@ -498,7 +591,7 @@ export function ShowcaseSliderSettingsPanel({
               max={24}
               step={1}
               value={cfg.stripTextSizePx}
-              onChange={(e) => updateCfg({ stripTextSizePx: Number(e.target.value) })}
+              onChange={(e) => applyCfgPatch({ stripTextSizePx: Number(e.target.value) })}
               className="w-full accent-[#E50914] cursor-pointer"
             />
           </div>

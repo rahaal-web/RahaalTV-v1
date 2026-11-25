@@ -120,12 +120,21 @@ import {
 } from './lib/guestSession';
 import { installTvSpatialNavigation } from './lib/tvNavigation';
 import {
+  normalizeHeroSliderVariant,
+  saveHeroSliderVariant,
+} from './lib/heroSliderMode';
+import { saveShowcaseSliderConfig } from './lib/showcaseSliderConfig';
+import { saveStreamV4SliderConfig } from './lib/streamV4SliderConfig';
+import {
   appendDatabaseConnectionLog,
   getActiveConnectionProfile,
+  getBuiltInDefaultAuth,
   loadDatabaseRegistry,
   recordDatabaseConnected,
   recordDatabaseOutage,
   subscribeActiveDatabaseChange,
+  subscribeActiveDatabasePointerFromFirestore,
+  subscribeDatabaseRegistryFromFirestore,
 } from './lib/dbConnectionManager';
 import {
   classifyFirestoreConnectionError,
@@ -295,6 +304,16 @@ export default function App() {
     useState<FirestoreConnectionStatus>('connecting');
   const [dbConnectionError, setDbConnectionError] = useState<string | null>(null);
   const [dbReconnectNonce, setDbReconnectNonce] = useState(0);
+  const [defaultAuthUid, setDefaultAuthUid] = useState<string>(
+    () => getBuiltInDefaultAuth().currentUser?.uid || ''
+  );
+
+  useEffect(() => {
+    const defaultAuth = getBuiltInDefaultAuth();
+    return onAuthStateChanged(defaultAuth, (u) => {
+      setDefaultAuthUid(u?.uid || '');
+    });
+  }, []);
 
   useEffect(() => {
     return subscribeActiveDatabaseChange(() => {
@@ -1152,6 +1171,42 @@ export default function App() {
       }
     );
 
+    const unsubHeroSliderMode = onSnapshot(
+      doc(activeDb, 'settings', 'hero_slider_mode'),
+      (snap) => {
+        if (!snap.exists()) return;
+        const raw = snap.data() as { variant?: unknown };
+        saveHeroSliderVariant(normalizeHeroSliderVariant(raw?.variant));
+      },
+      () => {
+        // Ignore if settings/hero_slider_mode rule is not yet deployed
+      }
+    );
+
+    const unsubShowcaseSlider = onSnapshot(
+      doc(activeDb, 'settings', 'showcase_slider'),
+      (snap) => {
+        if (!snap.exists()) return;
+        const raw = snap.data() as Record<string, unknown>;
+        saveShowcaseSliderConfig(raw);
+      },
+      () => {
+        // Ignore if settings/showcase_slider rule is not yet deployed
+      }
+    );
+
+    const unsubStreamV4Slider = onSnapshot(
+      doc(activeDb, 'settings', 'stream_v4_slider'),
+      (snap) => {
+        if (!snap.exists()) return;
+        const raw = snap.data() as Record<string, unknown>;
+        saveStreamV4SliderConfig(raw);
+      },
+      () => {
+        // Ignore if settings/stream_v4_slider rule is not yet deployed
+      }
+    );
+
     const fontsPath = 'fonts';
     const unsubFonts = onSnapshot(
       collection(activeDb, fontsPath),
@@ -1230,10 +1285,29 @@ export default function App() {
       unsubImagePlaceholders();
       unsubRecentlyWatchedUi();
       unsubSiteTheme();
+      unsubHeroSliderMode();
+      unsubShowcaseSlider();
+      unsubStreamV4Slider();
       unsubFonts();
       unsubRatings();
     };
   }, [dbReconnectNonce]);
+
+  // 1a. Cross-device database pointer + owner registry synchronization
+  useEffect(() => {
+    const unsubPointer = subscribeActiveDatabasePointerFromFirestore(true);
+    const seedUid = isOwnerAdmin
+      ? defaultAuthUid || firebaseUser?.uid || undefined
+      : undefined;
+    const unsubRegistry = subscribeDatabaseRegistryFromFirestore(
+      Boolean(defaultAuthUid || isOwnerAdmin),
+      { uidForInitialSeed: seedUid }
+    );
+    return () => {
+      unsubPointer();
+      unsubRegistry();
+    };
+  }, [defaultAuthUid, isOwnerAdmin, firebaseUser, dbReconnectNonce]);
 
   // 1b. Automatic Transient Outage Retry Guard
   useEffect(() => {

@@ -1,4 +1,4 @@
-import { ChangeEvent, useMemo, useState } from 'react';
+import { ChangeEvent, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Clock,
   Image as ImageIcon,
@@ -13,7 +13,10 @@ import {
   Upload,
 } from 'lucide-react';
 import { HomeLayoutConfig, MediaItem } from '../../types/media';
+import { saveStreamV4SliderConfigToFirestore } from '../../lib/firebase';
 import {
+  DEFAULT_STREAM_V4_SLIDER_CONFIG,
+  normalizeStreamV4SliderConfig,
   StreamV4SliderConfig,
   uploadTransparentSliderPng,
   useStreamV4SliderConfig,
@@ -22,6 +25,9 @@ import {
 interface StreamV4SliderSettingsPanelProps {
   homeConfig: HomeLayoutConfig;
   catalog: MediaItem[];
+  actorUid?: string;
+  hasActor?: boolean;
+  isOwner?: boolean;
   onGetAuthToken?: () => Promise<string | undefined>;
   onNotify: (msg: string) => void;
 }
@@ -60,12 +66,86 @@ const VISIBILITY_CONTROLS: Array<{
 export function StreamV4SliderSettingsPanel({
   homeConfig,
   catalog,
+  actorUid = '',
+  hasActor = false,
+  isOwner = false,
   onGetAuthToken,
   onNotify,
 }: StreamV4SliderSettingsPanelProps) {
   const [cfg, updateCfg, resetCfg] = useStreamV4SliderConfig();
   const [searchQuery, setSearchQuery] = useState('');
   const [uploadingId, setUploadingId] = useState<string | null>(null);
+
+  const cfgRef = useRef(cfg);
+  cfgRef.current = cfg;
+  const actorRef = useRef({ actorUid, hasActor, isOwner });
+  actorRef.current = { actorUid, hasActor, isOwner };
+  const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hasPendingSyncRef = useRef(false);
+
+  const pushConfigToCloud = async (nextCfg: StreamV4SliderConfig, silentError = false) => {
+    const actor = actorRef.current;
+    if (!actor.isOwner || !actor.hasActor || !actor.actorUid) return;
+    try {
+      const res = await saveStreamV4SliderConfigToFirestore(nextCfg, actor.actorUid);
+      if (!res.ok && !silentError) {
+        onNotify(
+          `تم حفظ إعدادات السلايدر الرابع محلياً — تعذرت المزامنة السحابية (${res.projectId}/${res.databaseId})`
+        );
+      }
+    } catch {
+      if (!silentError) {
+        onNotify('تم حفظ إعدادات السلايدر الرابع محلياً — تعذرت المزامنة مع Firestore');
+      }
+    }
+  };
+
+  const triggerImmediateSync = (nextCfg: StreamV4SliderConfig) => {
+    if (syncTimerRef.current) {
+      clearTimeout(syncTimerRef.current);
+      syncTimerRef.current = null;
+    }
+    hasPendingSyncRef.current = false;
+    void pushConfigToCloud(nextCfg);
+  };
+
+  const scheduleDebouncedSync = (nextCfg: StreamV4SliderConfig) => {
+    cfgRef.current = nextCfg;
+    hasPendingSyncRef.current = true;
+    if (syncTimerRef.current) {
+      clearTimeout(syncTimerRef.current);
+    }
+    syncTimerRef.current = setTimeout(() => {
+      syncTimerRef.current = null;
+      hasPendingSyncRef.current = false;
+      void pushConfigToCloud(cfgRef.current);
+    }, 450);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (syncTimerRef.current) {
+        clearTimeout(syncTimerRef.current);
+        syncTimerRef.current = null;
+      }
+      if (hasPendingSyncRef.current) {
+        hasPendingSyncRef.current = false;
+        void pushConfigToCloud(cfgRef.current, true);
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const applyCfgPatch = (patch: Partial<StreamV4SliderConfig>, immediate = false) => {
+    const nextCfg = normalizeStreamV4SliderConfig({ ...cfgRef.current, ...patch });
+    cfgRef.current = nextCfg;
+    updateCfg(patch);
+    if (immediate) {
+      triggerImmediateSync(nextCfg);
+    } else {
+      scheduleDebouncedSync(nextCfg);
+    }
+  };
 
   const sliderMovies = useMemo(() => {
     const byId = new Map(catalog.map((i) => [i.id, i]));
@@ -122,26 +202,30 @@ export function StreamV4SliderSettingsPanel({
     Number(cfg.defaultSlideDurationSec) || Number(homeConfig.heroSlideIntervalSec) || 6
   );
 
-  const setMovieLogo = (mediaId: string, url: string) => {
-    const nextLogos = { ...cfg.titleLogos };
+  const setMovieLogo = (mediaId: string, url: string, immediate = false) => {
+    const nextLogos = { ...cfgRef.current.titleLogos };
     const clean = url.trim();
     if (clean) {
       nextLogos[mediaId] = clean;
     } else {
       delete nextLogos[mediaId];
     }
-    updateCfg({ titleLogos: nextLogos });
+    applyCfgPatch({ titleLogos: nextLogos }, immediate);
   };
 
-  const setMovieDuration = (mediaId: string, durationSec?: number | null) => {
-    const nextDurations = { ...cfg.slideDurations };
+  const setMovieDuration = (
+    mediaId: string,
+    durationSec?: number | null,
+    immediate = false
+  ) => {
+    const nextDurations = { ...cfgRef.current.slideDurations };
     const num = Number(durationSec);
     if (durationSec != null && Number.isFinite(num) && num >= 2) {
       nextDurations[mediaId] = Math.min(60, Math.max(2, Math.round(num)));
     } else {
       delete nextDurations[mediaId];
     }
-    updateCfg({ slideDurations: nextDurations });
+    applyCfgPatch({ slideDurations: nextDurations }, immediate);
   };
 
   const handleUploadPng = async (mediaId: string, event: ChangeEvent<HTMLInputElement>) => {
@@ -153,11 +237,11 @@ export function StreamV4SliderSettingsPanel({
     try {
       const idToken = onGetAuthToken ? await onGetAuthToken().catch(() => undefined) : undefined;
       const result = await uploadTransparentSliderPng(file, idToken);
-      setMovieLogo(mediaId, result.url);
+      setMovieLogo(mediaId, result.url, true);
       onNotify(
         result.storage === 'server'
-          ? 'تم رفع صورة الشعار (PNG) على الخادم للسلايدر الرابع فقط'
-          : 'تم حفظ صورة الشعار (PNG) للسلايدر الرابع فوراً'
+          ? 'تم رفع صورة الشعار (PNG) على الخادم للسلايدر الرابع ومزامنتها'
+          : 'تم حفظ صورة الشعار (PNG) للسلايدر الرابع ومزامنتها'
       );
     } catch (err) {
       onNotify(
@@ -189,8 +273,15 @@ export function StreamV4SliderSettingsPanel({
         <button
           type="button"
           onClick={() => {
+            const nextCfg = normalizeStreamV4SliderConfig({
+              ...DEFAULT_STREAM_V4_SLIDER_CONFIG,
+              titleLogos: cfgRef.current.titleLogos,
+              slideDurations: cfgRef.current.slideDurations,
+            });
+            cfgRef.current = nextCfg;
             resetCfg();
-            onNotify('تمت استعادة الإعدادات الافتراضية للسلايدر الرابع');
+            triggerImmediateSync(nextCfg);
+            onNotify('تمت استعادة الإعدادات الافتراضية للسلايدر الرابع ومزامنتها');
           }}
           className="rtv-admin-btn-height inline-flex items-center gap-1.5 rounded-xl bg-[#1a242e] hover:bg-white/10 border border-white/10 px-3.5 py-2 text-xs font-bold text-[#b7c9ef] hover:text-white cursor-pointer shrink-0"
         >
@@ -219,7 +310,7 @@ export function StreamV4SliderSettingsPanel({
               <input
                 type="checkbox"
                 checked={cfg.usePngLogoInHero}
-                onChange={(e) => updateCfg({ usePngLogoInHero: e.target.checked })}
+                onChange={(e) => applyCfgPatch({ usePngLogoInHero: e.target.checked }, true)}
                 className="h-4 w-4 accent-[var(--rtv-admin-accent)]"
               />
               <span>في الواجهة الرئيسية</span>
@@ -228,7 +319,7 @@ export function StreamV4SliderSettingsPanel({
               <input
                 type="checkbox"
                 checked={cfg.usePngLogoInStrip}
-                onChange={(e) => updateCfg({ usePngLogoInStrip: e.target.checked })}
+                onChange={(e) => applyCfgPatch({ usePngLogoInStrip: e.target.checked }, true)}
                 className="h-4 w-4 accent-[var(--rtv-admin-accent)]"
               />
               <span>في الشريط السفلي</span>
@@ -261,7 +352,7 @@ export function StreamV4SliderSettingsPanel({
               step={1}
               value={defaultIntervalSec}
               onChange={(e) =>
-                updateCfg({ defaultSlideDurationSec: Number(e.target.value) })
+                applyCfgPatch({ defaultSlideDurationSec: Number(e.target.value) })
               }
               className="w-36 sm:w-44 accent-[var(--rtv-admin-accent)] cursor-pointer"
             />
@@ -269,7 +360,7 @@ export function StreamV4SliderSettingsPanel({
               <button
                 type="button"
                 onClick={() =>
-                  updateCfg({ defaultSlideDurationSec: Math.max(2, defaultIntervalSec - 1) })
+                  applyCfgPatch({ defaultSlideDurationSec: Math.max(2, defaultIntervalSec - 1) }, true)
                 }
                 aria-label="تقليل الوقت العام"
                 className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-[#0c1821] hover:bg-white/10 border border-white/10 text-xs font-extrabold text-white cursor-pointer"
@@ -282,7 +373,7 @@ export function StreamV4SliderSettingsPanel({
                 max={60}
                 value={defaultIntervalSec}
                 onChange={(e) =>
-                  updateCfg({
+                  applyCfgPatch({
                     defaultSlideDurationSec: Math.min(60, Math.max(2, Number(e.target.value) || 2)),
                   })
                 }
@@ -291,7 +382,7 @@ export function StreamV4SliderSettingsPanel({
               <button
                 type="button"
                 onClick={() =>
-                  updateCfg({ defaultSlideDurationSec: Math.min(60, defaultIntervalSec + 1) })
+                  applyCfgPatch({ defaultSlideDurationSec: Math.min(60, defaultIntervalSec + 1) }, true)
                 }
                 aria-label="زيادة الوقت العام"
                 className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-[#0c1821] hover:bg-white/10 border border-white/10 text-xs font-extrabold text-white cursor-pointer"
@@ -304,7 +395,7 @@ export function StreamV4SliderSettingsPanel({
               <button
                 type="button"
                 onClick={() => {
-                  updateCfg({ slideDurations: {} });
+                  applyCfgPatch({ slideDurations: {} }, true);
                   onNotify(`تم توحيد وقت التقليب إلى ${defaultIntervalSec} ثوانٍ لجميع الأفلام`);
                 }}
                 className="rounded-xl bg-[#E50914] hover:bg-[#f40612] px-3 py-1.5 text-[11px] font-extrabold text-white cursor-pointer"
@@ -388,7 +479,7 @@ export function StreamV4SliderSettingsPanel({
                     <button
                       type="button"
                       onClick={() => {
-                        setMovieLogo(item.id, '');
+                        setMovieLogo(item.id, '', true);
                         onNotify(`تمت إزالة شعار PNG لـ "${item.title}"`);
                       }}
                       title="إزالة شعار PNG"
@@ -413,7 +504,7 @@ export function StreamV4SliderSettingsPanel({
                     <button
                       type="button"
                       onClick={() =>
-                        setMovieDuration(item.id, Math.max(2, effectiveDuration - 1))
+                        setMovieDuration(item.id, Math.max(2, effectiveDuration - 1), true)
                       }
                       aria-label="تقليل مدة الظهور"
                       className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-[#0c1821] hover:bg-white/10 border border-white/10 text-xs font-extrabold text-white cursor-pointer"
@@ -439,7 +530,7 @@ export function StreamV4SliderSettingsPanel({
                     <button
                       type="button"
                       onClick={() =>
-                        setMovieDuration(item.id, Math.min(60, effectiveDuration + 1))
+                        setMovieDuration(item.id, Math.min(60, effectiveDuration + 1), true)
                       }
                       aria-label="زيادة مدة الظهور"
                       className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-[#0c1821] hover:bg-white/10 border border-white/10 text-xs font-extrabold text-white cursor-pointer"
@@ -449,7 +540,7 @@ export function StreamV4SliderSettingsPanel({
                     {customDuration && (
                       <button
                         type="button"
-                        onClick={() => setMovieDuration(item.id, null)}
+                        onClick={() => setMovieDuration(item.id, null, true)}
                         className="rounded-lg bg-[#0c1821] hover:bg-white/10 border border-white/10 px-2 py-1 text-[10px] font-bold text-[#b7c9ef] hover:text-white cursor-pointer"
                       >
                         افتراضي
@@ -475,7 +566,7 @@ export function StreamV4SliderSettingsPanel({
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <button
             type="button"
-            onClick={() => updateCfg({ colorMode: 'site_theme' })}
+            onClick={() => applyCfgPatch({ colorMode: 'site_theme' }, true)}
             className={`rounded-2xl border p-4 text-right transition-all cursor-pointer ${
               cfg.colorMode === 'site_theme'
                 ? 'rtv-admin-accent-soft border-sky-400/50'
@@ -499,7 +590,7 @@ export function StreamV4SliderSettingsPanel({
           >
             <button
               type="button"
-              onClick={() => updateCfg({ colorMode: 'custom' })}
+              onClick={() => applyCfgPatch({ colorMode: 'custom' }, true)}
               className="w-full text-right cursor-pointer"
             >
               <p className="text-xs font-extrabold text-white">ب. لون أزرار ومؤشر مخصص</p>
@@ -509,7 +600,7 @@ export function StreamV4SliderSettingsPanel({
                 type="color"
                 value={cfg.customAccentColor}
                 onChange={(e) =>
-                  updateCfg({ colorMode: 'custom', customAccentColor: e.target.value })
+                  applyCfgPatch({ colorMode: 'custom', customAccentColor: e.target.value })
                 }
                 className="h-8 w-12 rounded-lg bg-transparent border border-white/20 cursor-pointer"
               />
@@ -532,7 +623,7 @@ export function StreamV4SliderSettingsPanel({
               max={100}
               step={5}
               value={cfg.scrimIntensityPct}
-              onChange={(e) => updateCfg({ scrimIntensityPct: Number(e.target.value) })}
+              onChange={(e) => applyCfgPatch({ scrimIntensityPct: Number(e.target.value) })}
               className="w-full accent-[var(--rtv-admin-accent)] cursor-pointer"
             />
           </div>
@@ -558,7 +649,7 @@ export function StreamV4SliderSettingsPanel({
                 role="switch"
                 aria-checked={active}
                 onClick={() =>
-                  updateCfg({ [ctrl.key]: !active } as Partial<StreamV4SliderConfig>)
+                  applyCfgPatch({ [ctrl.key]: !active } as Partial<StreamV4SliderConfig>, true)
                 }
                 className={`rounded-2xl border p-3.5 flex items-center justify-between gap-3 text-right transition-all cursor-pointer ${
                   active
@@ -587,7 +678,7 @@ export function StreamV4SliderSettingsPanel({
           <input
             type="text"
             value={cfg.watchBtnText}
-            onChange={(e) => updateCfg({ watchBtnText: e.target.value })}
+            onChange={(e) => applyCfgPatch({ watchBtnText: e.target.value })}
             placeholder="شاهد وحمل الان"
             className="sm:w-72 rounded-xl bg-[#0c1821] border border-white/10 px-3.5 py-2 text-xs font-bold text-white focus:border-[var(--rtv-admin-accent)] focus:outline-none"
           />
@@ -617,7 +708,7 @@ export function StreamV4SliderSettingsPanel({
               max={860}
               step={10}
               value={cfg.sliderHeightDesktopPx}
-              onChange={(e) => updateCfg({ sliderHeightDesktopPx: Number(e.target.value) })}
+              onChange={(e) => applyCfgPatch({ sliderHeightDesktopPx: Number(e.target.value) })}
               className="w-full accent-[var(--rtv-admin-accent)] cursor-pointer"
             />
           </div>
@@ -635,7 +726,7 @@ export function StreamV4SliderSettingsPanel({
               max={240}
               step={2}
               value={cfg.logoMaxHeightPx}
-              onChange={(e) => updateCfg({ logoMaxHeightPx: Number(e.target.value) })}
+              onChange={(e) => applyCfgPatch({ logoMaxHeightPx: Number(e.target.value) })}
               className="w-full accent-[var(--rtv-admin-accent)] cursor-pointer"
             />
           </div>
@@ -653,7 +744,7 @@ export function StreamV4SliderSettingsPanel({
               max={540}
               step={10}
               value={cfg.logoMaxWidthPx}
-              onChange={(e) => updateCfg({ logoMaxWidthPx: Number(e.target.value) })}
+              onChange={(e) => applyCfgPatch({ logoMaxWidthPx: Number(e.target.value) })}
               className="w-full accent-[var(--rtv-admin-accent)] cursor-pointer"
             />
           </div>
@@ -671,7 +762,7 @@ export function StreamV4SliderSettingsPanel({
               max={72}
               step={1}
               value={cfg.titleSizePx}
-              onChange={(e) => updateCfg({ titleSizePx: Number(e.target.value) })}
+              onChange={(e) => applyCfgPatch({ titleSizePx: Number(e.target.value) })}
               className="w-full accent-[var(--rtv-admin-accent)] cursor-pointer"
             />
           </div>
@@ -689,7 +780,7 @@ export function StreamV4SliderSettingsPanel({
               max={18}
               step={1}
               value={cfg.metaSizePx}
-              onChange={(e) => updateCfg({ metaSizePx: Number(e.target.value) })}
+              onChange={(e) => applyCfgPatch({ metaSizePx: Number(e.target.value) })}
               className="w-full accent-[var(--rtv-admin-accent)] cursor-pointer"
             />
           </div>
@@ -707,7 +798,7 @@ export function StreamV4SliderSettingsPanel({
               max={20}
               step={1}
               value={cfg.storySizePx}
-              onChange={(e) => updateCfg({ storySizePx: Number(e.target.value) })}
+              onChange={(e) => applyCfgPatch({ storySizePx: Number(e.target.value) })}
               className="w-full accent-[var(--rtv-admin-accent)] cursor-pointer"
             />
           </div>
@@ -726,7 +817,7 @@ export function StreamV4SliderSettingsPanel({
               step={1}
               value={cfg.storyLines}
               onChange={(e) =>
-                updateCfg({ storyLines: Number(e.target.value) as 1 | 2 | 3 | 4 })
+                applyCfgPatch({ storyLines: Number(e.target.value) as 1 | 2 | 3 | 4 })
               }
               className="w-full accent-[var(--rtv-admin-accent)] cursor-pointer"
             />
@@ -745,7 +836,7 @@ export function StreamV4SliderSettingsPanel({
               max={18}
               step={1}
               value={cfg.castSizePx}
-              onChange={(e) => updateCfg({ castSizePx: Number(e.target.value) })}
+              onChange={(e) => applyCfgPatch({ castSizePx: Number(e.target.value) })}
               className="w-full accent-[var(--rtv-admin-accent)] cursor-pointer"
             />
           </div>
@@ -763,7 +854,7 @@ export function StreamV4SliderSettingsPanel({
               max={72}
               step={2}
               value={cfg.stripLogoHeightPx}
-              onChange={(e) => updateCfg({ stripLogoHeightPx: Number(e.target.value) })}
+              onChange={(e) => applyCfgPatch({ stripLogoHeightPx: Number(e.target.value) })}
               className="w-full accent-[var(--rtv-admin-accent)] cursor-pointer"
             />
           </div>
@@ -781,7 +872,7 @@ export function StreamV4SliderSettingsPanel({
               max={24}
               step={1}
               value={cfg.stripTextSizePx}
-              onChange={(e) => updateCfg({ stripTextSizePx: Number(e.target.value) })}
+              onChange={(e) => applyCfgPatch({ stripTextSizePx: Number(e.target.value) })}
               className="w-full accent-[var(--rtv-admin-accent)] cursor-pointer"
             />
           </div>
@@ -799,7 +890,7 @@ export function StreamV4SliderSettingsPanel({
               max={10}
               step={1}
               value={cfg.maxStripItems}
-              onChange={(e) => updateCfg({ maxStripItems: Number(e.target.value) })}
+              onChange={(e) => applyCfgPatch({ maxStripItems: Number(e.target.value) })}
               className="w-full accent-[var(--rtv-admin-accent)] cursor-pointer"
             />
           </div>
@@ -817,7 +908,7 @@ export function StreamV4SliderSettingsPanel({
               max={8}
               step={1}
               value={cfg.progressBarHeightPx}
-              onChange={(e) => updateCfg({ progressBarHeightPx: Number(e.target.value) })}
+              onChange={(e) => applyCfgPatch({ progressBarHeightPx: Number(e.target.value) })}
               className="w-full accent-[var(--rtv-admin-accent)] cursor-pointer"
             />
           </div>
@@ -835,7 +926,7 @@ export function StreamV4SliderSettingsPanel({
               max={280}
               step={5}
               value={cfg.bottomBlendHeightPx}
-              onChange={(e) => updateCfg({ bottomBlendHeightPx: Number(e.target.value) })}
+              onChange={(e) => applyCfgPatch({ bottomBlendHeightPx: Number(e.target.value) })}
               className="w-full accent-[var(--rtv-admin-accent)] cursor-pointer"
             />
           </div>
@@ -853,7 +944,7 @@ export function StreamV4SliderSettingsPanel({
               max={22}
               step={1}
               value={cfg.bottomBlurPx}
-              onChange={(e) => updateCfg({ bottomBlurPx: Number(e.target.value) })}
+              onChange={(e) => applyCfgPatch({ bottomBlurPx: Number(e.target.value) })}
               className="w-full accent-[var(--rtv-admin-accent)] cursor-pointer"
             />
           </div>
@@ -871,7 +962,7 @@ export function StreamV4SliderSettingsPanel({
               max={96}
               step={2}
               value={cfg.bottomOverlapPx}
-              onChange={(e) => updateCfg({ bottomOverlapPx: Number(e.target.value) })}
+              onChange={(e) => applyCfgPatch({ bottomOverlapPx: Number(e.target.value) })}
               className="w-full accent-[var(--rtv-admin-accent)] cursor-pointer"
             />
           </div>
@@ -905,7 +996,7 @@ export function StreamV4SliderSettingsPanel({
                 <button
                   key={opt.id}
                   type="button"
-                  onClick={() => updateCfg({ articleVerticalAlign: opt.id })}
+                  onClick={() => applyCfgPatch({ articleVerticalAlign: opt.id }, true)}
                   className={`rounded-xl border px-2.5 py-2 text-[11px] font-extrabold transition-all cursor-pointer ${
                     cfg.articleVerticalAlign === opt.id
                       ? 'rtv-admin-accent-bg border-transparent'
@@ -929,7 +1020,7 @@ export function StreamV4SliderSettingsPanel({
                 <button
                   key={opt.id}
                   type="button"
-                  onClick={() => updateCfg({ articleHorizontalAlign: opt.id })}
+                  onClick={() => applyCfgPatch({ articleHorizontalAlign: opt.id }, true)}
                   className={`rounded-xl border px-2.5 py-2 text-[11px] font-extrabold transition-all cursor-pointer ${
                     cfg.articleHorizontalAlign === opt.id
                       ? 'rtv-admin-accent-bg border-transparent'
@@ -957,7 +1048,7 @@ export function StreamV4SliderSettingsPanel({
               max={320}
               step={4}
               value={cfg.articleBottomOffsetPx}
-              onChange={(e) => updateCfg({ articleBottomOffsetPx: Number(e.target.value) })}
+              onChange={(e) => applyCfgPatch({ articleBottomOffsetPx: Number(e.target.value) })}
               className="w-full accent-[var(--rtv-admin-accent)] cursor-pointer"
             />
           </div>
@@ -975,7 +1066,7 @@ export function StreamV4SliderSettingsPanel({
               max={260}
               step={4}
               value={cfg.articleTopOffsetPx}
-              onChange={(e) => updateCfg({ articleTopOffsetPx: Number(e.target.value) })}
+              onChange={(e) => applyCfgPatch({ articleTopOffsetPx: Number(e.target.value) })}
               className="w-full accent-[var(--rtv-admin-accent)] cursor-pointer"
             />
           </div>
@@ -993,7 +1084,7 @@ export function StreamV4SliderSettingsPanel({
               max={220}
               step={4}
               value={cfg.articleSideOffsetPx}
-              onChange={(e) => updateCfg({ articleSideOffsetPx: Number(e.target.value) })}
+              onChange={(e) => applyCfgPatch({ articleSideOffsetPx: Number(e.target.value) })}
               className="w-full accent-[var(--rtv-admin-accent)] cursor-pointer"
             />
           </div>
@@ -1011,7 +1102,7 @@ export function StreamV4SliderSettingsPanel({
               max={720}
               step={10}
               value={cfg.articleMaxWidthPx}
-              onChange={(e) => updateCfg({ articleMaxWidthPx: Number(e.target.value) })}
+              onChange={(e) => applyCfgPatch({ articleMaxWidthPx: Number(e.target.value) })}
               className="w-full accent-[var(--rtv-admin-accent)] cursor-pointer"
             />
           </div>
@@ -1029,7 +1120,7 @@ export function StreamV4SliderSettingsPanel({
               max={100}
               step={2}
               value={cfg.dotsBottomOffsetPx}
-              onChange={(e) => updateCfg({ dotsBottomOffsetPx: Number(e.target.value) })}
+              onChange={(e) => applyCfgPatch({ dotsBottomOffsetPx: Number(e.target.value) })}
               className="w-full accent-[var(--rtv-admin-accent)] cursor-pointer"
             />
           </div>

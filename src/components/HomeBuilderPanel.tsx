@@ -61,6 +61,7 @@ interface HomeBuilderPanelProps {
   onOpenTypographyTab?: () => void;
   onOpenSliderCustomization?: () => void;
   onOpenCardsAndThemesTab?: () => void;
+  onSaveHeroSliderVariant?: (variant: HeroSliderVariant) => Promise<void> | void;
   onNotify: (msg: string) => void;
 }
 
@@ -92,6 +93,7 @@ export function HomeBuilderPanel({
   onOpenTypographyTab,
   onOpenSliderCustomization,
   onOpenCardsAndThemesTab,
+  onSaveHeroSliderVariant,
   onNotify,
 }: HomeBuilderPanelProps) {
   const cfg = useMemo(() => normalizeHomeConfig(homeConfig), [homeConfig]);
@@ -446,6 +448,7 @@ export function HomeBuilderPanel({
                   type="button"
                   onClick={() => {
                     setHeroSliderVariant(styleOpt.id);
+                    void onSaveHeroSliderVariant?.(styleOpt.id);
                     onNotify(
                       styleOpt.id === 'cinematic'
                         ? 'تم التبديل إلى السلايدر السينمائي 3D'

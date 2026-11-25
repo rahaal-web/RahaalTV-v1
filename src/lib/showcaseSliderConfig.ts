@@ -343,3 +343,62 @@ export async function processTransparentLogoUpload(file: File): Promise<string> 
     URL.revokeObjectURL(objectUrl);
   }
 }
+
+export function sanitizeShowcaseSliderConfigForFirestore(
+  raw: Partial<ShowcaseSliderConfig> | null | undefined
+): ShowcaseSliderConfig {
+  const normalized = normalizeShowcaseSliderConfig(raw);
+  const titleLogos: Record<string, string> = {};
+  let totalChars = 0;
+  for (const [id, url] of Object.entries(normalized.titleLogos)) {
+    if (Object.keys(titleLogos).length >= 60) break;
+    const cleanId = id.trim().slice(0, 128);
+    const cleanUrl = url.trim();
+    if (!cleanId || !cleanUrl || cleanUrl.length > 250000) continue;
+    if (totalChars + cleanUrl.length > 750000) break;
+    titleLogos[cleanId] = cleanUrl;
+    totalChars += cleanUrl.length;
+  }
+  return {
+    ...normalized,
+    titleLogos,
+  };
+}
+
+export async function uploadShowcaseTransparentPng(
+  file: File,
+  idToken?: string
+): Promise<{ url: string; storage: 'server' | 'local' }> {
+  const dataUrl = await processTransparentLogoUpload(file);
+
+  if (
+    idToken &&
+    dataUrl.startsWith('data:image/') &&
+    !dataUrl.startsWith('data:image/svg+xml;charset=')
+  ) {
+    try {
+      const res = await fetch('/api/images/upload', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({
+          slot: 'logo',
+          dataUrl,
+        }),
+      });
+      if (res.ok) {
+        const payload = (await res.json()) as { ok?: boolean; url?: string };
+        if (payload.ok && payload.url) {
+          return { url: payload.url, storage: 'server' };
+        }
+      }
+    } catch {
+      // Graceful fallback to local compact transparent dataUrl
+    }
+  }
+
+  return { url: dataUrl, storage: 'local' };
+}
+

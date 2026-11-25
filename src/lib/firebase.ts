@@ -97,6 +97,15 @@ import {
   saveStoredWebsiteBranding,
 } from './websiteBranding';
 import { evaluateImageQuality } from './mediaImages';
+import { HeroSliderVariant, normalizeHeroSliderVariant } from './heroSliderMode';
+import {
+  sanitizeShowcaseSliderConfigForFirestore,
+  ShowcaseSliderConfig,
+} from './showcaseSliderConfig';
+import {
+  sanitizeStreamV4SliderConfigForFirestore,
+  StreamV4SliderConfig,
+} from './streamV4SliderConfig';
 
 export let db: Firestore = getActiveDb();
 export let auth: Auth = getActiveAuthInstance();
@@ -2297,5 +2306,120 @@ export async function clearRecentlyWatchedCollectionForUser(uid: string): Promis
     return false;
   }
 }
+
+export async function saveHeroSliderVariantToFirestore(
+  variant: HeroSliderVariant,
+  uid: string
+): Promise<SaveImagePlaceholdersResult> {
+  const activeDb = getActiveDatabase();
+  const activeCfg = getActiveFirebaseConfig();
+  const projectId = activeCfg.projectId;
+  const databaseId = activeCfg.firestoreDatabaseId || '(default)';
+  const actorUid = getActiveAuth().currentUser?.uid || uid;
+  const normalizedVariant = normalizeHeroSliderVariant(variant);
+  try {
+    await setDoc(doc(activeDb, 'settings', 'hero_slider_mode'), {
+      variant: normalizedVariant,
+      updatedBy: actorUid,
+      updatedAt: serverTimestamp(),
+    });
+    return { ok: true, projectId, databaseId };
+  } catch (error) {
+    const { code, message } = getFirebaseErrorCodeAndMessage(error);
+    reportClientError({
+      source: 'firestore.settings.hero_slider_mode',
+      level: 'warn',
+      message: `Write to settings/hero_slider_mode on ${projectId}/${databaseId} failed (${code || 'unknown'}): ${message}`,
+      context: { projectId, databaseId, actorUid },
+    });
+    if (!isPermissionDeniedError(error)) {
+      handleFirestoreError(error, OperationType.WRITE, 'settings/hero_slider_mode');
+    }
+    return {
+      ok: false,
+      projectId,
+      databaseId,
+      errorCode: code || 'permission-denied',
+      errorMessage: message,
+    };
+  }
+}
+
+export async function saveShowcaseSliderConfigToFirestore(
+  cfg: ShowcaseSliderConfig,
+  uid: string
+): Promise<SaveImagePlaceholdersResult> {
+  const activeDb = getActiveDatabase();
+  const activeCfg = getActiveFirebaseConfig();
+  const projectId = activeCfg.projectId;
+  const databaseId = activeCfg.firestoreDatabaseId || '(default)';
+  const actorUid = getActiveAuth().currentUser?.uid || uid;
+  const cleanCfg = sanitizeShowcaseSliderConfigForFirestore(cfg);
+  try {
+    await setDoc(doc(activeDb, 'settings', 'showcase_slider'), {
+      ...cleanCfg,
+      updatedBy: actorUid,
+      updatedAt: serverTimestamp(),
+    });
+    return { ok: true, projectId, databaseId };
+  } catch (error) {
+    const { code, message } = getFirebaseErrorCodeAndMessage(error);
+    reportClientError({
+      source: 'firestore.settings.showcase_slider',
+      level: 'warn',
+      message: `Write to settings/showcase_slider on ${projectId}/${databaseId} failed (${code || 'unknown'}): ${message}`,
+      context: { projectId, databaseId, actorUid },
+    });
+    if (!isPermissionDeniedError(error)) {
+      handleFirestoreError(error, OperationType.WRITE, 'settings/showcase_slider');
+    }
+    return {
+      ok: false,
+      projectId,
+      databaseId,
+      errorCode: code || 'permission-denied',
+      errorMessage: message,
+    };
+  }
+}
+
+export async function saveStreamV4SliderConfigToFirestore(
+  cfg: StreamV4SliderConfig,
+  uid: string
+): Promise<SaveImagePlaceholdersResult> {
+  const activeDb = getActiveDatabase();
+  const activeCfg = getActiveFirebaseConfig();
+  const projectId = activeCfg.projectId;
+  const databaseId = activeCfg.firestoreDatabaseId || '(default)';
+  const actorUid = getActiveAuth().currentUser?.uid || uid;
+  const cleanCfg = sanitizeStreamV4SliderConfigForFirestore(cfg);
+  try {
+    await setDoc(doc(activeDb, 'settings', 'stream_v4_slider'), {
+      ...cleanCfg,
+      updatedBy: actorUid,
+      updatedAt: serverTimestamp(),
+    });
+    return { ok: true, projectId, databaseId };
+  } catch (error) {
+    const { code, message } = getFirebaseErrorCodeAndMessage(error);
+    reportClientError({
+      source: 'firestore.settings.stream_v4_slider',
+      level: 'warn',
+      message: `Write to settings/stream_v4_slider on ${projectId}/${databaseId} failed (${code || 'unknown'}): ${message}`,
+      context: { projectId, databaseId, actorUid },
+    });
+    if (!isPermissionDeniedError(error)) {
+      handleFirestoreError(error, OperationType.WRITE, 'settings/stream_v4_slider');
+    }
+    return {
+      ok: false,
+      projectId,
+      databaseId,
+      errorCode: code || 'permission-denied',
+      errorMessage: message,
+    };
+  }
+}
+
 
 

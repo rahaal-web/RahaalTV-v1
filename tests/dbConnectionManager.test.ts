@@ -13,8 +13,10 @@ import {
   importConnectionBackupBundle,
   loadDatabaseConnectionLogs,
   loadDatabaseRegistry,
+  mergeRemoteDatabaseRegistry,
   parseAndValidateConnectionBackup,
   rollbackDatabaseConnection,
+  sanitizeDatabaseRegistryForFirestore,
   setDefaultConnectionProfile,
   stripSecretFields,
   switchActiveDatabaseConnection,
@@ -25,7 +27,11 @@ import {
   getMaskedSecretStatuses,
   upsertSecretRecord,
 } from '../server/dbSecretVault';
-import type { DatabaseConnectionTestResult } from '../src/types/database';
+import type {
+  DatabaseConnectionProfile,
+  DatabaseConnectionRegistryState,
+  DatabaseConnectionTestResult,
+} from '../src/types/database';
 
 test('built-in default profile loads cleanly without leaking secrets', () => {
   const builtIn = buildDefaultBuiltInProfile();
@@ -257,3 +263,182 @@ test('server dbSecretVault encrypts secrets on disk and returns masked status on
     }
   }
 });
+
+function hasAnyUndefinedValue(value: unknown): boolean {
+  if (value === undefined) return true;
+  if (Array.isArray(value)) return value.some(hasAnyUndefinedValue);
+  if (value && typeof value === 'object') {
+    return Object.values(value).some(hasAnyUndefinedValue);
+  }
+  return false;
+}
+
+test('sanitizeDatabaseRegistryForFirestore strips secrets, caps profiles & tombstones, and emits no undefined keys', () => {
+  const builtIn = buildDefaultBuiltInProfile();
+  const extraProfiles: DatabaseConnectionProfile[] = Array.from({ length: 30 }, (_, i) => ({
+    ...builtIn,
+    id: `custom-db-${i}`,
+    name: `Custom DB ${i}`,
+    isBuiltIn: false,
+    firebaseConfig: {
+      ...builtIn.firebaseConfig,
+      projectId: `proj-${i}-abcd`,
+      apiKey: `AIzaSyFakeKey${i}000000000000`,
+    },
+    lastStatusMessage: i % 2 === 0 ? undefined : 'ok',
+    lastLatencyMs: i % 2 === 0 ? undefined : 25,
+    // Inject dirty server secrets to verify stripping
+    ...({
+      serviceAccountJson: '{"private_key":"secret"}',
+      apiSecret: 'super-secret',
+    } as Record<string, unknown>),
+  }));
+
+  const deletedIds = Array.from({ length: 55 }, (_, i) => `deleted-conn-${i}`);
+
+  const dirtyRegistry: DatabaseConnectionRegistryState = {
+    version: 1,
+    activeConnectionId: 'non-existent-id',
+    previousConnectionId: 'also-missing',
+    defaultConnectionId: 'custom-db-1',
+    lastGoodConnectionId: 'non-existent-id',
+    autoRetryEnabled: true,
+    updatedAtMs: 1700000000000,
+    deletedProfileIds: deletedIds,
+    profiles: [builtIn, ...extraProfiles],
+  };
+
+  const sanitized = sanitizeDatabaseRegistryForFirestore(dirtyRegistry) as {
+    profiles: Array<Record<string, unknown>>;
+    deletedProfileIds: string[];
+    activeConnectionId: string;
+    previousConnectionId: string | null;
+    defaultConnectionId: string;
+    lastGoodConnectionId: string;
+  };
+
+  assert.equal(sanitized.profiles.length, 25);
+  assert.equal(sanitized.deletedProfileIds.length, 40);
+  assert.equal(sanitized.activeConnectionId, BUILTIN_DEFAULT_CONNECTION_ID);
+  assert.equal(sanitized.previousConnectionId, null);
+  assert.equal(sanitized.defaultConnectionId, 'custom-db-1');
+  assert.equal(sanitized.lastGoodConnectionId, BUILTIN_DEFAULT_CONNECTION_ID);
+  assert.equal(hasAnyUndefinedValue(sanitized), false);
+
+  for (const prof of sanitized.profiles) {
+    assert.equal('serviceAccountJson' in prof, false);
+    assert.equal('apiSecret' in prof, false);
+  }
+});
+
+test('mergeRemoteDatabaseRegistry deduplicates identical Firebase targets, remaps IDs, and honors deletedProfileIds tombstones', () => {
+  const builtIn = buildDefaultBuiltInProfile();
+  const sharedTarget = {
+    projectId: 'shared-prod-999',
+    apiKey: 'AIzaSySharedTestKeyForMergeTests1234',
+    authDomain: 'shared-prod-999.firebaseapp.com',
+    firestoreDatabaseId: '(default)',
+    databaseURL: '',
+    storageBucket: '',
+    messagingSenderId: '999',
+    appId: '1:999:web:shared999',
+    measurementId: '',
+  };
+
+  const localProfileAddedOnMobile: DatabaseConnectionProfile = {
+    id: 'mobile-added-dup',
+    name: 'قاعدة الموبايل',
+    description: '',
+    providerType: 'firebase_firestore',
+    isBuiltIn: false,
+    firebaseConfig: sharedTarget,
+    lastStatus: 'connected',
+    createdAt: '2026-10-01T10:00:00.000Z',
+    updatedAt: '2026-10-01T10:00:00.000Z',
+  };
+
+  const localDeletedTarget: DatabaseConnectionProfile = {
+    id: 'pc-removed-profile',
+    name: 'Old DB',
+    description: '',
+    providerType: 'firebase_firestore',
+    isBuiltIn: false,
+    firebaseConfig: {
+      ...sharedTarget,
+      projectId: 'old-deleted-111',
+      apiKey: 'AIzaSyOldDeletedKey11111111111111',
+    },
+    lastStatus: 'untested',
+    createdAt: '2026-09-01T00:00:00.000Z',
+    updatedAt: '2026-09-01T00:00:00.000Z',
+  };
+
+  const remoteCanonicalProfile: DatabaseConnectionProfile = {
+    id: 'pc-canonical-id',
+    name: 'قاعدة الكمبيوتر',
+    description: '',
+    providerType: 'firebase_firestore',
+    isBuiltIn: false,
+    firebaseConfig: sharedTarget,
+    lastStatus: 'connected',
+    createdAt: '2026-10-02T12:00:00.000Z',
+    updatedAt: '2026-10-02T12:00:00.000Z',
+  };
+
+  const remoteExtraProfile: DatabaseConnectionProfile = {
+    id: 'pc-extra-analytics',
+    name: 'تحليلات إضافية',
+    description: '',
+    providerType: 'firebase_firestore',
+    isBuiltIn: false,
+    firebaseConfig: {
+      ...sharedTarget,
+      projectId: 'extra-analytics-222',
+      apiKey: 'AIzaSyExtraAnalytics22222222222222',
+    },
+    lastStatus: 'untested',
+    createdAt: '2026-10-02T12:00:00.000Z',
+    updatedAt: '2026-10-02T12:00:00.000Z',
+  };
+
+  const localState: DatabaseConnectionRegistryState = {
+    version: 1,
+    activeConnectionId: 'mobile-added-dup',
+    previousConnectionId: BUILTIN_DEFAULT_CONNECTION_ID,
+    defaultConnectionId: 'mobile-added-dup',
+    lastGoodConnectionId: 'mobile-added-dup',
+    autoRetryEnabled: true,
+    updatedAtMs: Date.parse('2026-10-01T10:00:00.000Z'),
+    deletedProfileIds: [],
+    profiles: [builtIn, localProfileAddedOnMobile, localDeletedTarget],
+  };
+
+  const remoteState: Partial<DatabaseConnectionRegistryState> = {
+    version: 1,
+    activeConnectionId: 'pc-canonical-id',
+    previousConnectionId: BUILTIN_DEFAULT_CONNECTION_ID,
+    defaultConnectionId: 'pc-canonical-id',
+    lastGoodConnectionId: 'pc-canonical-id',
+    autoRetryEnabled: false,
+    updatedAtMs: Date.parse('2026-10-02T12:05:00.000Z'),
+    deletedProfileIds: ['pc-removed-profile'],
+    profiles: [builtIn, remoteCanonicalProfile, remoteExtraProfile],
+  };
+
+  const merged = mergeRemoteDatabaseRegistry(localState, remoteState);
+
+  // Deduplicated identical Firebase target -> kept canonical PC profile, removed duplicate mobile ID
+  assert.equal(merged.profiles.some((p) => p.id === 'mobile-added-dup'), false);
+  assert.equal(merged.profiles.some((p) => p.id === 'pc-canonical-id'), true);
+  // Extra remote profile pulled in
+  assert.equal(merged.profiles.some((p) => p.id === 'pc-extra-analytics'), true);
+  // Tombstoned profile removed when remote deletion timestamp >= local profile update time
+  assert.equal(merged.profiles.some((p) => p.id === 'pc-removed-profile'), false);
+  assert.ok(merged.deletedProfileIds?.includes('pc-removed-profile'));
+  // Active/default pointers remapped cleanly and remote newer autoRetryEnabled applied
+  assert.equal(merged.activeConnectionId, 'pc-canonical-id');
+  assert.equal(merged.defaultConnectionId, 'pc-canonical-id');
+  assert.equal(merged.lastGoodConnectionId, 'pc-canonical-id');
+  assert.equal(merged.autoRetryEnabled, false);
+});
+

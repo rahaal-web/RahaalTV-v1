@@ -58,6 +58,8 @@ export interface DatabaseConnectionRegistryState {
   defaultConnectionId: string;
   lastGoodConnectionId: string;
   autoRetryEnabled: boolean;
+  updatedAtMs?: number;
+  deletedProfileIds?: string[];
   profiles: DatabaseConnectionProfile[];
 }
 

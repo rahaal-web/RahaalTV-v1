@@ -10,6 +10,7 @@ import {
   getDocs,
   getFirestore,
   limit,
+  onSnapshot,
   query,
   serverTimestamp,
   setDoc,
@@ -208,6 +209,8 @@ function getDefaultRegistryState(): DatabaseConnectionRegistryState {
     defaultConnectionId: builtIn.id,
     lastGoodConnectionId: builtIn.id,
     autoRetryEnabled: true,
+    updatedAtMs: 0,
+    deletedProfileIds: [],
     profiles: [builtIn],
   };
 }
@@ -288,6 +291,15 @@ export function loadDatabaseRegistry(): DatabaseConnectionRegistryState {
       defaultConnectionId,
       lastGoodConnectionId,
       autoRetryEnabled: parsed.autoRetryEnabled ?? true,
+      updatedAtMs:
+        typeof parsed.updatedAtMs === 'number' && Number.isFinite(parsed.updatedAtMs)
+          ? Math.max(0, Math.round(parsed.updatedAtMs))
+          : 0,
+      deletedProfileIds: Array.isArray(parsed.deletedProfileIds)
+        ? parsed.deletedProfileIds
+            .filter((x): x is string => typeof x === 'string' && Boolean(x.trim()))
+            .slice(-40)
+        : [],
       profiles: normalizedProfiles,
     };
     inMemoryRegistry = state;
@@ -306,6 +318,15 @@ export function saveDatabaseRegistry(
   if (!cleanedProfiles.some((p) => p.id === BUILTIN_DEFAULT_CONNECTION_ID)) {
     cleanedProfiles.unshift(buildDefaultBuiltInProfile());
   }
+  const cleanDeletedIds = Array.isArray(next.deletedProfileIds)
+    ? Array.from(
+        new Set(
+          next.deletedProfileIds
+            .map((x) => String(x || '').trim())
+            .filter((x) => Boolean(x) && x !== BUILTIN_DEFAULT_CONNECTION_ID)
+        )
+      ).slice(-40)
+    : [];
   const cleanState: DatabaseConnectionRegistryState = {
     version: 1,
     activeConnectionId: next.activeConnectionId,
@@ -313,6 +334,11 @@ export function saveDatabaseRegistry(
     defaultConnectionId: next.defaultConnectionId,
     lastGoodConnectionId: next.lastGoodConnectionId,
     autoRetryEnabled: Boolean(next.autoRetryEnabled),
+    updatedAtMs:
+      typeof next.updatedAtMs === 'number' && Number.isFinite(next.updatedAtMs)
+        ? Math.max(0, Math.round(next.updatedAtMs))
+        : 0,
+    deletedProfileIds: cleanDeletedIds,
     profiles: cleanedProfiles,
   };
   inMemoryRegistry = cleanState;
@@ -513,6 +539,18 @@ export function getActiveAuthInstance(): Auth {
 
 export function getActiveFirebaseApp(): FirebaseApp {
   return ensureFirebaseAppForProfile(getActiveConnectionProfile()).app;
+}
+
+export function getBuiltInDefaultDb(): Firestore {
+  return getFirestoreInstanceForProfile(buildDefaultBuiltInProfile());
+}
+
+export function getBuiltInDefaultAuth(): Auth {
+  return getAuthInstanceForProfile(buildDefaultBuiltInProfile());
+}
+
+export function getBuiltInFirebaseConfig(): FirebaseConnectionFields {
+  return buildDefaultBuiltInProfile().firebaseConfig;
 }
 
 // ---------------- Validation & Classification ----------------
@@ -1228,7 +1266,12 @@ export function createOrUpdateConnectionProfile(
     nextProfiles[existingIdx] = normalized;
   }
 
-  const nextReg = saveDatabaseRegistry({ ...reg, profiles: nextProfiles });
+  const nextReg = saveDatabaseRegistry({
+    ...reg,
+    updatedAtMs: Date.now(),
+    deletedProfileIds: (reg.deletedProfileIds || []).filter((id) => id !== normalized.id),
+    profiles: nextProfiles,
+  });
   appendDatabaseConnectionLog({
     event: isNew ? 'create' : 'update',
     connectionId: normalized.id,
@@ -1277,6 +1320,8 @@ export function deleteConnectionProfile(
 
   const nextReg = saveDatabaseRegistry({
     ...reg,
+    updatedAtMs: Date.now(),
+    deletedProfileIds: [...(reg.deletedProfileIds || []), connectionId].slice(-40),
     previousConnectionId:
       reg.previousConnectionId === connectionId ? null : reg.previousConnectionId,
     lastGoodConnectionId:
@@ -1308,6 +1353,7 @@ export function setDefaultConnectionProfile(
   }
   const nextReg = saveDatabaseRegistry({
     ...reg,
+    updatedAtMs: Date.now(),
     defaultConnectionId: target.id,
   });
   appendDatabaseConnectionLog({
@@ -1325,7 +1371,11 @@ export function setDefaultConnectionProfile(
 
 export function setDatabaseAutoRetryEnabled(enabled: boolean): DatabaseConnectionRegistryState {
   const reg = loadDatabaseRegistry();
-  const next = saveDatabaseRegistry({ ...reg, autoRetryEnabled: enabled });
+  const next = saveDatabaseRegistry({
+    ...reg,
+    updatedAtMs: Date.now(),
+    autoRetryEnabled: enabled,
+  });
   notifyRegistryChanged();
   return next;
 }
@@ -1378,6 +1428,7 @@ export async function switchActiveDatabaseConnection(
   const freshReg = loadDatabaseRegistry();
   const nextReg = saveDatabaseRegistry({
     ...freshReg,
+    updatedAtMs: Date.now(),
     previousConnectionId: freshReg.activeConnectionId,
     activeConnectionId: target.id,
     lastGoodConnectionId: target.id,
@@ -1703,8 +1754,11 @@ export function importConnectionBackupBundle(
   }
 
   // Keep currently active DB active during import (safety rule: never hot-switch without test!)
+  const importedIds = new Set(nextProfiles.map((p) => p.id));
   const nextReg = saveDatabaseRegistry({
     ...current,
+    updatedAtMs: Date.now(),
+    deletedProfileIds: (current.deletedProfileIds || []).filter((id) => !importedIds.has(id)),
     profiles: nextProfiles,
   });
 
@@ -1855,4 +1909,563 @@ export async function deleteServerSecrets(
   } catch {
     return { ok: false };
   }
+}
+
+// ---------------- Cross-Device Firestore Sync for DB Connections ----------------
+export interface ActiveDatabasePointerPayload {
+  connectionId: string;
+  connectionName: string;
+  providerType: 'firebase_firestore';
+  firebaseConfig: FirebaseConnectionFields;
+}
+
+function sanitizeFirebaseFieldsForFirestore(
+  fields: FirebaseConnectionFields
+): Record<string, string> {
+  const norm = normalizeFirebaseFields(fields);
+  return {
+    projectId: norm.projectId.slice(0, 128),
+    apiKey: norm.apiKey.slice(0, 200),
+    authDomain: norm.authDomain.slice(0, 200),
+    firestoreDatabaseId: (norm.firestoreDatabaseId || '(default)').slice(0, 128),
+    databaseURL: (norm.databaseURL || '').slice(0, 300),
+    storageBucket: (norm.storageBucket || '').slice(0, 200),
+    messagingSenderId: (norm.messagingSenderId || '').slice(0, 80),
+    appId: norm.appId.slice(0, 200),
+    measurementId: (norm.measurementId || '').slice(0, 80),
+  };
+}
+
+function sanitizeProfileForFirestore(
+  rawProfile: DatabaseConnectionProfile
+): Record<string, unknown> {
+  const clean = normalizeConnectionProfile(rawProfile);
+  const out: Record<string, unknown> = {
+    id: clean.id.slice(0, 96),
+    name: clean.name.slice(0, 120),
+    description: (clean.description || '').slice(0, 260),
+    providerType: clean.providerType,
+    isBuiltIn: Boolean(clean.isBuiltIn || clean.id === BUILTIN_DEFAULT_CONNECTION_ID),
+    firebaseConfig: sanitizeFirebaseFieldsForFirestore(clean.firebaseConfig),
+    lastStatus: clean.lastStatus || 'untested',
+    createdAt: String(clean.createdAt || nowIso()).slice(0, 64),
+    updatedAt: String(clean.updatedAt || nowIso()).slice(0, 64),
+  };
+  if (clean.providerType === 'custom_api' && clean.customApiConfig) {
+    out.customApiConfig = {
+      endpointUrl: String(clean.customApiConfig.endpointUrl || '').slice(0, 400),
+      healthPath: String(clean.customApiConfig.healthPath || '/health').slice(0, 120),
+      authHeaderName: String(clean.customApiConfig.authHeaderName || 'Authorization').slice(0, 80),
+      useWorkerProxy: Boolean(clean.customApiConfig.useWorkerProxy),
+    };
+  }
+  if (clean.lastStatusMessage) {
+    out.lastStatusMessage = String(clean.lastStatusMessage).slice(0, 400);
+  }
+  if (typeof clean.lastLatencyMs === 'number' && Number.isFinite(clean.lastLatencyMs)) {
+    out.lastLatencyMs = Math.max(0, Math.round(clean.lastLatencyMs));
+  }
+  if (clean.lastConnectedAt) out.lastConnectedAt = String(clean.lastConnectedAt).slice(0, 64);
+  if (clean.lastDisconnectedAt) out.lastDisconnectedAt = String(clean.lastDisconnectedAt).slice(0, 64);
+  if (clean.lastTestedAt) out.lastTestedAt = String(clean.lastTestedAt).slice(0, 64);
+  if (clean.createdBy) out.createdBy = String(clean.createdBy).slice(0, 128);
+  if (clean.updatedBy) out.updatedBy = String(clean.updatedBy).slice(0, 128);
+  return out;
+}
+
+export function sanitizeDatabaseRegistryForFirestore(
+  registry: DatabaseConnectionRegistryState
+): Record<string, unknown> {
+  const cleanProfiles = registry.profiles
+    .slice(0, 25)
+    .map((p) => sanitizeProfileForFirestore(p));
+  const idSet = new Set(cleanProfiles.map((p) => String(p.id)));
+  const activeId = idSet.has(registry.activeConnectionId)
+    ? registry.activeConnectionId
+    : BUILTIN_DEFAULT_CONNECTION_ID;
+  const defaultId = idSet.has(registry.defaultConnectionId)
+    ? registry.defaultConnectionId
+    : BUILTIN_DEFAULT_CONNECTION_ID;
+  const lastGoodId = idSet.has(registry.lastGoodConnectionId)
+    ? registry.lastGoodConnectionId
+    : activeId;
+  const prevId =
+    registry.previousConnectionId &&
+    idSet.has(registry.previousConnectionId) &&
+    registry.previousConnectionId !== activeId
+      ? registry.previousConnectionId
+      : null;
+
+  return {
+    version: 1,
+    activeConnectionId: activeId,
+    previousConnectionId: prevId,
+    defaultConnectionId: defaultId,
+    lastGoodConnectionId: lastGoodId,
+    autoRetryEnabled: Boolean(registry.autoRetryEnabled),
+    updatedAtMs:
+      typeof registry.updatedAtMs === 'number' && Number.isFinite(registry.updatedAtMs)
+        ? Math.max(0, Math.round(registry.updatedAtMs))
+        : Date.now(),
+    deletedProfileIds: (registry.deletedProfileIds || []).slice(-40),
+    profiles: cleanProfiles,
+  };
+}
+
+function getFirebaseTargetFingerprint(profile: DatabaseConnectionProfile): string {
+  if (profile.providerType !== 'firebase_firestore') return '';
+  const f = profile.firebaseConfig;
+  if (!f.projectId || !f.apiKey) return '';
+  return `${f.projectId}::${f.firestoreDatabaseId || '(default)'}::${f.apiKey}`;
+}
+
+function parseIsoMs(iso?: string): number {
+  if (!iso) return 0;
+  const ms = Date.parse(iso);
+  return Number.isFinite(ms) ? ms : 0;
+}
+
+export function mergeRemoteDatabaseRegistry(
+  local: DatabaseConnectionRegistryState,
+  remoteRaw: Partial<DatabaseConnectionRegistryState>
+): DatabaseConnectionRegistryState {
+  const builtIn = buildDefaultBuiltInProfile();
+  const remoteProfiles = (Array.isArray(remoteRaw.profiles) ? remoteRaw.profiles : []).map((p) =>
+    normalizeConnectionProfile(p)
+  );
+  const remoteUpdatedAtMs =
+    typeof remoteRaw.updatedAtMs === 'number' && Number.isFinite(remoteRaw.updatedAtMs)
+      ? Math.max(0, Math.round(remoteRaw.updatedAtMs))
+      : 0;
+  const localUpdatedAtMs =
+    typeof local.updatedAtMs === 'number' && Number.isFinite(local.updatedAtMs)
+      ? Math.max(0, Math.round(local.updatedAtMs))
+      : 0;
+
+  const remoteDeleted = new Set(
+    Array.isArray(remoteRaw.deletedProfileIds) ? remoteRaw.deletedProfileIds : []
+  );
+  const localDeleted = new Set(
+    Array.isArray(local.deletedProfileIds) ? local.deletedProfileIds : []
+  );
+
+  const byId = new Map<string, DatabaseConnectionProfile>();
+  byId.set(BUILTIN_DEFAULT_CONNECTION_ID, builtIn);
+
+  const localCustomByFingerprint = new Map<string, DatabaseConnectionProfile>();
+  for (const lp of local.profiles) {
+    const norm = normalizeConnectionProfile(lp);
+    if (norm.id === BUILTIN_DEFAULT_CONNECTION_ID) continue;
+    const lpUpdatedMs = parseIsoMs(norm.updatedAt);
+    if (remoteDeleted.has(norm.id) && remoteUpdatedAtMs >= lpUpdatedMs) {
+      continue;
+    }
+    byId.set(norm.id, norm);
+    const fp = getFirebaseTargetFingerprint(norm);
+    if (fp) localCustomByFingerprint.set(fp, norm);
+  }
+
+  const idRemap = new Map<string, string>();
+  for (const rp of remoteProfiles) {
+    if (rp.id === BUILTIN_DEFAULT_CONNECTION_ID) continue;
+    const rpUpdatedMs = parseIsoMs(rp.updatedAt);
+    if (localDeleted.has(rp.id) && localUpdatedAtMs > remoteUpdatedAtMs && localUpdatedAtMs > rpUpdatedMs) {
+      continue;
+    }
+
+    const existingSameId = byId.get(rp.id);
+    if (existingSameId) {
+      const pickRemote = rpUpdatedMs >= parseIsoMs(existingSameId.updatedAt);
+      byId.set(rp.id, pickRemote ? rp : existingSameId);
+      continue;
+    }
+
+    // Deduplicate if user manually added the exact same Firebase project on another device
+    const fp = getFirebaseTargetFingerprint(rp);
+    const dupLocal = fp ? localCustomByFingerprint.get(fp) : undefined;
+    if (dupLocal) {
+      const dupUpdatedMs = parseIsoMs(dupLocal.updatedAt);
+      if (remoteUpdatedAtMs >= dupUpdatedMs || rpUpdatedMs >= dupUpdatedMs) {
+        byId.delete(dupLocal.id);
+        byId.set(rp.id, rp);
+        idRemap.set(dupLocal.id, rp.id);
+      }
+      continue;
+    }
+
+    byId.set(rp.id, rp);
+  }
+
+  const mergedProfiles = Array.from(byId.values());
+  const validIds = new Set(mergedProfiles.map((p) => p.id));
+
+  const mapId = (id: string | null | undefined, fallback: string): string => {
+    if (!id) return fallback;
+    const mapped = idRemap.get(id) || id;
+    return validIds.has(mapped) ? mapped : fallback;
+  };
+
+  const remoteIsNewerOrLocalFresh =
+    remoteUpdatedAtMs >= localUpdatedAtMs ||
+    (local.profiles.length <= 1 && remoteProfiles.length > 0);
+
+  const remoteActiveId = mapId(remoteRaw.activeConnectionId, BUILTIN_DEFAULT_CONNECTION_ID);
+  const localActiveId = mapId(local.activeConnectionId, BUILTIN_DEFAULT_CONNECTION_ID);
+  const resolvedActiveId = remoteIsNewerOrLocalFresh ? remoteActiveId : localActiveId;
+
+  const remoteDefaultId = mapId(remoteRaw.defaultConnectionId, BUILTIN_DEFAULT_CONNECTION_ID);
+  const localDefaultId = mapId(local.defaultConnectionId, BUILTIN_DEFAULT_CONNECTION_ID);
+  const resolvedDefaultId = remoteIsNewerOrLocalFresh ? remoteDefaultId : localDefaultId;
+
+  const resolvedLastGoodId = remoteIsNewerOrLocalFresh
+    ? mapId(remoteRaw.lastGoodConnectionId, resolvedActiveId)
+    : mapId(local.lastGoodConnectionId, resolvedActiveId);
+
+  const candidatePrev = remoteIsNewerOrLocalFresh
+    ? mapId(remoteRaw.previousConnectionId, '')
+    : mapId(local.previousConnectionId, '');
+  const resolvedPrevId =
+    candidatePrev && candidatePrev !== resolvedActiveId && validIds.has(candidatePrev)
+      ? candidatePrev
+      : null;
+
+  const mergedDeleted = Array.from(
+    new Set([...(local.deletedProfileIds || []), ...(remoteRaw.deletedProfileIds || [])])
+  )
+    .filter((id) => !validIds.has(id) && id !== BUILTIN_DEFAULT_CONNECTION_ID)
+    .slice(-40);
+
+  return {
+    version: 1,
+    activeConnectionId: resolvedActiveId,
+    previousConnectionId: resolvedPrevId,
+    defaultConnectionId: resolvedDefaultId,
+    lastGoodConnectionId: resolvedLastGoodId,
+    autoRetryEnabled:
+      remoteIsNewerOrLocalFresh && typeof remoteRaw.autoRetryEnabled === 'boolean'
+        ? remoteRaw.autoRetryEnabled
+        : local.autoRetryEnabled,
+    updatedAtMs: Math.max(localUpdatedAtMs, remoteUpdatedAtMs),
+    deletedProfileIds: mergedDeleted,
+    profiles: mergedProfiles,
+  };
+}
+
+export function applyRemoteDatabaseRegistry(
+  remoteRaw: Partial<DatabaseConnectionRegistryState>
+): { changedActiveTarget: boolean; registry: DatabaseConnectionRegistryState } {
+  const before = loadDatabaseRegistry();
+  const beforeActive = getActiveConnectionProfile();
+  const beforeSig = `${beforeActive.id}::${buildAppSignature(beforeActive)}`;
+
+  const merged = mergeRemoteDatabaseRegistry(before, remoteRaw);
+  const saved = saveDatabaseRegistry(merged);
+
+  const afterActive =
+    saved.profiles.find((p) => p.id === saved.activeConnectionId) ||
+    saved.profiles.find((p) => p.id === saved.defaultConnectionId) ||
+    saved.profiles[0] ||
+    buildDefaultBuiltInProfile();
+  const afterSig = `${afterActive.id}::${buildAppSignature(afterActive)}`;
+
+  const changedActiveTarget = beforeSig !== afterSig;
+  if (changedActiveTarget) {
+    notifyActiveDatabaseSwitched();
+  } else {
+    notifyRegistryChanged();
+  }
+  return { changedActiveTarget, registry: saved };
+}
+
+export function applyRemoteActiveDatabasePointer(
+  pointerRaw: Partial<ActiveDatabasePointerPayload> & { updatedAt?: unknown }
+): { switched: boolean; profile?: DatabaseConnectionProfile } {
+  if (
+    !pointerRaw ||
+    pointerRaw.providerType !== 'firebase_firestore' ||
+    !pointerRaw.connectionId ||
+    !pointerRaw.firebaseConfig
+  ) {
+    return { switched: false };
+  }
+
+  const candidate = normalizeConnectionProfile({
+    id: pointerRaw.connectionId,
+    name: pointerRaw.connectionName || 'قاعدة البيانات النشطة',
+    providerType: 'firebase_firestore',
+    isBuiltIn: pointerRaw.connectionId === BUILTIN_DEFAULT_CONNECTION_ID,
+    firebaseConfig: pointerRaw.firebaseConfig,
+  });
+
+  const validation = validateConnectionProfile(candidate);
+  if (!validation.valid) {
+    return { switched: false };
+  }
+
+  const beforeActive = getActiveConnectionProfile();
+  const beforeSig = `${beforeActive.id}::${buildAppSignature(beforeActive)}`;
+  const targetSig = `${candidate.id}::${buildAppSignature(candidate)}`;
+  if (beforeSig === targetSig) {
+    return { switched: false };
+  }
+
+  const reg = loadDatabaseRegistry();
+  const existingIdx = reg.profiles.findIndex((p) => p.id === candidate.id);
+  const nextProfiles = [...reg.profiles];
+  if (existingIdx >= 0) {
+    if (candidate.id !== BUILTIN_DEFAULT_CONNECTION_ID) {
+      nextProfiles[existingIdx] = {
+        ...nextProfiles[existingIdx],
+        name: candidate.name,
+        firebaseConfig: candidate.firebaseConfig,
+      };
+    }
+  } else {
+    // Also replace duplicate profile with same target projectId/dbId if user re-added manually
+    const fp = getFirebaseTargetFingerprint(candidate);
+    const filtered = fp
+      ? nextProfiles.filter(
+          (p) => p.id === BUILTIN_DEFAULT_CONNECTION_ID || getFirebaseTargetFingerprint(p) !== fp
+        )
+      : nextProfiles;
+    filtered.push(candidate);
+    nextProfiles.splice(0, nextProfiles.length, ...filtered);
+  }
+
+  saveDatabaseRegistry({
+    ...reg,
+    previousConnectionId:
+      reg.activeConnectionId && reg.activeConnectionId !== candidate.id
+        ? reg.activeConnectionId
+        : reg.previousConnectionId,
+    activeConnectionId: candidate.id,
+    lastGoodConnectionId: candidate.id,
+    profiles: nextProfiles,
+  });
+  notifyActiveDatabaseSwitched();
+  return { switched: true, profile: candidate };
+}
+
+function isDefaultAndActiveSameTarget(): boolean {
+  const builtIn = buildDefaultBuiltInProfile();
+  const active = getActiveConnectionProfile();
+  if (active.id === BUILTIN_DEFAULT_CONNECTION_ID) return true;
+  return (
+    active.providerType === 'firebase_firestore' &&
+    active.firebaseConfig.projectId === builtIn.firebaseConfig.projectId &&
+    active.firebaseConfig.firestoreDatabaseId === builtIn.firebaseConfig.firestoreDatabaseId &&
+    active.firebaseConfig.apiKey === builtIn.firebaseConfig.apiKey
+  );
+}
+
+export async function syncDatabaseRegistryToFirestore(
+  fallbackUid?: string,
+  registryOverride?: DatabaseConnectionRegistryState
+): Promise<{
+  ok: boolean;
+  syncedDefault: boolean;
+  syncedActive: boolean;
+  error?: string;
+}> {
+  const reg = registryOverride || loadDatabaseRegistry();
+  const configPayload = sanitizeDatabaseRegistryForFirestore(reg);
+
+  let syncedDefault = false;
+  let syncedActive = false;
+  let lastError: string | undefined;
+
+  const defaultAuth = getBuiltInDefaultAuth();
+  const defaultUid = defaultAuth.currentUser?.uid || (isDefaultAndActiveSameTarget() ? fallbackUid : '');
+  if (defaultUid) {
+    try {
+      await setDoc(doc(getBuiltInDefaultDb(), 'admin_workspace', 'db_connections'), {
+        kind: 'db_connections',
+        config: configPayload,
+        updatedBy: defaultUid,
+        updatedAt: serverTimestamp(),
+      });
+      syncedDefault = true;
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : String(err);
+    }
+  }
+
+  if (!isDefaultAndActiveSameTarget()) {
+    const activeAuth = getActiveAuthInstance();
+    const activeUid = activeAuth.currentUser?.uid || '';
+    if (activeUid) {
+      try {
+        await setDoc(doc(getActiveDb(), 'admin_workspace', 'db_connections'), {
+          kind: 'db_connections',
+          config: configPayload,
+          updatedBy: activeUid,
+          updatedAt: serverTimestamp(),
+        });
+        syncedActive = true;
+      } catch (err) {
+        lastError = err instanceof Error ? err.message : String(err);
+      }
+    }
+  }
+
+  return {
+    ok: syncedDefault || syncedActive,
+    syncedDefault,
+    syncedActive,
+    error: lastError,
+  };
+}
+
+export async function syncActiveDatabasePointerToFirestore(
+  fallbackUid?: string
+): Promise<{ ok: boolean; syncedDefault: boolean; syncedActive: boolean; error?: string }> {
+  const active = getActiveConnectionProfile();
+  if (active.providerType !== 'firebase_firestore') {
+    return { ok: false, syncedDefault: false, syncedActive: false };
+  }
+  const validation = validateConnectionProfile(active);
+  if (!validation.valid) {
+    return { ok: false, syncedDefault: false, syncedActive: false };
+  }
+
+  const pointerBase = {
+    connectionId: active.id.slice(0, 96),
+    connectionName: active.name.slice(0, 120),
+    providerType: 'firebase_firestore' as const,
+    firebaseConfig: sanitizeFirebaseFieldsForFirestore(active.firebaseConfig),
+  };
+
+  let syncedDefault = false;
+  let syncedActive = false;
+  let lastError: string | undefined;
+
+  const defaultAuth = getBuiltInDefaultAuth();
+  const defaultUid = defaultAuth.currentUser?.uid || (isDefaultAndActiveSameTarget() ? fallbackUid : '');
+  if (defaultUid) {
+    try {
+      await setDoc(doc(getBuiltInDefaultDb(), 'settings', 'active_database'), {
+        ...pointerBase,
+        updatedBy: defaultUid,
+        updatedAt: serverTimestamp(),
+      });
+      syncedDefault = true;
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : String(err);
+    }
+  }
+
+  if (!isDefaultAndActiveSameTarget()) {
+    const activeAuth = getActiveAuthInstance();
+    const activeUid = activeAuth.currentUser?.uid || '';
+    if (activeUid) {
+      try {
+        await setDoc(doc(getActiveDb(), 'settings', 'active_database'), {
+          ...pointerBase,
+          updatedBy: activeUid,
+          updatedAt: serverTimestamp(),
+        });
+        syncedActive = true;
+      } catch (err) {
+        lastError = err instanceof Error ? err.message : String(err);
+      }
+    }
+  }
+
+  return {
+    ok: syncedDefault || syncedActive,
+    syncedDefault,
+    syncedActive,
+    error: lastError,
+  };
+}
+
+export function subscribeActiveDatabasePointerFromFirestore(
+  enabled: boolean,
+  onSwitched?: (profile: DatabaseConnectionProfile) => void
+): () => void {
+  if (!enabled) return () => {};
+  try {
+    const defaultDb = getBuiltInDefaultDb();
+    return onSnapshot(
+      doc(defaultDb, 'settings', 'active_database'),
+      (snap) => {
+        if (!snap.exists()) return;
+        const data = snap.data() as Partial<ActiveDatabasePointerPayload>;
+        const res = applyRemoteActiveDatabasePointer(data);
+        if (res.switched && res.profile) {
+          onSwitched?.(res.profile);
+        }
+      },
+      () => {
+        // Ignore if settings/active_database rules aren't deployed on project yet
+      }
+    );
+  } catch {
+    return () => {};
+  }
+}
+
+export function subscribeDatabaseRegistryFromFirestore(
+  enabled: boolean,
+  options?: {
+    onApplied?: (reg: DatabaseConnectionRegistryState, changedActiveTarget: boolean) => void;
+    uidForInitialSeed?: string;
+  }
+): () => void {
+  if (!enabled) return () => {};
+  const unsubs: Array<() => void> = [];
+  let seededDefault = false;
+
+  const attachForDb = (targetDb: Firestore, isDefaultDb: boolean) => {
+    try {
+      const unsub = onSnapshot(
+        doc(targetDb, 'admin_workspace', 'db_connections'),
+        (snap) => {
+          if (!snap.exists()) {
+            const localReg = loadDatabaseRegistry();
+            const hasLocalCustomizations =
+              localReg.profiles.length > 1 ||
+              localReg.activeConnectionId !== BUILTIN_DEFAULT_CONNECTION_ID ||
+              localReg.defaultConnectionId !== BUILTIN_DEFAULT_CONNECTION_ID ||
+              !localReg.autoRetryEnabled;
+            if (isDefaultDb && !seededDefault && hasLocalCustomizations && options?.uidForInitialSeed) {
+              seededDefault = true;
+              void syncDatabaseRegistryToFirestore(options.uidForInitialSeed, localReg);
+              void syncActiveDatabasePointerToFirestore(options.uidForInitialSeed);
+            }
+            return;
+          }
+          const data = snap.data() as {
+            config?: Partial<DatabaseConnectionRegistryState>;
+          } | undefined;
+          if (!data?.config) return;
+          const res = applyRemoteDatabaseRegistry(data.config);
+          options?.onApplied?.(res.registry, res.changedActiveTarget);
+        },
+        () => {
+          // Ignore permission/offline errors gracefully
+        }
+      );
+      unsubs.push(unsub);
+    } catch {
+      // Ignore initialization errors gracefully
+    }
+  };
+
+  if (getBuiltInDefaultAuth().currentUser) {
+    attachForDb(getBuiltInDefaultDb(), true);
+  }
+  if (!isDefaultAndActiveSameTarget() && getActiveAuthInstance().currentUser) {
+    attachForDb(getActiveDb(), false);
+  }
+
+  return () => {
+    unsubs.forEach((u) => {
+      try {
+        u();
+      } catch {
+        // Ignore
+      }
+    });
+  };
 }

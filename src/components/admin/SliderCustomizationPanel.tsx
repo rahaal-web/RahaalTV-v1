@@ -34,8 +34,12 @@ interface SliderCustomizationPanelProps {
   homeConfig: HomeLayoutConfig;
   catalog: MediaItem[];
   busy?: boolean;
+  actorUid?: string;
+  hasActor?: boolean;
+  isOwner?: boolean;
   onGetAuthToken?: () => Promise<string | undefined>;
   onSaveHomeConfig: (next: HomeLayoutConfig) => Promise<void>;
+  onSaveHeroSliderVariant?: (variant: HeroSliderVariant) => Promise<void> | void;
   onNotify: (msg: string) => void;
 }
 
@@ -111,8 +115,12 @@ export function SliderCustomizationPanel({
   homeConfig,
   catalog,
   busy = false,
+  actorUid = '',
+  hasActor = false,
+  isOwner = false,
   onGetAuthToken,
   onSaveHomeConfig,
+  onSaveHeroSliderVariant,
   onNotify,
 }: SliderCustomizationPanelProps) {
   const [draft, setDraft] = useState<HomeLayoutConfig>(() => normalizeHomeConfig(homeConfig));
@@ -125,6 +133,7 @@ export function SliderCustomizationPanel({
 
   const handleSelectSliderVariant = (variant: HeroSliderVariant) => {
     setHeroSliderVariant(variant);
+    void onSaveHeroSliderVariant?.(variant);
     onNotify(
       variant === 'cinematic'
         ? 'تم تفعيل السلايدر السينمائي 3D (Cinematic Slider) على الرئيسية فوراً'
@@ -1133,6 +1142,10 @@ export function SliderCustomizationPanel({
         <ShowcaseSliderSettingsPanel
           homeConfig={draft}
           catalog={catalog}
+          actorUid={actorUid}
+          hasActor={hasActor}
+          isOwner={isOwner}
+          onGetAuthToken={onGetAuthToken}
           onNotify={onNotify}
         />
       )}
@@ -1141,6 +1154,9 @@ export function SliderCustomizationPanel({
         <StreamV4SliderSettingsPanel
           homeConfig={draft}
           catalog={catalog}
+          actorUid={actorUid}
+          hasActor={hasActor}
+          isOwner={isOwner}
           onGetAuthToken={onGetAuthToken}
           onNotify={onNotify}
         />

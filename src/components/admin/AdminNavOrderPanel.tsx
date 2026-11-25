@@ -78,7 +78,13 @@ export function AdminNavOrderPanel({
   const commitAutoSave = (nextLayout: AdminNavLayoutConfig, feedback?: string) => {
     const saved = saveAdminNavLayout(nextLayout);
     onChangeLayout(saved);
-    void syncAdminNavLayoutToFirestore(saved, actorUid);
+    if (actorUid) {
+      void syncAdminNavLayoutToFirestore(saved, actorUid).then((ok) => {
+        if (!ok) {
+          onNotify('تم حفظ الترتيب محلياً — تعذرت المزامنة السحابية لترتيب القائمة');
+        }
+      });
+    }
     if (feedback) onNotify(feedback);
   };
 
@@ -105,7 +111,13 @@ export function AdminNavOrderPanel({
   const handleResetDefault = () => {
     const def = resetAdminNavLayout();
     onChangeLayout(def);
-    void syncAdminNavLayoutToFirestore(def, actorUid);
+    if (actorUid) {
+      void syncAdminNavLayoutToFirestore(def, actorUid).then((ok) => {
+        if (!ok) {
+          onNotify('تمت استعادة الترتيب محلياً — تعذرت المزامنة السحابية');
+        }
+      });
+    }
     onNotify('تمت استعادة الترتيب الافتراضي لأقسام لوحة الإدارة');
   };
 

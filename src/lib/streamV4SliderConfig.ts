@@ -591,3 +591,37 @@ export async function uploadTransparentSliderPng(
 
   return { url: dataUrl, storage: 'local' };
 }
+
+export function sanitizeStreamV4SliderConfigForFirestore(
+  raw: Partial<StreamV4SliderConfig> | null | undefined
+): StreamV4SliderConfig {
+  const normalized = normalizeStreamV4SliderConfig(raw);
+  const titleLogos: Record<string, string> = {};
+  let totalChars = 0;
+  for (const [id, url] of Object.entries(normalized.titleLogos)) {
+    if (Object.keys(titleLogos).length >= 60) break;
+    const cleanId = id.trim().slice(0, 128);
+    const cleanUrl = url.trim();
+    if (!cleanId || !cleanUrl || cleanUrl.length > 250000) continue;
+    if (totalChars + cleanUrl.length > 750000) break;
+    titleLogos[cleanId] = cleanUrl;
+    totalChars += cleanUrl.length;
+  }
+
+  const slideDurations: Record<string, number> = {};
+  for (const [id, sec] of Object.entries(normalized.slideDurations)) {
+    if (Object.keys(slideDurations).length >= 60) break;
+    const cleanId = id.trim().slice(0, 128);
+    const num = Math.min(60, Math.max(2, Math.round(Number(sec) || 6)));
+    if (cleanId) {
+      slideDurations[cleanId] = num;
+    }
+  }
+
+  return {
+    ...normalized,
+    titleLogos,
+    slideDurations,
+  };
+}
+

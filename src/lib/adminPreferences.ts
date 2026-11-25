@@ -2,7 +2,10 @@
 // Local Granular Sub-Permissions (stored in localStorage to avoid breaking strict
 // Firestore security rules schemas).
 
+import { doc, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore';
 import { safeRandomId } from './browserCompat';
+import { reportClientError } from './clientLogger';
+import { getActiveDb } from './dbConnectionManager';
 
 export type CatalogSortField = 'createdAt' | 'title' | 'rating' | 'views' | 'year';
 export type CatalogSortDirection = 'asc' | 'desc';
@@ -245,3 +248,100 @@ export function clearClientErrorLogs(): void {
     // Ignore
   }
 }
+
+export function normalizeModeratorSubPermissions(
+  raw?: Partial<ModeratorSubPermissions> | null
+): ModeratorSubPermissions {
+  const src = raw && typeof raw === 'object' ? raw : {};
+  return {
+    allowBulkEditor:
+      typeof src.allowBulkEditor === 'boolean'
+        ? src.allowBulkEditor
+        : DEFAULT_MODERATOR_SUB_PERMS.allowBulkEditor,
+    allowContentAudit:
+      typeof src.allowContentAudit === 'boolean'
+        ? src.allowContentAudit
+        : DEFAULT_MODERATOR_SUB_PERMS.allowContentAudit,
+    allowWatchServers:
+      typeof src.allowWatchServers === 'boolean'
+        ? src.allowWatchServers
+        : DEFAULT_MODERATOR_SUB_PERMS.allowWatchServers,
+    allowAnalyticsRead:
+      typeof src.allowAnalyticsRead === 'boolean'
+        ? src.allowAnalyticsRead
+        : DEFAULT_MODERATOR_SUB_PERMS.allowAnalyticsRead,
+    allowCrawlOperations:
+      typeof src.allowCrawlOperations === 'boolean'
+        ? src.allowCrawlOperations
+        : DEFAULT_MODERATOR_SUB_PERMS.allowCrawlOperations,
+    allowSiteScraper:
+      typeof src.allowSiteScraper === 'boolean'
+        ? src.allowSiteScraper
+        : DEFAULT_MODERATOR_SUB_PERMS.allowSiteScraper,
+    allowAdapters:
+      typeof src.allowAdapters === 'boolean'
+        ? src.allowAdapters
+        : DEFAULT_MODERATOR_SUB_PERMS.allowAdapters,
+  };
+}
+
+export async function syncModeratorPermissionsToFirestore(
+  perms: ModeratorSubPermissions,
+  uid: string
+): Promise<boolean> {
+  if (!uid) return false;
+  try {
+    const db = getActiveDb();
+    const clean = normalizeModeratorSubPermissions(perms);
+    await setDoc(doc(db, 'admin_workspace', 'moderator_perms'), {
+      kind: 'moderator_perms',
+      config: clean,
+      updatedBy: uid,
+      updatedAt: serverTimestamp(),
+    });
+    return true;
+  } catch (error) {
+    reportClientError({
+      source: 'firestore.admin_workspace.moderator_perms',
+      level: 'warn',
+      message: `Failed to sync moderator permissions to Firestore: ${error instanceof Error ? error.message : String(error)}`,
+      context: { uid },
+    });
+    return false;
+  }
+}
+
+export function subscribeModeratorPermissionsFromFirestore(
+  enabled: boolean,
+  onRemote: (perms: ModeratorSubPermissions) => void
+): () => void {
+  if (!enabled) return () => {};
+  try {
+    const db = getActiveDb();
+    return onSnapshot(
+      doc(db, 'admin_workspace', 'moderator_perms'),
+      (snap) => {
+        if (!snap.exists()) return;
+        const data = snap.data() as { config?: Partial<ModeratorSubPermissions> } | undefined;
+        if (!data?.config) return;
+        const normalized = normalizeModeratorSubPermissions(data.config);
+        const currentPrefs = loadAdminWorkspacePrefs();
+        saveAdminWorkspacePrefs({
+          ...currentPrefs,
+          moderatorSubPermissions: normalized,
+        });
+        onRemote(normalized);
+      },
+      (error) => {
+        reportClientError({
+          source: 'firestore.admin_workspace.moderator_perms',
+          level: 'warn',
+          message: `Moderator permissions listener error: ${error instanceof Error ? error.message : String(error)}`,
+        });
+      }
+    );
+  } catch {
+    return () => {};
+  }
+}
+
