@@ -25,6 +25,8 @@ import {
 import { DEFAULT_HOME_CONFIG, normalizeHomeConfig } from '../../lib/homeConfig';
 import { optimizeTmdbUrl } from '../../lib/mediaImages';
 import { HeroSliderVariant, useHeroSliderVariant } from '../../lib/heroSliderMode';
+import { useShowcaseSliderConfig } from '../../lib/showcaseSliderConfig';
+import { ShowcaseSliderSettingsPanel } from './ShowcaseSliderSettingsPanel';
 
 interface SliderCustomizationPanelProps {
   homeConfig: HomeLayoutConfig;
@@ -111,6 +113,7 @@ export function SliderCustomizationPanel({
 }: SliderCustomizationPanelProps) {
   const [draft, setDraft] = useState<HomeLayoutConfig>(() => normalizeHomeConfig(homeConfig));
   const [heroSliderVariant, setHeroSliderVariant] = useHeroSliderVariant();
+  const [showcaseConfig] = useShowcaseSliderConfig();
   const [previewDevice, setPreviewDevice] = useState<'desktop' | 'mobile'>('desktop');
   const [previewSlideIdx, setPreviewSlideIdx] = useState(0);
   const [saving, setSaving] = useState(false);
@@ -482,47 +485,166 @@ export function SliderCustomizationPanel({
               }}
             />
             <div className="relative z-10 p-5 sm:p-7 space-y-3">
-              <div className="max-w-[320px] space-y-2 text-right">
-                <h4 className="font-display text-xl sm:text-2xl font-black text-white leading-tight drop-shadow">
-                  {activeSlide?.title || 'Heart of the Beast'}
-                </h4>
-                <p className="text-[11px] font-bold text-white/90">
-                  {activeSlide?.kind === 'series' ? 'مسلسلات' : 'افلام'} •{' '}
-                  {activeSlide?.genres?.slice(0, 2).join(' ، ') || 'اكشن ، اثارة'} •{' '}
-                  {activeSlide?.year || '2026'}
-                </p>
-                <p className="text-[11px] text-[#e2e2e8]/90 line-clamp-2 leading-relaxed">
-                  {activeSlide?.story ||
-                    'عرض سينمائي مباشر بجودة عالية وتفاصيل واضحة.'}
-                </p>
-                <div className="flex items-center gap-2 pt-1">
-                  <span className="inline-flex items-center gap-1.5 rounded-full bg-[#f44336] px-4 py-1.5 text-[11px] font-extrabold text-white">
-                    <Play className="w-3 h-3 fill-current" />
-                    <span>شاهد وحمل الان</span>
-                  </span>
-                  <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/15 border border-white/20 text-xs font-bold text-white">
-                    +
-                  </span>
-                </div>
-              </div>
-              <div className="border-t border-white/10 pt-2.5 flex items-center justify-between gap-3 overflow-hidden">
-                {previewSlides.slice(0, previewDevice === 'mobile' ? 3 : 5).map((s, idx) => (
-                  <div key={s.id} className="relative pb-1.5 text-center truncate">
-                    <span
-                      className={`text-[10px] sm:text-xs font-black truncate ${
-                        idx === previewSlideIdx % previewSlides.length
-                          ? 'text-white'
-                          : 'text-white/55'
-                      }`}
-                    >
-                      {s.englishTitle || s.title}
-                    </span>
-                    {idx === previewSlideIdx % previewSlides.length && (
-                      <span className="block mx-auto mt-1 h-[2px] w-6 rounded-full bg-[#f44336]" />
+              <div className="max-w-[340px] space-y-2 text-right">
+                {showcaseConfig.showTitle &&
+                  (() => {
+                    const pngUrl = activeSlide ? showcaseConfig.titleLogos[activeSlide.id] : '';
+                    if (showcaseConfig.usePngLogoInHero && pngUrl) {
+                      return (
+                        <img
+                          src={pngUrl}
+                          alt={activeSlide?.title || ''}
+                          referrerPolicy="no-referrer"
+                          style={{
+                            maxHeight: `${
+                              previewDevice === 'mobile'
+                                ? Math.round(showcaseConfig.logoMaxHeightPx * 0.65)
+                                : Math.round(showcaseConfig.logoMaxHeightPx * 0.85)
+                            }px`,
+                            maxWidth: `${
+                              previewDevice === 'mobile'
+                                ? Math.min(240, showcaseConfig.logoMaxWidthPx)
+                                : showcaseConfig.logoMaxWidthPx
+                            }px`,
+                          }}
+                          className="object-contain object-right drop-shadow"
+                        />
+                      );
+                    }
+                    return (
+                      <h4
+                        style={{
+                          fontSize: `${
+                            previewDevice === 'mobile'
+                              ? Math.max(20, Math.round(showcaseConfig.titleSizePx * 0.65))
+                              : Math.round(showcaseConfig.titleSizePx * 0.85)
+                          }px`,
+                        }}
+                        className="font-display font-black text-white leading-tight drop-shadow"
+                      >
+                        {activeSlide?.title || 'Heart of the Beast'}
+                      </h4>
+                    );
+                  })()}
+
+                {showcaseConfig.showEnglishSubtitle && activeSlide?.englishTitle && (
+                  <p className="font-latin text-[11px] font-bold text-white/75" dir="ltr">
+                    {activeSlide.englishTitle}
+                  </p>
+                )}
+
+                {showcaseConfig.showMetadata && (
+                  <p
+                    style={{
+                      fontSize: `${
+                        previewDevice === 'mobile'
+                          ? Math.max(10, showcaseConfig.metaSizePx - 1)
+                          : showcaseConfig.metaSizePx
+                      }px`,
+                    }}
+                    className="font-bold text-white/90"
+                  >
+                    {activeSlide?.kind === 'series' ? 'مسلسلات' : 'افلام'} •{' '}
+                    {activeSlide?.genres?.slice(0, 2).join(' ، ') || 'اكشن ، اثارة'} •{' '}
+                    {activeSlide?.year || '2026'}
+                  </p>
+                )}
+
+                {showcaseConfig.showStory && (
+                  <p
+                    style={{
+                      fontSize: `${
+                        previewDevice === 'mobile'
+                          ? Math.max(11, showcaseConfig.storySizePx - 1)
+                          : showcaseConfig.storySizePx
+                      }px`,
+                      display: '-webkit-box',
+                      WebkitBoxOrient: 'vertical',
+                      WebkitLineClamp: showcaseConfig.storyLines,
+                      overflow: 'hidden',
+                    }}
+                    className="text-[#e2e2e8]/90 leading-relaxed"
+                  >
+                    {activeSlide?.story ||
+                      'عرض سينمائي مباشر بجودة عالية وتفاصيل واضحة.'}
+                  </p>
+                )}
+
+                {showcaseConfig.showCast && (activeSlide?.cast?.length || 0) > 0 && (
+                  <p
+                    style={{ fontSize: `${Math.max(10, showcaseConfig.metaSizePx - 1)}px` }}
+                    className="font-bold text-white/80"
+                  >
+                    {activeSlide!.cast
+                      .slice(0, 3)
+                      .map((c) => c.name)
+                      .join(' • ')}
+                  </p>
+                )}
+
+                {(showcaseConfig.showWatchBtn || showcaseConfig.showWatchlistBtn) && (
+                  <div className="flex items-center gap-2 pt-1">
+                    {showcaseConfig.showWatchBtn && (
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-[#E50914] px-4 py-1.5 text-[11px] font-extrabold text-white shadow-[0_8px_20px_rgba(229,9,20,0.45)]">
+                        <Play className="w-3 h-3 fill-current" />
+                        <span>{showcaseConfig.watchBtnText || 'شاهد وحمل الان'}</span>
+                      </span>
+                    )}
+                    {showcaseConfig.showWatchlistBtn && (
+                      <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/15 border border-white/20 text-xs font-bold text-white">
+                        +
+                      </span>
                     )}
                   </div>
-                ))}
+                )}
+
+                {showcaseConfig.showTagline && activeSlide?.tagline && (
+                  <p className="inline-flex items-center gap-1.5 text-[11px] font-bold text-white/90">
+                    <span className="inline-block h-3 w-[3px] rounded-full bg-[#E50914]" />
+                    <span>{activeSlide.tagline}</span>
+                  </p>
+                )}
               </div>
+
+              {showcaseConfig.showBottomStrip && (
+                <div className="border-t border-white/10 pt-2.5 flex items-center justify-between gap-3 overflow-hidden">
+                  {previewSlides.slice(0, previewDevice === 'mobile' ? 3 : 5).map((s, idx) => {
+                    const isAct = idx === previewSlideIdx % previewSlides.length;
+                    const stripPng = showcaseConfig.titleLogos[s.id];
+                    return (
+                      <div key={s.id} className="relative pb-1.5 text-center truncate">
+                        {showcaseConfig.usePngLogoInStrip && stripPng ? (
+                          <img
+                            src={stripPng}
+                            alt={s.title}
+                            referrerPolicy="no-referrer"
+                            style={{
+                              height: `${Math.min(34, showcaseConfig.stripLogoHeightPx)}px`,
+                            }}
+                            className={`mx-auto object-contain ${
+                              isAct ? 'opacity-100' : 'opacity-60'
+                            }`}
+                          />
+                        ) : (
+                          <span
+                            style={{
+                              fontSize: `${Math.min(16, showcaseConfig.stripTextSizePx)}px`,
+                            }}
+                            className={`font-black truncate ${
+                              isAct ? 'text-white' : 'text-white/55'
+                            }`}
+                          >
+                            {s.englishTitle || s.title}
+                          </span>
+                        )}
+                        {isAct && (
+                          <span className="block mx-auto mt-1 h-[2.5px] w-7 rounded-full bg-[#E50914]" />
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
         ) : (
@@ -715,12 +837,20 @@ export function SliderCustomizationPanel({
         )}
       </div>
 
+      {heroSliderVariant === 'showcase' && (
+        <ShowcaseSliderSettingsPanel
+          homeConfig={draft}
+          catalog={catalog}
+          onNotify={onNotify}
+        />
+      )}
+
       {heroSliderVariant !== 'original' && (
         <div className="rounded-2xl bg-amber-500/10 border border-amber-400/25 px-4 py-3 text-xs text-amber-200 leading-relaxed">
           ملاحظة:{' '}
           {heroSliderVariant === 'cinematic'
             ? 'التصميم السينمائي 3D يعرض الصورة واسم العمل فقط دون أي أزرار أو تفاصيل.'
-            : 'التصميم الاستعراضي الثالث (Showcase) له تخطيطه وتنسيقاته المستقلة المطابقة لمعاينة المنصة أعلاه.'}{' '}
+            : 'أدوات السلايدر الثالث (صور PNG + العناصر + الأحجام) موجودة أعلاه وتعمل باستقلال كامل.'}{' '}
           الإعدادات أدناه خاصة بتخصيص <strong className="text-white">السلايدر الأساسي</strong> وتظل محفوظة كما هي عند الرجوع إليه.
         </div>
       )}

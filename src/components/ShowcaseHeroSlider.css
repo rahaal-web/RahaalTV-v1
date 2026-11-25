@@ -1,10 +1,10 @@
 /* ============================================================================
    RahaL TV — Third Hero Slider Style: Editorial Showcase Hero (.rtv-showcase-slider*)
-   Inspired by CimaNow-style wide hero showcase:
    - Full-bleed backdrop anchored left with deep right-side editorial gradient scrim
-   - Bold right-aligned RTL title lockup, dot-separated metadata, 2-line story, cast
-   - Signature coral-crimson pill CTA ("شاهد وحمل الان") + circular "+" watchlist button
-   - Bottom horizontal stylized wordmark/title strip with crimson active indicator
+   - Supports per-movie transparent PNG Title Logos + fallback display typography
+   - Rahaal TV Brand Identity Crimson (#E50914 / #f40612) buttons & indicators
+   - Dynamic CSS variables (--rtv-sc-*) for full Admin text & logo size control
+   - Bottom horizontal PNG / wordmark strip with Rahaal TV crimson active bar
    Completely independent of Original Slider & Cinematic 3D Slider.
    ============================================================================ */
 
@@ -65,7 +65,6 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
-  /* Preserve upper-center faces on mobile, shift focal subject toward left on desktop */
   object-position: 50% 18%;
 }
 
@@ -75,21 +74,18 @@
   }
 }
 
-/* Signature Multi-Directional Dark Violet-Black Scrim */
 .rtv-showcase-scrim {
   position: absolute;
   inset: 0;
   z-index: 2;
   pointer-events: none;
   background:
-    /* Top edge darkening so fixed navbar sits crisp */
     linear-gradient(
       to bottom,
       rgba(12, 9, 24, 0.72) 0%,
       rgba(12, 9, 24, 0.24) 18%,
       transparent 38%
     ),
-    /* Bottom deep obsidian vignette under the horizontal wordmark strip */
     linear-gradient(
       to top,
       #0f0f0f 0%,
@@ -109,7 +105,6 @@
         rgba(12, 9, 24, 0.18) 18%,
         transparent 38%
       ),
-      /* Right-side RTL reading lane gradient (from right in RTL) */
       linear-gradient(
         to left,
         rgba(11, 9, 22, 0.95) 0%,
@@ -174,12 +169,38 @@
 
 .rtv-showcase-editorial {
   width: 100%;
-  max-width: 510px;
+  max-width: 520px;
   text-align: right;
   animation: rtvShowcaseContentIn 0.62s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-/* Display Title Lockup */
+/* PNG Title Logo Image (in place of text title when provided) */
+.rtv-showcase-logo-wrap {
+  display: inline-block;
+  cursor: pointer;
+  max-width: 100%;
+}
+
+.rtv-showcase-logo-img {
+  display: block;
+  width: auto;
+  height: auto;
+  max-height: clamp(46px, 14vw, var(--rtv-sc-logo-h, 112px));
+  max-width: min(82vw, var(--rtv-sc-logo-w, 340px));
+  object-fit: contain;
+  object-position: right center;
+  filter: drop-shadow(0 8px 24px rgba(0, 0, 0, 0.72));
+  pointer-events: none;
+}
+
+@media (min-width: 640px) {
+  .rtv-showcase-logo-img {
+    max-height: var(--rtv-sc-logo-h, 112px);
+    max-width: min(100%, var(--rtv-sc-logo-w, 340px));
+  }
+}
+
+/* Text Fallback Title Lockup (scaled smoothly by --rtv-sc-title-size) */
 .rtv-showcase-title {
   margin: 0;
   color: #ffffff;
@@ -191,8 +212,8 @@
 .rtv-showcase-title--latin {
   font-family: var(--font-latin, "Cairo", system-ui, sans-serif);
   font-weight: 900;
-  font-size: clamp(2rem, 4.4vw, 3.85rem);
-  line-height: 0.96;
+  font-size: clamp(24px, 6.2vw, var(--rtv-sc-title-size, 46px));
+  line-height: 0.98;
   letter-spacing: -0.02em;
   text-transform: uppercase;
 }
@@ -200,7 +221,7 @@
 .rtv-showcase-title--arabic {
   font-family: var(--font-display, "Cairo", "Tajawal", system-ui, sans-serif);
   font-weight: 900;
-  font-size: clamp(1.9rem, 4.1vw, 3.35rem);
+  font-size: clamp(24px, 6vw, var(--rtv-sc-title-size, 46px));
   line-height: 1.15;
 }
 
@@ -212,17 +233,25 @@
   letter-spacing: 0.04em;
 }
 
-/* Primary Coral-Crimson CTA + Circular Watchlist Button */
+.rtv-showcase-meta {
+  font-size: clamp(11px, 3vw, var(--rtv-sc-meta-size, 13px));
+}
+
+.rtv-showcase-story {
+  font-size: clamp(12px, 3.2vw, var(--rtv-sc-story-size, 14px));
+}
+
+/* Primary Watch CTA Matching Rahaal TV Brand Crimson (#E50914 / #f40612) */
 .rtv-showcase-watch-btn {
-  background: linear-gradient(135deg, #f44336 0%, #e52d27 100%);
+  background-color: #E50914;
   color: #ffffff;
-  box-shadow: 0 10px 28px rgba(244, 67, 54, 0.36);
-  transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1), filter 0.2s ease, box-shadow 0.2s ease;
+  box-shadow: 0 10px 28px rgba(229, 9, 20, 0.45);
+  transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1), background-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .rtv-showcase-watch-btn:hover {
-  filter: brightness(1.08);
-  box-shadow: 0 14px 32px rgba(244, 67, 54, 0.5);
+  background-color: #f40612;
+  box-shadow: 0 14px 32px rgba(229, 9, 20, 0.6);
   transform: translateY(-1px);
 }
 
@@ -230,7 +259,7 @@
   transform: scale(0.98);
 }
 
-/* Bottom Horizontal Wordmark / Title Strip */
+/* Bottom Horizontal Wordmark / PNG Logo Strip */
 .rtv-showcase-strip-bar {
   position: relative;
   width: 100%;
@@ -263,7 +292,7 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  min-height: 44px;
+  min-height: 46px;
   padding: 6px 10px 10px;
   background: transparent;
   border: 0;
@@ -282,6 +311,24 @@
   transform: scale(1.05);
 }
 
+.rtv-showcase-strip-logo {
+  display: block;
+  width: auto;
+  height: clamp(24px, 7vw, var(--rtv-sc-strip-logo-h, 38px));
+  max-width: 148px;
+  object-fit: contain;
+  opacity: 0.65;
+  filter: drop-shadow(0 2px 10px rgba(0, 0, 0, 0.78));
+  transition: opacity 0.25s ease, transform 0.25s ease, filter 0.25s ease;
+  pointer-events: none;
+}
+
+.rtv-showcase-wordmark-btn:hover .rtv-showcase-strip-logo,
+.rtv-showcase-wordmark-btn[data-active="true"] .rtv-showcase-strip-logo {
+  opacity: 1;
+  filter: drop-shadow(0 4px 14px rgba(0, 0, 0, 0.9));
+}
+
 .rtv-showcase-wordmark-text {
   display: block;
   max-width: 155px;
@@ -296,7 +343,7 @@
 .rtv-showcase-wordmark-text--latin {
   font-family: var(--font-latin, "Cairo", system-ui, sans-serif);
   font-weight: 900;
-  font-size: clamp(0.85rem, 1.15vw, 1.08rem);
+  font-size: clamp(12px, 3vw, var(--rtv-sc-strip-text-size, 15px));
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
@@ -304,20 +351,20 @@
 .rtv-showcase-wordmark-text--arabic {
   font-family: var(--font-display, "Cairo", "Tajawal", system-ui, sans-serif);
   font-weight: 900;
-  font-size: clamp(0.9rem, 1.2vw, 1.12rem);
+  font-size: clamp(12px, 3vw, var(--rtv-sc-strip-text-size, 15px));
 }
 
-/* Signature Red Active Underline Indicator */
+/* Signature Rahaal TV Crimson Active Underline Indicator */
 .rtv-showcase-wordmark-indicator {
   position: absolute;
   bottom: 0;
   left: 50%;
   transform: translateX(-50%);
   height: 3px;
-  width: 36px;
+  width: 38px;
   border-radius: 999px;
-  background: #f44336;
-  box-shadow: 0 0 12px rgba(244, 67, 54, 0.85);
+  background: #E50914;
+  box-shadow: 0 0 12px rgba(229, 9, 20, 0.85);
   animation: rtvShowcaseIndicatorIn 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 

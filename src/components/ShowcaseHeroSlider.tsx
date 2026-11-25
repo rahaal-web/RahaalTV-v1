@@ -1,7 +1,16 @@
-import { TouchEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  CSSProperties,
+  TouchEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { Check, Play, Plus } from 'lucide-react';
 import { FALLBACK_BACKDROP, FALLBACK_POSTER } from '../lib/mediaFilters';
 import { getBackdropInfo, getPosterUrl } from '../lib/mediaImages';
+import { useShowcaseSliderConfig } from '../lib/showcaseSliderConfig';
 import { MediaItem } from '../types/media';
 import { OptimizedImage } from './OptimizedImage';
 import './ShowcaseHeroSlider.css';
@@ -66,8 +75,10 @@ export function ShowcaseHeroSlider({
   onPlayNow,
   onToggleWatchlist,
 }: ShowcaseHeroSliderProps) {
+  const [showcaseConfig] = useShowcaseSliderConfig();
   const [activeIndex, setActiveIndex] = useState(0);
   const [isHovered, setIsHovered] = useState(false);
+  const [brokenLogos, setBrokenLogos] = useState<Record<string, true>>({});
 
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
   const stripRef = useRef<HTMLDivElement | null>(null);
@@ -82,6 +93,10 @@ export function ShowcaseHeroSlider({
     }
   }, [slideCount, activeIndex]);
 
+  useEffect(() => {
+    setBrokenLogos({});
+  }, [showcaseConfig.titleLogos]);
+
   // Automatic continuous playback
   useEffect(() => {
     if (!autoPlayEnabled || slideCount <= 1) return undefined;
@@ -95,7 +110,7 @@ export function ShowcaseHeroSlider({
     return () => clearTimeout(timer);
   }, [autoPlayEnabled, slideCount, pauseOnHover, isHovered, slideIntervalSec, safeActiveIndex]);
 
-  // Keep active wordmark centered inside horizontal strip without scrolling the page
+  // Keep active wordmark/logo centered inside horizontal strip without scrolling the page
   useEffect(() => {
     const container = stripRef.current;
     const btn = wordmarkRefs.current[safeActiveIndex];
@@ -113,17 +128,24 @@ export function ShowcaseHeroSlider({
     });
   }, [safeActiveIndex]);
 
-  // Preload next slide image cleanly
+  // Preload next slide backdrop + PNG logo cleanly
   useEffect(() => {
     if (slideCount <= 1 || typeof window === 'undefined') return;
     const nextItem = slides[(safeActiveIndex + 1) % slideCount];
     if (!nextItem) return;
     const { src } = resolveShowcaseImage(nextItem);
-    if (!src) return;
-    const img = new window.Image();
-    img.referrerPolicy = 'no-referrer';
-    img.src = src;
-  }, [slides, slideCount, safeActiveIndex]);
+    if (src) {
+      const img = new window.Image();
+      img.referrerPolicy = 'no-referrer';
+      img.src = src;
+    }
+    const nextLogo = showcaseConfig.titleLogos[nextItem.id];
+    if (nextLogo && !brokenLogos[nextLogo]) {
+      const logoImg = new window.Image();
+      logoImg.referrerPolicy = 'no-referrer';
+      logoImg.src = nextLogo;
+    }
+  }, [slides, slideCount, safeActiveIndex, showcaseConfig.titleLogos, brokenLogos]);
 
   const activeItem = slides[safeActiveIndex];
 
@@ -196,9 +218,27 @@ export function ShowcaseHeroSlider({
   const isInWatchlist = watchlistIds.includes(activeItem.id);
   const wordmarkSlides = slides.slice(0, 8);
 
+  const heroLogoUrl = showcaseConfig.titleLogos[activeItem.id];
+  const showHeroPngLogo =
+    showcaseConfig.showTitle &&
+    showcaseConfig.usePngLogoInHero &&
+    Boolean(heroLogoUrl) &&
+    !brokenLogos[heroLogoUrl];
+
+  const dynamicCssVars = {
+    '--rtv-sc-logo-h': `${showcaseConfig.logoMaxHeightPx}px`,
+    '--rtv-sc-logo-w': `${showcaseConfig.logoMaxWidthPx}px`,
+    '--rtv-sc-title-size': `${showcaseConfig.titleSizePx}px`,
+    '--rtv-sc-meta-size': `${showcaseConfig.metaSizePx}px`,
+    '--rtv-sc-story-size': `${showcaseConfig.storySizePx}px`,
+    '--rtv-sc-strip-logo-h': `${showcaseConfig.stripLogoHeightPx}px`,
+    '--rtv-sc-strip-text-size': `${showcaseConfig.stripTextSizePx}px`,
+  } as CSSProperties;
+
   return (
     <section
       className="rtv-showcase-slider"
+      style={dynamicCssVars}
       aria-roledescription="carousel"
       aria-label="السلايدر الاستعراضي"
       onMouseEnter={() => setIsHovered(true)}
@@ -231,25 +271,56 @@ export function ShowcaseHeroSlider({
         {/* Right-Aligned Editorial Content Column (RTL) */}
         <div className="rtv-showcase-content-wrap">
           <div key={`info-${activeItem.id}`} className="rtv-showcase-editorial">
-            <h1
-              onClick={() => onSelectMedia(activeItem)}
-              className={`rtv-showcase-title ${
-                isArabicTitle ? 'rtv-showcase-title--arabic' : 'rtv-showcase-title--latin'
-              }`}
-              dir="auto"
-            >
-              {displayTitle}
-            </h1>
+            {showcaseConfig.showTitle &&
+              (showHeroPngLogo ? (
+                <div
+                  className="rtv-showcase-logo-wrap"
+                  onClick={() => onSelectMedia(activeItem)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      onSelectMedia(activeItem);
+                    }
+                  }}
+                >
+                  <img
+                    src={heroLogoUrl}
+                    alt={displayTitle}
+                    referrerPolicy="no-referrer"
+                    decoding="async"
+                    onError={() =>
+                      setBrokenLogos((prev) => ({ ...prev, [heroLogoUrl]: true }))
+                    }
+                    className="rtv-showcase-logo-img"
+                  />
+                </div>
+              ) : (
+                <h1
+                  onClick={() => onSelectMedia(activeItem)}
+                  className={`rtv-showcase-title ${
+                    isArabicTitle
+                      ? 'rtv-showcase-title--arabic'
+                      : 'rtv-showcase-title--latin'
+                  }`}
+                  dir="auto"
+                >
+                  {displayTitle}
+                </h1>
+              ))}
 
-            {hasSeparateEnglishTitle && isArabicTitle && (
-              <p className="rtv-showcase-subtitle font-latin" dir="ltr">
-                {activeItem.englishTitle}
-              </p>
-            )}
+            {showcaseConfig.showEnglishSubtitle &&
+              hasSeparateEnglishTitle &&
+              isArabicTitle && (
+                <p className="rtv-showcase-subtitle font-latin" dir="ltr">
+                  {activeItem.englishTitle}
+                </p>
+              )}
 
             {/* Unboxed Dot-Separated Metadata Line */}
-            {metadataParts.length > 0 && (
-              <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs sm:text-[13px] font-bold text-white/90">
+            {showcaseConfig.showMetadata && metadataParts.length > 0 && (
+              <div className="rtv-showcase-meta mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 font-bold text-white/90">
                 {metadataParts.map((part, idx) => (
                   <span key={`${part}-${idx}`} className="inline-flex items-center gap-2">
                     {idx > 0 && (
@@ -263,16 +334,24 @@ export function ShowcaseHeroSlider({
               </div>
             )}
 
-            {/* Concise 2-Line Story Synopsis */}
-            {activeItem.story && (
-              <p className="mt-2.5 text-xs sm:text-sm text-[#e2e2e8]/90 leading-relaxed line-clamp-2 max-w-[460px]">
+            {/* Concise Story Synopsis */}
+            {showcaseConfig.showStory && activeItem.story && (
+              <p
+                style={{
+                  display: '-webkit-box',
+                  WebkitBoxOrient: 'vertical',
+                  WebkitLineClamp: showcaseConfig.storyLines,
+                  overflow: 'hidden',
+                }}
+                className="rtv-showcase-story mt-2.5 text-[#e2e2e8]/90 leading-relaxed max-w-[460px]"
+              >
                 {activeItem.story}
               </p>
             )}
 
             {/* Cast Names Row */}
-            {castNames.length > 0 && (
-              <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] sm:text-xs font-bold text-white/85">
+            {showcaseConfig.showCast && castNames.length > 0 && (
+              <div className="rtv-showcase-meta mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 font-bold text-white/85">
                 {castNames.map((actor, idx) => (
                   <span key={`${actor}-${idx}`} className="inline-flex items-center gap-2">
                     {idx > 0 && (
@@ -286,51 +365,59 @@ export function ShowcaseHeroSlider({
               </div>
             )}
 
-            {/* Coral-Crimson Watch CTA + Circular Watchlist Button */}
-            <div className="mt-5 flex items-center gap-3">
-              <button
-                type="button"
-                onClick={() => onPlayNow(activeItem)}
-                className="rtv-showcase-watch-btn inline-flex items-center justify-center gap-2.5 rounded-full px-6 sm:px-8 py-3 min-h-[44px] text-xs sm:text-sm font-extrabold cursor-pointer whitespace-nowrap shrink-0"
-              >
-                <Play className="w-4 h-4 fill-current shrink-0" />
-                <span>شاهد وحمل الان</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => onToggleWatchlist(activeItem)}
-                aria-label={isInWatchlist ? 'إزالة من قائمتي' : 'إضافة إلى قائمتي'}
-                title={isInWatchlist ? 'مضاف إلى قائمتي' : 'إضافة إلى قائمتي'}
-                className={`inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border transition-all cursor-pointer ${
-                  isInWatchlist
-                    ? 'bg-[#f44336] border-[#f44336] text-white shadow-lg'
-                    : 'bg-white/12 hover:bg-white/22 border-white/20 text-white backdrop-blur-sm'
-                }`}
-              >
-                {isInWatchlist ? (
-                  <Check className="w-5 h-5" />
-                ) : (
-                  <Plus className="w-5 h-5" />
+            {/* Rahaal TV Crimson Watch CTA + Circular Watchlist Button */}
+            {(showcaseConfig.showWatchBtn || showcaseConfig.showWatchlistBtn) && (
+              <div className="mt-5 flex items-center gap-3">
+                {showcaseConfig.showWatchBtn && (
+                  <button
+                    type="button"
+                    onClick={() => onPlayNow(activeItem)}
+                    className="rtv-showcase-watch-btn inline-flex items-center justify-center gap-2.5 rounded-full px-6 sm:px-8 py-3 min-h-[44px] text-xs sm:text-sm font-extrabold cursor-pointer whitespace-nowrap shrink-0"
+                  >
+                    <Play className="w-4 h-4 fill-current shrink-0" />
+                    <span>{showcaseConfig.watchBtnText || 'شاهد وحمل الان'}</span>
+                  </button>
                 )}
-              </button>
-            </div>
 
-            {/* Subtle Tagline / Episode Accent Line under CTA (matches Screenshot 2) */}
-            {activeItem.tagline && activeItem.tagline.trim() !== displayTitle && (
-              <p className="mt-3 inline-flex items-center gap-2 text-xs font-bold text-white/90">
-                <span
-                  aria-hidden="true"
-                  className="inline-block h-3.5 w-[3px] rounded-full bg-[#f44336]"
-                />
-                <span>{activeItem.tagline}</span>
-              </p>
+                {showcaseConfig.showWatchlistBtn && (
+                  <button
+                    type="button"
+                    onClick={() => onToggleWatchlist(activeItem)}
+                    aria-label={isInWatchlist ? 'إزالة من قائمتي' : 'إضافة إلى قائمتي'}
+                    title={isInWatchlist ? 'مضاف إلى قائمتي' : 'إضافة إلى قائمتي'}
+                    className={`inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border transition-all cursor-pointer ${
+                      isInWatchlist
+                        ? 'bg-[#E50914] border-[#E50914] text-white shadow-[0_8px_20px_rgba(229,9,20,0.45)]'
+                        : 'bg-white/12 hover:bg-white/22 border-white/20 text-white backdrop-blur-sm'
+                    }`}
+                  >
+                    {isInWatchlist ? (
+                      <Check className="w-5 h-5" />
+                    ) : (
+                      <Plus className="w-5 h-5" />
+                    )}
+                  </button>
+                )}
+              </div>
             )}
+
+            {/* Subtle Tagline / Episode Accent Line under CTA */}
+            {showcaseConfig.showTagline &&
+              activeItem.tagline &&
+              activeItem.tagline.trim() !== displayTitle && (
+                <p className="mt-3 inline-flex items-center gap-2 text-xs font-bold text-white/90">
+                  <span
+                    aria-hidden="true"
+                    className="inline-block h-3.5 w-[3px] rounded-full bg-[#E50914]"
+                  />
+                  <span>{activeItem.tagline}</span>
+                </p>
+              )}
           </div>
         </div>
 
-        {/* Bottom Horizontal Wordmark / Title Navigation Strip */}
-        {wordmarkSlides.length > 1 && (
+        {/* Bottom Horizontal PNG Logo / Wordmark Navigation Strip */}
+        {showcaseConfig.showBottomStrip && wordmarkSlides.length > 1 && (
           <div className="rtv-showcase-strip-bar">
             <div
               ref={stripRef}
@@ -346,6 +433,11 @@ export function ShowcaseHeroSlider({
                   ''
                 ).trim();
                 const isArabicWordmark = ARABIC_CHAR_REGEX.test(wordmarkTitle);
+                const stripLogoUrl = showcaseConfig.titleLogos[slideItem.id];
+                const showStripLogo =
+                  showcaseConfig.usePngLogoInStrip &&
+                  Boolean(stripLogoUrl) &&
+                  !brokenLogos[stripLogoUrl];
 
                 return (
                   <button
@@ -360,16 +452,32 @@ export function ShowcaseHeroSlider({
                     onClick={() => setActiveIndex(idx)}
                     className="rtv-showcase-wordmark-btn"
                   >
-                    <span
-                      dir="auto"
-                      className={`rtv-showcase-wordmark-text ${
-                        isArabicWordmark
-                          ? 'rtv-showcase-wordmark-text--arabic'
-                          : 'rtv-showcase-wordmark-text--latin'
-                      }`}
-                    >
-                      {wordmarkTitle}
-                    </span>
+                    {showStripLogo ? (
+                      <img
+                        src={stripLogoUrl}
+                        alt={wordmarkTitle}
+                        referrerPolicy="no-referrer"
+                        decoding="async"
+                        onError={() =>
+                          setBrokenLogos((prev) => ({
+                            ...prev,
+                            [stripLogoUrl]: true,
+                          }))
+                        }
+                        className="rtv-showcase-strip-logo"
+                      />
+                    ) : (
+                      <span
+                        dir="auto"
+                        className={`rtv-showcase-wordmark-text ${
+                          isArabicWordmark
+                            ? 'rtv-showcase-wordmark-text--arabic'
+                            : 'rtv-showcase-wordmark-text--latin'
+                        }`}
+                      >
+                        {wordmarkTitle}
+                      </span>
+                    )}
                     {isActive && (
                       <span
                         aria-hidden="true"
