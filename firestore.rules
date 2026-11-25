@@ -927,51 +927,9 @@ service cloud.firestore {
     function isValidHeroSliderModeDoc(data) {
       return data.keys().hasAll(['variant', 'updatedBy', 'updatedAt'])
         && data.keys().hasOnly(['variant', 'updatedBy', 'updatedAt'])
-        && data.variant in ['original', 'cinematic', 'showcase', 'stream_v4']
+        && data.variant in ['original', 'cinematic', 'stream_v4']
         && data.updatedBy is string && data.updatedBy.size() >= 1 && data.updatedBy.size() <= 128
         && data.updatedAt is timestamp;
-    }
-
-    function isValidShowcaseSliderDoc(data) {
-      return data.keys().hasAll([
-        'titleLogos', 'usePngLogoInHero', 'usePngLogoInStrip',
-        'showTitle', 'showEnglishSubtitle', 'showMetadata', 'showStory', 'storyLines',
-        'showCast', 'showWatchBtn', 'watchBtnText', 'showWatchlistBtn',
-        'showTagline', 'showBottomStrip', 'logoMaxHeightPx', 'logoMaxWidthPx',
-        'titleSizePx', 'metaSizePx', 'storySizePx', 'stripLogoHeightPx', 'stripTextSizePx',
-        'updatedBy', 'updatedAt'
-      ])
-      && data.keys().hasOnly([
-        'titleLogos', 'usePngLogoInHero', 'usePngLogoInStrip',
-        'showTitle', 'showEnglishSubtitle', 'showMetadata', 'showStory', 'storyLines',
-        'showCast', 'showWatchBtn', 'watchBtnText', 'showWatchlistBtn',
-        'showTagline', 'showBottomStrip', 'logoMaxHeightPx', 'logoMaxWidthPx',
-        'titleSizePx', 'metaSizePx', 'storySizePx', 'stripLogoHeightPx', 'stripTextSizePx',
-        'updatedBy', 'updatedAt'
-      ])
-      && data.titleLogos is map && data.titleLogos.keys().size() <= 60
-      && data.usePngLogoInHero is bool
-      && data.usePngLogoInStrip is bool
-      && data.showTitle is bool
-      && data.showEnglishSubtitle is bool
-      && data.showMetadata is bool
-      && data.showStory is bool
-      && data.storyLines is int && data.storyLines >= 1 && data.storyLines <= 4
-      && data.showCast is bool
-      && data.showWatchBtn is bool
-      && data.watchBtnText is string && data.watchBtnText.size() >= 1 && data.watchBtnText.size() <= 60
-      && data.showWatchlistBtn is bool
-      && data.showTagline is bool
-      && data.showBottomStrip is bool
-      && (data.logoMaxHeightPx is int || data.logoMaxHeightPx is float) && data.logoMaxHeightPx >= 48 && data.logoMaxHeightPx <= 200
-      && (data.logoMaxWidthPx is int || data.logoMaxWidthPx is float) && data.logoMaxWidthPx >= 160 && data.logoMaxWidthPx <= 500
-      && (data.titleSizePx is int || data.titleSizePx is float) && data.titleSizePx >= 22 && data.titleSizePx <= 72
-      && (data.metaSizePx is int || data.metaSizePx is float) && data.metaSizePx >= 10 && data.metaSizePx <= 18
-      && (data.storySizePx is int || data.storySizePx is float) && data.storySizePx >= 11 && data.storySizePx <= 20
-      && (data.stripLogoHeightPx is int || data.stripLogoHeightPx is float) && data.stripLogoHeightPx >= 20 && data.stripLogoHeightPx <= 64
-      && (data.stripTextSizePx is int || data.stripTextSizePx is float) && data.stripTextSizePx >= 11 && data.stripTextSizePx <= 24
-      && data.updatedBy is string && data.updatedBy.size() >= 1 && data.updatedBy.size() <= 128
-      && data.updatedAt is timestamp;
     }
 
     function isValidStreamV4SliderDoc(data) {
@@ -1312,16 +1270,6 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    match /settings/showcase_slider {
-      allow get: if true;
-      allow list: if isOwnerAdmin();
-      allow create, update: if isOwnerAdmin()
-        && isValidShowcaseSliderDoc(incoming())
-        && incoming().updatedBy == request.auth.uid
-        && incoming().updatedAt == request.time;
-      allow delete: if false;
-    }
-
     match /settings/stream_v4_slider {
       allow get: if true;
       allow list: if isOwnerAdmin();
@@ -1340,7 +1288,7 @@ service cloud.firestore {
         && !(settingId in [
           'home_layout', 'slider_style', 'site_branding', 'image_placeholders',
           'recently_watched_ui', 'site_theme', 'active_database',
-          'hero_slider_mode', 'showcase_slider', 'stream_v4_slider'
+          'hero_slider_mode', 'stream_v4_slider'
         ])
         && isValidSiteSettings(incoming())
         && incoming().updatedBy == request.auth.uid

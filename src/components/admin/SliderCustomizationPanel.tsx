@@ -25,9 +25,7 @@ import {
 import { DEFAULT_HOME_CONFIG, normalizeHomeConfig } from '../../lib/homeConfig';
 import { optimizeTmdbUrl } from '../../lib/mediaImages';
 import { HeroSliderVariant, useHeroSliderVariant } from '../../lib/heroSliderMode';
-import { useShowcaseSliderConfig } from '../../lib/showcaseSliderConfig';
 import { useStreamV4SliderConfig } from '../../lib/streamV4SliderConfig';
-import { ShowcaseSliderSettingsPanel } from './ShowcaseSliderSettingsPanel';
 import { StreamV4SliderSettingsPanel } from './StreamV4SliderSettingsPanel';
 
 interface SliderCustomizationPanelProps {
@@ -125,7 +123,6 @@ export function SliderCustomizationPanel({
 }: SliderCustomizationPanelProps) {
   const [draft, setDraft] = useState<HomeLayoutConfig>(() => normalizeHomeConfig(homeConfig));
   const [heroSliderVariant, setHeroSliderVariant] = useHeroSliderVariant();
-  const [showcaseConfig] = useShowcaseSliderConfig();
   const [v4Config] = useStreamV4SliderConfig();
   const [previewDevice, setPreviewDevice] = useState<'desktop' | 'mobile'>('desktop');
   const [previewSlideIdx, setPreviewSlideIdx] = useState(0);
@@ -137,11 +134,9 @@ export function SliderCustomizationPanel({
     onNotify(
       variant === 'cinematic'
         ? 'تم تفعيل السلايدر السينمائي 3D (Cinematic Slider) على الرئيسية فوراً'
-        : variant === 'showcase'
-          ? 'تم تفعيل السلايدر الاستعراضي الثالث (Showcase Slider) على الرئيسية فوراً'
-          : variant === 'stream_v4'
-            ? 'تم تفعيل السلايدر الرابع (Cinema Logo Hero) بألوان وهوية الموقع فوراً'
-            : 'تم الرجوع إلى السلايدر الأساسي (Original Slider) كما هو تماماً'
+        : variant === 'stream_v4'
+          ? 'تم تفعيل السلايدر الرابع (Cinema Logo Hero) بألوان وهوية الموقع فوراً'
+          : 'تم الرجوع إلى السلايدر الأساسي (Original Slider) كما هو تماماً'
     );
   };
 
@@ -290,7 +285,7 @@ export function SliderCustomizationPanel({
           </span>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3.5">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
           <button
             type="button"
             onClick={() => handleSelectSliderVariant('original')}
@@ -343,31 +338,6 @@ export function SliderCustomizationPanel({
 
           <button
             type="button"
-            onClick={() => handleSelectSliderVariant('showcase')}
-            className={`rounded-2xl border p-4 text-right transition-all cursor-pointer flex flex-col gap-2 ${
-              heroSliderVariant === 'showcase'
-                ? 'rtv-admin-accent-soft border-sky-400/50 shadow-md'
-                : 'bg-[#1a242e]/65 border-white/[0.08] hover:border-white/20'
-            }`}
-          >
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-sm font-extrabold text-white">
-                3. السلايدر الاستعراضي (Showcase)
-              </span>
-              {heroSliderVariant === 'showcase' && (
-                <span className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2 py-0.5 text-[10px] font-extrabold text-white shrink-0">
-                  <CheckCircle2 className="w-3 h-3" />
-                  مفعّل الآن
-                </span>
-              )}
-            </div>
-            <p className="text-xs text-[#b7c9ef] leading-relaxed">
-              تصميم استعراضي بواجهة ثابتة وشريط أسماء الأعمال وشعارات PNG مستقلة في الأسفل.
-            </p>
-          </button>
-
-          <button
-            type="button"
             onClick={() => handleSelectSliderVariant('stream_v4')}
             className={`rounded-2xl border p-4 text-right transition-all cursor-pointer flex flex-col gap-2 ${
               heroSliderVariant === 'stream_v4'
@@ -387,7 +357,7 @@ export function SliderCustomizationPanel({
               )}
             </div>
             <p className="text-xs text-[#b7c9ef] leading-relaxed">
-              التصميم المرجعي (Owl Stage) بألوان وهوية موقعك، حركة تمرير أفقية ناعمة، وشعارات PNG للأفلام في السلايدر والشريط السفلي.
+              تقليب سينمائي بالتمويه والتلاشي (Blur Dissolve) مع ظهور النصوص من الأسفل للأعلى، وشعارات PNG للأفلام في السلايدر والشريط السفلي.
             </p>
           </button>
         </div>
@@ -499,193 +469,6 @@ export function SliderCustomizationPanel({
                   </h4>
                 );
               })()}
-            </div>
-          </div>
-        ) : heroSliderVariant === 'showcase' ? (
-          <div
-            className={`rtv-site-preview mx-auto rounded-2xl overflow-hidden border border-white/15 bg-[#0b0a10] relative transition-all flex flex-col justify-end ${
-              previewDevice === 'mobile' ? 'max-w-[360px] h-[440px]' : 'w-full h-[390px]'
-            }`}
-          >
-            {activeSlide && (
-              <img
-                src={optimizeTmdbUrl(activeSlide.backdrop || activeSlide.poster, 'w780')}
-                alt={activeSlide.title}
-                loading="lazy"
-                decoding="async"
-                className={`pointer-events-none absolute inset-0 h-full w-full object-cover ${
-                  previewDevice === 'mobile' ? 'object-[50%_18%]' : 'object-[28%_20%]'
-                }`}
-              />
-            )}
-            <div
-              className="pointer-events-none absolute inset-0"
-              style={{
-                background:
-                  'linear-gradient(to left, rgba(11,9,22,0.94) 0%, rgba(13,10,26,0.78) 32%, rgba(13,10,26,0.34) 60%, transparent 82%), linear-gradient(to top, #0f0f0f 0%, rgba(12,10,22,0.92) 20%, transparent 56%)',
-              }}
-            />
-            <div className="relative z-10 p-5 sm:p-7 space-y-3">
-              <div className="max-w-[340px] space-y-2 text-right">
-                {showcaseConfig.showTitle &&
-                  (() => {
-                    const pngUrl = activeSlide ? showcaseConfig.titleLogos[activeSlide.id] : '';
-                    if (showcaseConfig.usePngLogoInHero && pngUrl) {
-                      return (
-                        <img
-                          src={pngUrl}
-                          alt={activeSlide?.title || ''}
-                          referrerPolicy="no-referrer"
-                          style={{
-                            maxHeight: `${
-                              previewDevice === 'mobile'
-                                ? Math.round(showcaseConfig.logoMaxHeightPx * 0.65)
-                                : Math.round(showcaseConfig.logoMaxHeightPx * 0.85)
-                            }px`,
-                            maxWidth: `${
-                              previewDevice === 'mobile'
-                                ? Math.min(240, showcaseConfig.logoMaxWidthPx)
-                                : showcaseConfig.logoMaxWidthPx
-                            }px`,
-                          }}
-                          className="object-contain object-right drop-shadow"
-                        />
-                      );
-                    }
-                    return (
-                      <h4
-                        style={{
-                          fontSize: `${
-                            previewDevice === 'mobile'
-                              ? Math.max(20, Math.round(showcaseConfig.titleSizePx * 0.65))
-                              : Math.round(showcaseConfig.titleSizePx * 0.85)
-                          }px`,
-                        }}
-                        className="font-display font-black text-white leading-tight drop-shadow"
-                      >
-                        {activeSlide?.title || 'Heart of the Beast'}
-                      </h4>
-                    );
-                  })()}
-
-                {showcaseConfig.showEnglishSubtitle && activeSlide?.englishTitle && (
-                  <p className="font-latin text-[11px] font-bold text-white/75" dir="ltr">
-                    {activeSlide.englishTitle}
-                  </p>
-                )}
-
-                {showcaseConfig.showMetadata && (
-                  <p
-                    style={{
-                      fontSize: `${
-                        previewDevice === 'mobile'
-                          ? Math.max(10, showcaseConfig.metaSizePx - 1)
-                          : showcaseConfig.metaSizePx
-                      }px`,
-                    }}
-                    className="font-bold text-white/90"
-                  >
-                    {activeSlide?.kind === 'series' ? 'مسلسلات' : 'افلام'} •{' '}
-                    {activeSlide?.genres?.slice(0, 2).join(' ، ') || 'اكشن ، اثارة'} •{' '}
-                    {activeSlide?.year || '2026'}
-                  </p>
-                )}
-
-                {showcaseConfig.showStory && (
-                  <p
-                    style={{
-                      fontSize: `${
-                        previewDevice === 'mobile'
-                          ? Math.max(11, showcaseConfig.storySizePx - 1)
-                          : showcaseConfig.storySizePx
-                      }px`,
-                      display: '-webkit-box',
-                      WebkitBoxOrient: 'vertical',
-                      WebkitLineClamp: showcaseConfig.storyLines,
-                      overflow: 'hidden',
-                    }}
-                    className="text-[#e2e2e8]/90 leading-relaxed"
-                  >
-                    {activeSlide?.story ||
-                      'عرض سينمائي مباشر بجودة عالية وتفاصيل واضحة.'}
-                  </p>
-                )}
-
-                {showcaseConfig.showCast && (activeSlide?.cast?.length || 0) > 0 && (
-                  <p
-                    style={{ fontSize: `${Math.max(10, showcaseConfig.metaSizePx - 1)}px` }}
-                    className="font-bold text-white/80"
-                  >
-                    {activeSlide!.cast
-                      .slice(0, 3)
-                      .map((c) => c.name)
-                      .join(' • ')}
-                  </p>
-                )}
-
-                {(showcaseConfig.showWatchBtn || showcaseConfig.showWatchlistBtn) && (
-                  <div className="flex items-center gap-2 pt-1">
-                    {showcaseConfig.showWatchBtn && (
-                      <span className="inline-flex items-center gap-1.5 rounded-full bg-[#E50914] px-4 py-1.5 text-[11px] font-extrabold text-white shadow-[0_8px_20px_rgba(229,9,20,0.45)]">
-                        <Play className="w-3 h-3 fill-current" />
-                        <span>{showcaseConfig.watchBtnText || 'شاهد وحمل الان'}</span>
-                      </span>
-                    )}
-                    {showcaseConfig.showWatchlistBtn && (
-                      <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/15 border border-white/20 text-xs font-bold text-white">
-                        +
-                      </span>
-                    )}
-                  </div>
-                )}
-
-                {showcaseConfig.showTagline && activeSlide?.tagline && (
-                  <p className="inline-flex items-center gap-1.5 text-[11px] font-bold text-white/90">
-                    <span className="inline-block h-3 w-[3px] rounded-full bg-[#E50914]" />
-                    <span>{activeSlide.tagline}</span>
-                  </p>
-                )}
-              </div>
-
-              {showcaseConfig.showBottomStrip && (
-                <div className="border-t border-white/10 pt-2.5 flex items-center justify-between gap-3 overflow-hidden">
-                  {previewSlides.slice(0, previewDevice === 'mobile' ? 3 : 5).map((s, idx) => {
-                    const isAct = idx === previewSlideIdx % previewSlides.length;
-                    const stripPng = showcaseConfig.titleLogos[s.id];
-                    return (
-                      <div key={s.id} className="relative pb-1.5 text-center truncate">
-                        {showcaseConfig.usePngLogoInStrip && stripPng ? (
-                          <img
-                            src={stripPng}
-                            alt={s.title}
-                            referrerPolicy="no-referrer"
-                            style={{
-                              height: `${Math.min(34, showcaseConfig.stripLogoHeightPx)}px`,
-                            }}
-                            className={`mx-auto object-contain ${
-                              isAct ? 'opacity-100' : 'opacity-60'
-                            }`}
-                          />
-                        ) : (
-                          <span
-                            style={{
-                              fontSize: `${Math.min(16, showcaseConfig.stripTextSizePx)}px`,
-                            }}
-                            className={`font-black truncate ${
-                              isAct ? 'text-white' : 'text-white/55'
-                            }`}
-                          >
-                            {s.englishTitle || s.title}
-                          </span>
-                        )}
-                        {isAct && (
-                          <span className="block mx-auto mt-1 h-[2.5px] w-7 rounded-full bg-[#E50914]" />
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
             </div>
           </div>
         ) : heroSliderVariant === 'stream_v4' ? (
@@ -1138,18 +921,6 @@ export function SliderCustomizationPanel({
         )}
       </div>
 
-      {heroSliderVariant === 'showcase' && (
-        <ShowcaseSliderSettingsPanel
-          homeConfig={draft}
-          catalog={catalog}
-          actorUid={actorUid}
-          hasActor={hasActor}
-          isOwner={isOwner}
-          onGetAuthToken={onGetAuthToken}
-          onNotify={onNotify}
-        />
-      )}
-
       {heroSliderVariant === 'stream_v4' && (
         <StreamV4SliderSettingsPanel
           homeConfig={draft}
@@ -1167,9 +938,7 @@ export function SliderCustomizationPanel({
           ملاحظة:{' '}
           {heroSliderVariant === 'cinematic'
             ? 'التصميم السينمائي 3D يعرض الصورة واسم العمل فقط دون أي أزرار أو تفاصيل.'
-            : heroSliderVariant === 'showcase'
-              ? 'أدوات السلايدر الثالث (صور PNG + العناصر + الأحجام) موجودة أعلاه وتعمل باستقلال كامل.'
-              : 'أدوات السلايدر الرابع (صور PNG + ألوان هوية الموقع + العناصر + الأحجام) موجودة أعلاه وتعمل باستقلال كامل.'}{' '}
+            : 'أدوات السلايدر الرابع (صور PNG + ألوان هوية الموقع + العناصر + الأحجام) موجودة أعلاه وتعمل باستقلال كامل.'}{' '}
           الإعدادات أدناه خاصة بتخصيص <strong className="text-white">السلايدر الأساسي</strong> وتظل محفوظة كما هي عند الرجوع إليه.
         </div>
       )}

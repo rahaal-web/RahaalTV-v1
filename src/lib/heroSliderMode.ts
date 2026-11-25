@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 
-export type HeroSliderVariant = 'original' | 'cinematic' | 'showcase' | 'stream_v4';
+export type HeroSliderVariant = 'original' | 'cinematic' | 'stream_v4';
 
 export const HERO_SLIDER_VARIANT_STORAGE_KEY = 'rahaltv_hero_slider_variant_v1';
 const HERO_SLIDER_VARIANT_EVENT = 'rahaltv:hero-slider-variant-change';
@@ -9,7 +9,6 @@ const listeners = new Set<(variant: HeroSliderVariant) => void>();
 
 export function normalizeHeroSliderVariant(value: unknown): HeroSliderVariant {
   if (value === 'cinematic') return 'cinematic';
-  if (value === 'showcase') return 'showcase';
   if (value === 'stream_v4') return 'stream_v4';
   return 'original';
 }

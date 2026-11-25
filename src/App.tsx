@@ -123,7 +123,6 @@ import {
   normalizeHeroSliderVariant,
   saveHeroSliderVariant,
 } from './lib/heroSliderMode';
-import { saveShowcaseSliderConfig } from './lib/showcaseSliderConfig';
 import { saveStreamV4SliderConfig } from './lib/streamV4SliderConfig';
 import {
   appendDatabaseConnectionLog,
@@ -1183,18 +1182,6 @@ export default function App() {
       }
     );
 
-    const unsubShowcaseSlider = onSnapshot(
-      doc(activeDb, 'settings', 'showcase_slider'),
-      (snap) => {
-        if (!snap.exists()) return;
-        const raw = snap.data() as Record<string, unknown>;
-        saveShowcaseSliderConfig(raw);
-      },
-      () => {
-        // Ignore if settings/showcase_slider rule is not yet deployed
-      }
-    );
-
     const unsubStreamV4Slider = onSnapshot(
       doc(activeDb, 'settings', 'stream_v4_slider'),
       (snap) => {
@@ -1286,7 +1273,6 @@ export default function App() {
       unsubRecentlyWatchedUi();
       unsubSiteTheme();
       unsubHeroSliderMode();
-      unsubShowcaseSlider();
       unsubStreamV4Slider();
       unsubFonts();
       unsubRatings();

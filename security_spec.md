@@ -15,7 +15,7 @@
 11. **Recently Watched Ownership & Privacy**: `/recently_watched/{uid}__{mediaId}` documents are strictly owner-only (`request.auth.uid == userId`) across `get`, `list`, `create`, `update`, and `delete`, with immutable `id`, `userId`, `mediaId`, and `createdAt`, preventing cross-user history leakage or enumeration.
 12. **Database Connections & Active Pointer Isolation**: `/admin_workspace/db_connections` is strictly owner-only (`isOwnerAdmin()`) for reads and writes and stores only public connection metadata (never server secrets). `/settings/active_database` allows public `get` (so visitors and mobile devices connect to the active database) while writes require `isOwnerAdmin()`.
 13. **Moderator Sub-Permissions Integrity**: `/admin_workspace/moderator_perms` may be read by verified staff (`isStaffAdmin()`) so moderators enforce live owner restrictions across devices, while writes are restricted to `isOwnerAdmin()` with strict 7-key boolean schema enforcement.
-14. **Hero Slider Modes & Bounded Media Maps**: `/settings/hero_slider_mode`, `/settings/showcase_slider`, and `/settings/stream_v4_slider` allow public `get` and `isOwnerAdmin()` writes with bounded slider dimensions, enum validation, and capped map key counts (`<= 60`).
+14. **Hero Slider Modes & Bounded Media Maps**: `/settings/hero_slider_mode` and `/settings/stream_v4_slider` allow public `get` and `isOwnerAdmin()` writes with bounded slider dimensions, enum validation, and capped map key counts (`<= 60`).
 
 ## 2. The "Dirty Dozen" Attack Payloads
 1. Unauthenticated write to `/media/fake-movie` -> DENIED.

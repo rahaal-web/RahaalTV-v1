@@ -100,10 +100,12 @@ export function StreamV4HeroSlider({
 }: StreamV4HeroSliderProps) {
   const [cfg] = useStreamV4SliderConfig();
   const [activeIndex, setActiveIndex] = useState(0);
+  const [prevActiveIndex, setPrevActiveIndex] = useState(0);
   const [isHovered, setIsHovered] = useState(false);
   const [brokenLogos, setBrokenLogos] = useState<Record<string, true>>({});
   const [isRtlDoc, setIsRtlDoc] = useState(true);
 
+  const prevIndexRef = useRef(0);
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
   const dotsContainerRef = useRef<HTMLDivElement | null>(null);
   const dotButtonRefs = useRef<Array<HTMLButtonElement | null>>([]);
@@ -135,6 +137,13 @@ export function StreamV4HeroSlider({
       'rtl';
     setIsRtlDoc(dir !== 'ltr');
   }, []);
+
+  useEffect(() => {
+    if (prevIndexRef.current !== safeActiveIndex) {
+      setPrevActiveIndex(prevIndexRef.current);
+      prevIndexRef.current = safeActiveIndex;
+    }
+  }, [safeActiveIndex]);
 
   useEffect(() => {
     if (slideCount > 0 && activeIndex >= slideCount) {
@@ -258,10 +267,6 @@ export function StreamV4HeroSlider({
 
   if (slideCount === 0) return null;
 
-  const trackTranslateX = isRtlDoc
-    ? `${safeActiveIndex * 100}%`
-    : `-${safeActiveIndex * 100}%`;
-
   const dynamicStyleVars = {
     '--rtv-v4-height': `${cfg.sliderHeightDesktopPx}px`,
     '--rtv-v4-logo-h': `${cfg.logoMaxHeightPx}px`,
@@ -311,12 +316,9 @@ export function StreamV4HeroSlider({
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
     >
-      {/* Owl-Head Equivalent Horizontal Sliding Track */}
+      {/* Stacked Blur-Crossfade Stage */}
       <div className="rtv-v4-stage-outer">
-        <div
-          className="rtv-v4-stage-track"
-          style={{ transform: `translate3d(${trackTranslateX}, 0, 0)` }}
-        >
+        <div className="rtv-v4-stage-track">
           {visibleSlides.map((slideItem, idx) => {
             const isActive = idx === safeActiveIndex;
             const { src: bgSrc, fallbackSrc: bgFallback } = resolveBackdropSrc(slideItem);
@@ -335,8 +337,11 @@ export function StreamV4HeroSlider({
               Boolean(heroLogoUrl) &&
               !brokenLogos[heroLogoUrl];
 
-            // Only load eager imagery for active or immediate neighbors for snappy scrolling
+            // Keep active, outgoing, and immediate neighbor slides mounted for seamless blur dissolve
             const shouldMountImage =
+              isActive ||
+              idx === prevActiveIndex ||
+              idx === prevIndexRef.current ||
               Math.abs(idx - safeActiveIndex) <= 1 ||
               (safeActiveIndex === 0 && idx === slideCount - 1) ||
               (safeActiveIndex === slideCount - 1 && idx === 0);

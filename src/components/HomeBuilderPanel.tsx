@@ -422,7 +422,7 @@ export function HomeBuilderPanel({
                 تبديل فوري مع إبقاء الأساسي كما هو
               </span>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               {(
                 [
                   {
@@ -432,10 +432,6 @@ export function HomeBuilderPanel({
                   {
                     id: 'cinematic',
                     label: '2. السينمائي 3D (Cinematic)',
-                  },
-                  {
-                    id: 'showcase',
-                    label: '3. الاستعراضي (Showcase)',
                   },
                   {
                     id: 'stream_v4',
@@ -452,11 +448,9 @@ export function HomeBuilderPanel({
                     onNotify(
                       styleOpt.id === 'cinematic'
                         ? 'تم التبديل إلى السلايدر السينمائي 3D'
-                        : styleOpt.id === 'showcase'
-                          ? 'تم التبديل إلى السلايدر الاستعراضي الثالث'
-                          : styleOpt.id === 'stream_v4'
-                            ? 'تم التبديل إلى السلايدر الرابع (Cinema V4)'
-                            : 'تم الرجوع إلى السلايدر الأساسي'
+                        : styleOpt.id === 'stream_v4'
+                          ? 'تم التبديل إلى السلايدر الرابع (Cinema V4)'
+                          : 'تم الرجوع إلى السلايدر الأساسي'
                     );
                   }}
                   className={`rounded-xl border px-3 py-2 text-xs font-extrabold transition-colors cursor-pointer text-right flex items-center justify-between gap-2 ${

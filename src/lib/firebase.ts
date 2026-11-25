@@ -99,10 +99,6 @@ import {
 import { evaluateImageQuality } from './mediaImages';
 import { HeroSliderVariant, normalizeHeroSliderVariant } from './heroSliderMode';
 import {
-  sanitizeShowcaseSliderConfigForFirestore,
-  ShowcaseSliderConfig,
-} from './showcaseSliderConfig';
-import {
   sanitizeStreamV4SliderConfigForFirestore,
   StreamV4SliderConfig,
 } from './streamV4SliderConfig';
@@ -2334,44 +2330,6 @@ export async function saveHeroSliderVariantToFirestore(
     });
     if (!isPermissionDeniedError(error)) {
       handleFirestoreError(error, OperationType.WRITE, 'settings/hero_slider_mode');
-    }
-    return {
-      ok: false,
-      projectId,
-      databaseId,
-      errorCode: code || 'permission-denied',
-      errorMessage: message,
-    };
-  }
-}
-
-export async function saveShowcaseSliderConfigToFirestore(
-  cfg: ShowcaseSliderConfig,
-  uid: string
-): Promise<SaveImagePlaceholdersResult> {
-  const activeDb = getActiveDatabase();
-  const activeCfg = getActiveFirebaseConfig();
-  const projectId = activeCfg.projectId;
-  const databaseId = activeCfg.firestoreDatabaseId || '(default)';
-  const actorUid = getActiveAuth().currentUser?.uid || uid;
-  const cleanCfg = sanitizeShowcaseSliderConfigForFirestore(cfg);
-  try {
-    await setDoc(doc(activeDb, 'settings', 'showcase_slider'), {
-      ...cleanCfg,
-      updatedBy: actorUid,
-      updatedAt: serverTimestamp(),
-    });
-    return { ok: true, projectId, databaseId };
-  } catch (error) {
-    const { code, message } = getFirebaseErrorCodeAndMessage(error);
-    reportClientError({
-      source: 'firestore.settings.showcase_slider',
-      level: 'warn',
-      message: `Write to settings/showcase_slider on ${projectId}/${databaseId} failed (${code || 'unknown'}): ${message}`,
-      context: { projectId, databaseId, actorUid },
-    });
-    if (!isPermissionDeniedError(error)) {
-      handleFirestoreError(error, OperationType.WRITE, 'settings/showcase_slider');
     }
     return {
       ok: false,

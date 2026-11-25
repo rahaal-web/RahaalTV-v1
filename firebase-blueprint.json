@@ -576,49 +576,11 @@
       "description": "Selected homepage hero slider design variant stored in /settings/hero_slider_mode.",
       "type": "object",
       "properties": {
-        "variant": { "type": "string", "enum": ["original", "cinematic", "showcase", "stream_v4"] },
+        "variant": { "type": "string", "enum": ["original", "cinematic", "stream_v4"] },
         "updatedBy": { "type": "string", "minLength": 1, "maxLength": 128 },
         "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["variant", "updatedBy", "updatedAt"]
-    },
-    "ShowcaseSliderSettings": {
-      "title": "ShowcaseSliderSettings",
-      "description": "Configuration and bounded PNG title logo map for the 3rd Showcase Hero Slider stored in /settings/showcase_slider.",
-      "type": "object",
-      "properties": {
-        "titleLogos": { "type": "object" },
-        "usePngLogoInHero": { "type": "boolean" },
-        "usePngLogoInStrip": { "type": "boolean" },
-        "showTitle": { "type": "boolean" },
-        "showEnglishSubtitle": { "type": "boolean" },
-        "showMetadata": { "type": "boolean" },
-        "showStory": { "type": "boolean" },
-        "storyLines": { "type": "number" },
-        "showCast": { "type": "boolean" },
-        "showWatchBtn": { "type": "boolean" },
-        "watchBtnText": { "type": "string", "minLength": 1, "maxLength": 60 },
-        "showWatchlistBtn": { "type": "boolean" },
-        "showTagline": { "type": "boolean" },
-        "showBottomStrip": { "type": "boolean" },
-        "logoMaxHeightPx": { "type": "number" },
-        "logoMaxWidthPx": { "type": "number" },
-        "titleSizePx": { "type": "number" },
-        "metaSizePx": { "type": "number" },
-        "storySizePx": { "type": "number" },
-        "stripLogoHeightPx": { "type": "number" },
-        "stripTextSizePx": { "type": "number" },
-        "updatedBy": { "type": "string", "minLength": 1, "maxLength": 128 },
-        "updatedAt": { "type": "string", "format": "date-time" }
-      },
-      "required": [
-        "titleLogos", "usePngLogoInHero", "usePngLogoInStrip",
-        "showTitle", "showEnglishSubtitle", "showMetadata", "showStory", "storyLines",
-        "showCast", "showWatchBtn", "watchBtnText", "showWatchlistBtn",
-        "showTagline", "showBottomStrip", "logoMaxHeightPx", "logoMaxWidthPx",
-        "titleSizePx", "metaSizePx", "storySizePx", "stripLogoHeightPx", "stripTextSizePx",
-        "updatedBy", "updatedAt"
-      ]
     },
     "StreamV4SliderSettings": {
       "title": "StreamV4SliderSettings",
@@ -738,11 +700,7 @@
     },
     "/settings/hero_slider_mode": {
       "schema": { "$ref": "#/entities/HeroSliderModeSettings" },
-      "description": "Active homepage hero slider design variant (original, cinematic, showcase, stream_v4)."
-    },
-    "/settings/showcase_slider": {
-      "schema": { "$ref": "#/entities/ShowcaseSliderSettings" },
-      "description": "Showcase 3rd slider visual settings and bounded PNG logo map."
+      "description": "Active homepage hero slider design variant (original, cinematic, stream_v4)."
     },
     "/settings/stream_v4_slider": {
       "schema": { "$ref": "#/entities/StreamV4SliderSettings" },
