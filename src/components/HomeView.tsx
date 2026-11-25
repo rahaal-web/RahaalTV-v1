@@ -226,7 +226,7 @@ function SectionHorizontalRow({
 
       <div
         ref={scrollerRef}
-        className="flex gap-3 sm:gap-4 overflow-x-auto no-scrollbar scroll-smooth snap-x snap-mandatory pb-2"
+        className="flex gap-3 sm:gap-4 overflow-x-auto no-scrollbar scroll-smooth snap-x snap-mandatory pt-2 pb-3"
       >
         {items.map((item, idx) => (
           <div

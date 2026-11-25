@@ -210,6 +210,8 @@ export function MovieCard({
 
   const handleShowcasePointerMove = (e: PointerEvent<HTMLElement>) => {
     if (e.pointerType !== 'mouse' || isShowcaseFlipped) return;
+    const target = e.target as HTMLElement | null;
+    if (target && target.closest('button, a')) return;
     if (
       typeof window !== 'undefined' &&
       window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
@@ -318,6 +320,7 @@ export function MovieCard({
               <button
                 type="button"
                 onPointerDown={stopActionBubble}
+                onMouseDown={stopActionBubble}
                 onTouchStart={stopActionBubble}
                 onTouchEnd={stopActionBubble}
                 onClick={(e) => {
@@ -389,6 +392,7 @@ export function MovieCard({
             <button
               type="button"
               onPointerDown={stopActionBubble}
+              onMouseDown={stopActionBubble}
               onTouchStart={stopActionBubble}
               onTouchEnd={stopActionBubble}
               onClick={() => onSelect(item, false)}
@@ -401,6 +405,7 @@ export function MovieCard({
             <button
               type="button"
               onPointerDown={stopActionBubble}
+              onMouseDown={stopActionBubble}
               onTouchStart={stopActionBubble}
               onTouchEnd={stopActionBubble}
               onClick={(e) => {
@@ -454,10 +459,11 @@ export function MovieCard({
               <div className="rtv-showcase-3d-glare absolute inset-0" />
             </div>
 
-            {/* Top Corner Floating Watchlist Button (Popped in 3D Z-Space) */}
+            {/* Top Corner Floating Watchlist Button */}
             <button
               type="button"
               onPointerDown={stopActionBubble}
+              onMouseDown={stopActionBubble}
               onTouchStart={stopActionBubble}
               onTouchEnd={stopActionBubble}
               onClick={(e) => {
@@ -467,7 +473,7 @@ export function MovieCard({
               }}
               aria-label={isInWatchlist ? 'إزالة من قائمتي' : 'إضافة إلى قائمتي'}
               aria-pressed={isInWatchlist}
-              className={`rtv-showcase-3d-layer-lg absolute top-2.5 left-2.5 sm:top-3 sm:left-3 z-40 inline-flex h-9 w-9 sm:h-8 sm:w-8 items-center justify-center rounded-xl border shadow-[0_8px_18px_rgba(0,0,0,0.45)] transition-colors cursor-pointer touch-manipulation ${
+              className={`absolute top-2.5 left-2.5 sm:top-3 sm:left-3 z-40 inline-flex h-9 w-9 sm:h-8 sm:w-8 items-center justify-center rounded-xl border shadow-[0_8px_18px_rgba(0,0,0,0.45)] transition-colors cursor-pointer touch-manipulation ${
                 isInWatchlist
                   ? 'bg-[#E50914] border-[#E50914] text-white'
                   : 'bg-black/70 border-white/20 text-white hover:bg-[#E50914] hover:border-[#E50914]'
@@ -552,6 +558,7 @@ export function MovieCard({
                   <button
                     type="button"
                     onPointerDown={stopActionBubble}
+                    onMouseDown={stopActionBubble}
                     onTouchStart={stopActionBubble}
                     onTouchEnd={stopActionBubble}
                     onClick={(e) => {
@@ -588,6 +595,7 @@ export function MovieCard({
                 <button
                   type="button"
                   onPointerDown={stopActionBubble}
+                  onMouseDown={stopActionBubble}
                   onTouchStart={stopActionBubble}
                   onTouchEnd={stopActionBubble}
                   onClick={(e) => {
@@ -604,6 +612,7 @@ export function MovieCard({
                 <button
                   type="button"
                   onPointerDown={stopActionBubble}
+                  onMouseDown={stopActionBubble}
                   onTouchStart={stopActionBubble}
                   onTouchEnd={stopActionBubble}
                   onClick={(e) => {
@@ -650,6 +659,7 @@ export function MovieCard({
               <button
                 type="button"
                 onPointerDown={stopActionBubble}
+                onMouseDown={stopActionBubble}
                 onTouchStart={stopActionBubble}
                 onTouchEnd={stopActionBubble}
                 onClick={() => onSelect(item, false)}
@@ -661,6 +671,7 @@ export function MovieCard({
               <button
                 type="button"
                 onPointerDown={stopActionBubble}
+                onMouseDown={stopActionBubble}
                 onTouchStart={stopActionBubble}
                 onTouchEnd={stopActionBubble}
                 onClick={(e) => {
@@ -747,6 +758,7 @@ export function MovieCard({
         <button
           type="button"
           onPointerDown={stopActionBubble}
+          onMouseDown={stopActionBubble}
           onTouchStart={stopActionBubble}
           onTouchEnd={stopActionBubble}
           onClick={(e) => {
@@ -759,7 +771,7 @@ export function MovieCard({
           className={`rtv-card-clean-watchlist absolute top-2 left-2 sm:top-2.5 sm:left-2.5 z-30 inline-flex h-10 w-10 sm:h-8 sm:w-8 items-center justify-center rounded-xl sm:rounded-lg backdrop-blur-md border transition-all cursor-pointer touch-manipulation ${
             isInWatchlist
               ? 'bg-[#E50914] border-[#E50914] text-white opacity-100'
-              : 'bg-black/65 border-white/15 text-white/85 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 hover:bg-[#E50914] hover:border-[#E50914] hover:text-white'
+              : 'bg-black/65 border-white/15 text-white/85 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 focus-visible:opacity-100 hover:bg-[#E50914] hover:border-[#E50914] hover:text-white'
           }`}
         >
           {isInWatchlist ? <Check className="w-4 h-4 sm:w-3.5 sm:h-3.5" /> : <Bookmark className="w-4 h-4 sm:w-3.5 sm:h-3.5" />}

@@ -73,6 +73,7 @@ function WatchlistBtn({
     <button
       type="button"
       onPointerDown={stopActionBubble}
+      onMouseDown={stopActionBubble}
       onTouchStart={stopActionBubble}
       onTouchEnd={stopActionBubble}
       onClick={(e) => {
@@ -82,7 +83,7 @@ function WatchlistBtn({
       }}
       aria-label={isInWatchlist ? 'إزالة من قائمتي' : 'إضافة إلى قائمتي'}
       aria-pressed={isInWatchlist}
-      className={`rtv-card-3d-z-lg relative z-40 inline-flex items-center justify-center transition-colors cursor-pointer touch-manipulation ${
+      className={`relative z-40 inline-flex items-center justify-center transition-colors cursor-pointer touch-manipulation ${
         isInWatchlist
           ? 'bg-[#E50914] border-[#E50914] text-white shadow-[0_6px_16px_rgba(229,9,20,0.4)]'
           : 'bg-black/70 border-white/15 text-white hover:bg-[#E50914] hover:border-[#E50914]'
@@ -157,7 +158,7 @@ export function MovieCard3DVariant({
           <div className="rtv-card-3d-sheen pointer-events-none absolute inset-0 z-20" />
 
           {/* Top Quality Ribbon + Watchlist */}
-          <div className="rtv-card-3d-z-lg absolute top-2.5 inset-x-2.5 z-40 flex items-center justify-between gap-2">
+          <div className="absolute top-2.5 inset-x-2.5 z-40 flex items-center justify-between gap-2">
             <span className="font-latin rounded-md bg-[#E50914] px-2 py-0.5 text-[10px] font-black tracking-wide text-white shadow-md">
               {qualityText}
             </span>
@@ -199,6 +200,7 @@ export function MovieCard3DVariant({
                   <button
                     type="button"
                     onPointerDown={stopActionBubble}
+                    onMouseDown={stopActionBubble}
                     onTouchStart={stopActionBubble}
                     onTouchEnd={stopActionBubble}
                     onClick={(e) => {
@@ -213,6 +215,7 @@ export function MovieCard3DVariant({
                   <button
                     type="button"
                     onPointerDown={stopActionBubble}
+                    onMouseDown={stopActionBubble}
                     onTouchStart={stopActionBubble}
                     onTouchEnd={stopActionBubble}
                     onClick={(e) => {
@@ -259,7 +262,7 @@ export function MovieCard3DVariant({
             />
             <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#181818] via-black/25 to-black/40" />
 
-            <div className="rtv-card-3d-z-lg absolute top-2 inset-x-2 flex items-center justify-between z-40">
+            <div className="absolute top-2 inset-x-2 flex items-center justify-between z-40">
               <span className="font-latin rounded bg-black/75 border border-white/15 px-1.5 py-0.5 text-[10px] font-bold text-white">
                 {qualityText}
               </span>
@@ -397,6 +400,7 @@ export function MovieCard3DVariant({
             <button
               type="button"
               onPointerDown={stopActionBubble}
+              onMouseDown={stopActionBubble}
               onTouchStart={stopActionBubble}
               onTouchEnd={stopActionBubble}
               onClick={(e) => {
@@ -440,7 +444,7 @@ export function MovieCard3DVariant({
           <div className="rtv-card-3d-sheen pointer-events-none absolute inset-0 z-10" />
 
           {/* Top Floating Bookmark Pill */}
-          <div className="rtv-card-3d-z-lg absolute top-3 left-3 z-40">
+          <div className="absolute top-3 left-3 z-40">
             <WatchlistBtn
               isInWatchlist={isInWatchlist}
               onToggle={onToggleWatchlist}
@@ -456,7 +460,7 @@ export function MovieCard3DVariant({
           )}
 
           {/* Detached Floating Frosted Dock */}
-          <div className="rtv-v-dock rtv-card-3d-z-lg absolute inset-x-2.5 bottom-2.5 z-30 rounded-2xl bg-[#181818]/90 backdrop-blur-xl border border-white/15 p-2.5 text-right shadow-[0_14px_30px_rgba(0,0,0,0.75)] transition-transform duration-300 group-hover:-translate-y-1">
+          <div className="rtv-v-dock absolute inset-x-2.5 bottom-2.5 z-30 rounded-2xl bg-[#181818]/90 backdrop-blur-xl border border-white/15 p-2.5 text-right shadow-[0_14px_30px_rgba(0,0,0,0.75)] transition-transform duration-300 group-hover:-translate-y-1">
             <div className="flex items-center justify-between gap-2">
               <div className="min-w-0 flex-1">
                 <h3
@@ -473,6 +477,7 @@ export function MovieCard3DVariant({
               <button
                 type="button"
                 onPointerDown={stopActionBubble}
+                onMouseDown={stopActionBubble}
                 onTouchStart={stopActionBubble}
                 onTouchEnd={stopActionBubble}
                 onClick={(e) => {
@@ -593,7 +598,7 @@ export function MovieCard3DVariant({
               </span>
             </div>
 
-            <div className="rtv-card-3d-z-lg absolute top-2.5 left-2.5 z-40">
+            <div className="absolute top-2.5 left-2.5 z-40">
               <WatchlistBtn
                 isInWatchlist={isInWatchlist}
                 onToggle={onToggleWatchlist}
@@ -745,7 +750,7 @@ export function MovieCard3DVariant({
             {/* Top Theater Valence */}
             <div className="pointer-events-none absolute inset-x-0 top-0 z-20 h-7 bg-gradient-to-b from-black/85 to-transparent" />
 
-            <div className="rtv-card-3d-z-lg absolute top-2.5 inset-x-3 z-40 flex items-center justify-between">
+            <div className="absolute top-2.5 inset-x-3 z-40 flex items-center justify-between">
               <WatchlistBtn
                 isInWatchlist={isInWatchlist}
                 onToggle={onToggleWatchlist}
@@ -808,7 +813,7 @@ export function MovieCard3DVariant({
           />
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/75 via-transparent to-transparent" />
 
-          <div className="rtv-card-3d-z-lg absolute top-2 left-2 z-40">
+          <div className="absolute top-2 left-2 z-40">
             <WatchlistBtn
               isInWatchlist={isInWatchlist}
               onToggle={onToggleWatchlist}
@@ -884,6 +889,7 @@ export function MovieCard3DVariant({
               <button
                 type="button"
                 onPointerDown={stopActionBubble}
+                onMouseDown={stopActionBubble}
                 onTouchStart={stopActionBubble}
                 onTouchEnd={stopActionBubble}
                 onClick={(e) => {
@@ -892,13 +898,13 @@ export function MovieCard3DVariant({
                   setIsFlipped(true);
                 }}
                 aria-label="قلب البطاقة"
-                className="rtv-showcase-3d-layer-lg absolute top-2.5 right-2.5 z-40 inline-flex items-center gap-1 rounded-full bg-[#181818]/90 hover:bg-[#E50914] border border-white/20 px-2.5 py-1 text-[10px] font-extrabold text-white shadow-lg transition-colors cursor-pointer"
+                className="absolute top-2.5 right-2.5 z-40 inline-flex items-center gap-1 rounded-full bg-[#181818]/90 hover:bg-[#E50914] border border-white/20 px-2.5 py-1 text-[10px] font-extrabold text-white shadow-lg transition-colors cursor-pointer"
               >
                 <RotateCw className="w-3 h-3" />
                 <span>التفاصيل</span>
               </button>
 
-              <div className="rtv-showcase-3d-layer-lg absolute top-2.5 left-2.5 z-40">
+              <div className="absolute top-2.5 left-2.5 z-40">
                 <WatchlistBtn
                   isInWatchlist={isInWatchlist}
                   onToggle={onToggleWatchlist}
@@ -933,6 +939,7 @@ export function MovieCard3DVariant({
                 <button
                   type="button"
                   onPointerDown={stopActionBubble}
+                  onMouseDown={stopActionBubble}
                   onTouchStart={stopActionBubble}
                   onTouchEnd={stopActionBubble}
                   onClick={(e) => {
@@ -974,6 +981,7 @@ export function MovieCard3DVariant({
               <button
                 type="button"
                 onPointerDown={stopActionBubble}
+                onMouseDown={stopActionBubble}
                 onTouchStart={stopActionBubble}
                 onTouchEnd={stopActionBubble}
                 onClick={() => onSelect(item, false)}
@@ -985,6 +993,7 @@ export function MovieCard3DVariant({
               <button
                 type="button"
                 onPointerDown={stopActionBubble}
+                onMouseDown={stopActionBubble}
                 onTouchStart={stopActionBubble}
                 onTouchEnd={stopActionBubble}
                 onClick={(e) => {
@@ -1029,7 +1038,7 @@ export function MovieCard3DVariant({
             />
             <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#181818]/90 via-transparent to-black/35" />
 
-            <div className="rtv-card-3d-z-lg absolute top-2.5 inset-x-2.5 flex items-center justify-between z-40">
+            <div className="absolute top-2.5 inset-x-2.5 flex items-center justify-between z-40">
               <span className="inline-flex items-center gap-1 rounded bg-[#E50914] px-2 py-0.5 text-[10px] font-black text-white shadow">
                 <Ticket className="w-3 h-3" />
                 <span className="font-latin">{qualityText}</span>
@@ -1328,6 +1337,7 @@ export function MovieCard3DVariant({
               <button
                 type="button"
                 onPointerDown={stopActionBubble}
+                onMouseDown={stopActionBubble}
                 onTouchStart={stopActionBubble}
                 onTouchEnd={stopActionBubble}
                 onClick={(e) => {
@@ -1376,7 +1386,7 @@ export function MovieCard3DVariant({
               className="h-full w-full"
               imgClassName="rtv-v-img object-cover object-top transition-transform duration-500 group-hover:scale-105"
             />
-            <div className="rtv-card-3d-z-lg absolute top-2 left-2 z-40">
+            <div className="absolute top-2 left-2 z-40">
               <WatchlistBtn
                 isInWatchlist={isInWatchlist}
                 onToggle={onToggleWatchlist}
@@ -1449,7 +1459,7 @@ export function MovieCard3DVariant({
               style={{ clipPath: 'polygon(0 78%, 100% 10%, 100% 100%, 0% 100%)' }}
             />
 
-            <div className="rtv-card-3d-z-lg absolute top-2.5 inset-x-2.5 z-40 flex items-center justify-between">
+            <div className="absolute top-2.5 inset-x-2.5 z-40 flex items-center justify-between">
               {ratingText ? (
                 <span dir="ltr" className="font-latin rounded bg-black/75 border border-white/15 px-2 py-0.5 text-[10px] font-black text-[#f9c400]">
                   ★ {ratingText}

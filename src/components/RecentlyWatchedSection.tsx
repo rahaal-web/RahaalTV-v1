@@ -328,6 +328,8 @@ export function RecentlyWatchedSection({
   // Mouse click-and-drag panning (mobile keeps pure native touch momentum)
   const handlePointerDown = (e: PointerEvent<HTMLDivElement>) => {
     if (!uiConfig.enableDrag || e.pointerType !== 'mouse' || e.button !== 0) return;
+    const target = e.target as HTMLElement | null;
+    if (target && target.closest('button, a, input, select, textarea')) return;
     const el = scrollerRef.current;
     if (!el) return;
 
@@ -611,84 +613,88 @@ export function RecentlyWatchedSection({
               >
                 <div className="rtv-rw-3d-shell relative flex flex-1 flex-col overflow-hidden">
                   {/* Fixed-Aspect Media Image (Zero CLS) */}
-                  <div
-                    onClick={() => onResumeItem(rec, matchedMedia)}
-                    style={{ aspectRatio: aspectRatioCss }}
-                    className={`relative w-full overflow-hidden bg-[#121212] cursor-pointer ${
-                      isFloatingStage ? 'rounded-xl' : isVelvetArch ? 'rounded-t-[24px]' : ''
-                    }`}
-                  >
-                    <OptimizedImage
-                      src={posterSrc}
-                      fallbackSrc={imgSpec.preferBackdrop ? FALLBACK_BACKDROP : FALLBACK_POSTER}
-                      alt={title}
-                      slot={imgSpec.slot}
-                      loading="lazy"
-                      className="h-full w-full"
-                      imgClassName="object-cover object-top transition-transform duration-500 group-hover:scale-105 pointer-events-none"
-                    />
+                  <div style={{ aspectRatio: aspectRatioCss }} className="relative w-full">
+                    <div
+                      onClick={() => onResumeItem(rec, matchedMedia)}
+                      className={`relative h-full w-full overflow-hidden bg-[#121212] cursor-pointer ${
+                        isFloatingStage ? 'rounded-xl' : isVelvetArch ? 'rounded-t-[24px]' : ''
+                      }`}
+                    >
+                      <OptimizedImage
+                        src={posterSrc}
+                        fallbackSrc={imgSpec.preferBackdrop ? FALLBACK_BACKDROP : FALLBACK_POSTER}
+                        alt={title}
+                        slot={imgSpec.slot}
+                        loading="lazy"
+                        className="h-full w-full"
+                        imgClassName="object-cover object-top transition-transform duration-500 group-hover:scale-105 pointer-events-none"
+                      />
 
-                    <div className="pointer-events-none absolute inset-0 z-10 bg-gradient-to-t from-black/90 via-black/15 to-black/45" />
+                      <div className="pointer-events-none absolute inset-0 z-10 bg-gradient-to-t from-black/90 via-black/15 to-black/45" />
 
-                    {/* Top-Right 3D Elevated Episode / Completion Badge */}
-                    {uiConfig.showEpisodeInfo && (
-                      <div className="rtv-card-3d-z-md absolute top-2 right-2 z-20 flex flex-col items-end gap-1">
-                        {rec.completed ? (
-                          <span className="inline-flex items-center gap-1 rounded-lg bg-[#4CAF50]/95 px-2 py-0.5 text-[10px] font-black text-white shadow-lg">
-                            <CheckCircle2 className="w-2.5 h-2.5" />
-                            <span>مكتمل</span>
-                          </span>
-                        ) : rec.episodeNumber ? (
-                          <span className="font-latin rounded-lg bg-[#E50914]/95 px-2 py-0.5 text-[10px] font-black text-white shadow-lg">
-                            {rec.seasonNumber ? `S${rec.seasonNumber} · ` : ''}E{rec.episodeNumber}
-                          </span>
-                        ) : (
-                          <span className="font-latin rounded-lg bg-black/75 border border-white/15 px-2 py-0.5 text-[10px] font-bold text-white shadow">
-                            {rec.quality || matchedMedia?.quality || 'HD'}
-                          </span>
-                        )}
+                      {/* Top-Right Episode / Completion Badge */}
+                      {uiConfig.showEpisodeInfo && (
+                        <div className="absolute top-2 right-2 z-20 flex flex-col items-end gap-1">
+                          {rec.completed ? (
+                            <span className="inline-flex items-center gap-1 rounded-lg bg-[#4CAF50]/95 px-2 py-0.5 text-[10px] font-black text-white shadow-lg">
+                              <CheckCircle2 className="w-2.5 h-2.5" />
+                              <span>مكتمل</span>
+                            </span>
+                          ) : rec.episodeNumber ? (
+                            <span className="font-latin rounded-lg bg-[#E50914]/95 px-2 py-0.5 text-[10px] font-black text-white shadow-lg">
+                              {rec.seasonNumber ? `S${rec.seasonNumber} · ` : ''}E{rec.episodeNumber}
+                            </span>
+                          ) : (
+                            <span className="font-latin rounded-lg bg-black/75 border border-white/15 px-2 py-0.5 text-[10px] font-bold text-white shadow">
+                              {rec.quality || matchedMedia?.quality || 'HD'}
+                            </span>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Center Resume Play Icon */}
+                      <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center">
+                        <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#E50914]/95 text-white shadow-[0_10px_24px_rgba(229,9,20,0.55)] scale-95 sm:scale-90 sm:opacity-0 transition-all duration-200 group-hover:scale-100 group-hover:opacity-100">
+                          <Play className="w-4.5 h-4.5 fill-current mr-[-2px]" />
+                        </div>
                       </div>
-                    )}
 
-                    {/* Quick Remove Button */}
+                      {/* Bottom Progress Bar */}
+                      {uiConfig.showProgressBar && (
+                        <div className="absolute inset-x-0 bottom-0 z-20 h-1.5 bg-white/15">
+                          <div
+                            className={`h-full transition-all duration-300 ${
+                              rec.completed ? 'bg-[#4CAF50]' : 'bg-[#E50914]'
+                            }`}
+                            style={{ width: `${Math.max(pct, 6)}%` }}
+                          />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Quick Remove Button — Sibling outside poster click area */}
                     <button
                       type="button"
                       onPointerDown={(e) => e.stopPropagation()}
+                      onMouseDown={(e) => e.stopPropagation()}
                       onTouchStart={(e) => e.stopPropagation()}
+                      onTouchEnd={(e) => e.stopPropagation()}
                       onClick={(e) => {
+                        e.preventDefault();
                         e.stopPropagation();
                         onRemoveItem(rec);
                       }}
                       aria-label={`إزالة ${title} من سجل المشاهدة`}
                       title="إزالة من السجل"
-                      className="rtv-card-3d-z-lg absolute top-2 left-2 z-20 inline-flex h-8 w-8 items-center justify-center rounded-lg bg-black/75 border border-white/15 text-white/85 hover:bg-[#D92321] hover:border-[#D92321] hover:text-white opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all cursor-pointer"
+                      className="absolute top-2 left-2 z-30 inline-flex h-8 w-8 items-center justify-center rounded-lg bg-black/75 border border-white/15 text-white/85 hover:bg-[#D92321] hover:border-[#D92321] hover:text-white opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 focus-visible:opacity-100 transition-[opacity,background-color,border-color,color] cursor-pointer touch-manipulation"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
-
-                    {/* Center Resume Play Icon (Elevated in Z-Space) */}
-                    <div className="rtv-card-3d-z-lg pointer-events-none absolute inset-0 z-20 flex items-center justify-center">
-                      <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#E50914]/95 text-white shadow-[0_10px_24px_rgba(229,9,20,0.55)] scale-95 sm:scale-90 sm:opacity-0 transition-all duration-200 group-hover:scale-100 group-hover:opacity-100">
-                        <Play className="w-4.5 h-4.5 fill-current mr-[-2px]" />
-                      </div>
-                    </div>
-
-                    {/* Bottom Progress Bar */}
-                    {uiConfig.showProgressBar && (
-                      <div className="absolute inset-x-0 bottom-0 z-20 h-1.5 bg-white/15">
-                        <div
-                          className={`h-full transition-all duration-300 ${
-                            rec.completed ? 'bg-[#4CAF50]' : 'bg-[#E50914]'
-                          }`}
-                          style={{ width: `${Math.max(pct, 6)}%` }}
-                        />
-                      </div>
-                    )}
                   </div>
 
                   {/* Card Footer */}
                   <div
-                    className={`rtv-card-3d-z-sm flex flex-1 flex-col justify-between gap-2 p-2.5 text-right ${
+                    className={`flex flex-1 flex-col justify-between gap-2 p-2.5 text-right ${
                       isGlassOverlay
                         ? '-mt-5 mx-2 mb-2 rounded-xl bg-[#181818]/85 backdrop-blur-md border border-white/15 shadow-lg'
                         : ''

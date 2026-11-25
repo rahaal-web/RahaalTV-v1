@@ -1002,6 +1002,11 @@ html[data-rtv-low-spec="true"] .rtv-placeholder-shimmer {
   transform: translateZ(34px);
 }
 
+button.rtv-showcase-3d-layer-lg,
+a.rtv-showcase-3d-layer-lg {
+  transform: none;
+}
+
 .rtv-showcase-3d-glare {
   background: radial-gradient(
     circle at var(--rtv-gx, 50%) var(--rtv-gy, 30%),
@@ -1238,7 +1243,7 @@ html[data-rtv-low-spec="true"] .rtv-placeholder-shimmer {
   border-color: rgba(229, 9, 20, 0.48);
 }
 
-.rtv-card-3d-wrap:active .rtv-card-3d-inner {
+.rtv-card-3d-wrap:active:not(:has(button:active, a:active)) .rtv-card-3d-inner {
   transform: scale(0.98) translateY(-2px);
 }
 
@@ -1252,6 +1257,11 @@ html[data-rtv-low-spec="true"] .rtv-placeholder-shimmer {
 
 .rtv-card-3d-z-lg {
   transform: translateZ(34px);
+}
+
+button.rtv-card-3d-z-lg,
+a.rtv-card-3d-z-lg {
+  transform: none;
 }
 
 .rtv-card-3d-sheen {
@@ -1553,7 +1563,6 @@ html[data-rtv-low-spec="true"] .rtv-placeholder-shimmer {
 }
 
 .rtv-rw-3d-shell {
-  transform-style: preserve-3d;
   transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.32s ease, border-color 0.25s ease;
   will-change: transform;
 }
@@ -1564,7 +1573,7 @@ html[data-rtv-low-spec="true"] .rtv-placeholder-shimmer {
   }
 }
 
-.rtv-rw-3d-card:active .rtv-rw-3d-shell {
+.rtv-rw-3d-card:active:not(:has(button:active, a:active)) .rtv-rw-3d-shell {
   transform: scale(0.985) translateY(-2px);
 }
 
