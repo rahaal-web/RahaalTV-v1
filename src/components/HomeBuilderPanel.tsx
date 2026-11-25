@@ -33,7 +33,10 @@ import {
   normalizeRecentlyWatchedUiConfig,
   saveStoredRecentlyWatchedUiConfig,
 } from '../lib/recentlyWatchedConfig';
-import { HeroSliderVariant, useHeroSliderVariant } from '../lib/heroSliderMode';
+import {
+  HeroSliderVariant,
+  useHeroSliderDeviceVariants,
+} from '../lib/heroSliderMode';
 import {
   HomeHeroMode,
   HomeLayoutConfig,
@@ -61,7 +64,10 @@ interface HomeBuilderPanelProps {
   onOpenTypographyTab?: () => void;
   onOpenSliderCustomization?: () => void;
   onOpenCardsAndThemesTab?: () => void;
-  onSaveHeroSliderVariant?: (variant: HeroSliderVariant) => Promise<boolean | void> | boolean | void;
+  onSaveHeroSliderVariant?: (
+    variant: HeroSliderVariant,
+    mobileVariant?: HeroSliderVariant
+  ) => Promise<boolean | void> | boolean | void;
   onNotify: (msg: string) => void;
 }
 
@@ -97,7 +103,11 @@ export function HomeBuilderPanel({
   onNotify,
 }: HomeBuilderPanelProps) {
   const cfg = useMemo(() => normalizeHomeConfig(homeConfig), [homeConfig]);
-  const [heroSliderVariant, setHeroSliderVariant] = useHeroSliderVariant();
+  const {
+    variants: deviceVariants,
+    setDesktopVariant,
+    setMobileVariant,
+  } = useHeroSliderDeviceVariants();
   const [sliderSearch, setSliderSearch] = useState('');
   const [fallbackRwUi, setFallbackRwUi] = useState<RecentlyWatchedUiConfig>(() =>
     loadStoredRecentlyWatchedUiConfig()
@@ -422,50 +432,87 @@ export function HomeBuilderPanel({
                 تبديل فوري مع إبقاء الأساسي كما هو
               </span>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-              {(
-                [
-                  {
-                    id: 'original',
-                    label: '1. السلايدر الأساسي (Original)',
-                  },
-                  {
-                    id: 'cinematic',
-                    label: '2. السينمائي 3D (Cinematic)',
-                  },
-                  {
-                    id: 'stream_v4',
-                    label: '4. سلايدر الشعارات (Cinema V4)',
-                  },
-                ] as Array<{ id: HeroSliderVariant; label: string }>
-              ).map((styleOpt) => (
-                <button
-                  key={styleOpt.id}
-                  type="button"
-                  onClick={async () => {
-                    setHeroSliderVariant(styleOpt.id);
-                    const synced = await onSaveHeroSliderVariant?.(styleOpt.id);
-                    if (synced === false) return;
-                    onNotify(
-                      styleOpt.id === 'cinematic'
-                        ? 'تم التبديل إلى السلايدر السينمائي 3D ومزامنته لجميع الأجهزة'
-                        : styleOpt.id === 'stream_v4'
-                          ? 'تم التبديل إلى السلايدر الرابع (Cinema V4) ومزامنته لجميع الأجهزة'
-                          : 'تم الرجوع إلى السلايدر الأساسي ومزامنته لجميع الأجهزة'
-                    );
-                  }}
-                  className={`rounded-xl border px-3 py-2 text-xs font-extrabold transition-colors cursor-pointer text-right flex items-center justify-between gap-2 ${
-                    heroSliderVariant === styleOpt.id
-                      ? 'rtv-admin-accent-bg border-transparent text-white'
-                      : 'bg-[#0c1821] border-white/10 text-[#b7c9ef] hover:text-white'
-                  }`}
-                >
-                  <span className="truncate">{styleOpt.label}</span>
-                  {heroSliderVariant === styleOpt.id && (
-                    <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-                  )}
-                </button>
-              ))}
+            <div className="space-y-2.5">
+              <div>
+                <p className="text-[11px] font-bold text-sky-300 mb-1.5">
+                  سلايدر متصفح الكمبيوتر (Desktop):
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  {(
+                    [
+                      { id: 'original', label: '1. الأساسي (Original)' },
+                      { id: 'cinematic', label: '2. السينمائي 3D (Cinematic)' },
+                      { id: 'stream_v4', label: '3. الشعارات (Cinema V4)' },
+                    ] as Array<{ id: HeroSliderVariant; label: string }>
+                  ).map((styleOpt) => (
+                    <button
+                      key={`desk-${styleOpt.id}`}
+                      type="button"
+                      onClick={async () => {
+                        const updated = setDesktopVariant(styleOpt.id);
+                        const synced = await onSaveHeroSliderVariant?.(
+                          updated.desktop,
+                          updated.mobile
+                        );
+                        if (synced === false) return;
+                        onNotify(`تم تفعيل ${styleOpt.label} للكمبيوتر ومزامنته لجميع الأجهزة`);
+                      }}
+                      className={`rounded-xl border px-3 py-2 text-xs font-extrabold transition-colors cursor-pointer text-right flex items-center justify-between gap-2 ${
+                        deviceVariants.desktop === styleOpt.id
+                          ? 'rtv-admin-accent-bg border-transparent text-white'
+                          : 'bg-[#0c1821] border-white/10 text-[#b7c9ef] hover:text-white'
+                      }`}
+                    >
+                      <span className="truncate">{styleOpt.label}</span>
+                      {deviceVariants.desktop === styleOpt.id && (
+                        <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <p className="text-[11px] font-bold text-fuchsia-300 mb-1.5">
+                  سلايدر الموبايل (Mobile):
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  {(
+                    [
+                      { id: 'mobile_stories', label: '1. ستوري عمودي (Stories)' },
+                      { id: 'mobile_cards', label: '2. كروت عائمة 3D (Cards)' },
+                      { id: 'mobile_spotlight', label: '3. سبوت لايت مدمج (Spotlight)' },
+                      { id: 'original', label: 'الأساسي (Original)' },
+                      { id: 'cinematic', label: 'السينمائي 3D' },
+                      { id: 'stream_v4', label: 'الشعارات (Cinema V4)' },
+                    ] as Array<{ id: HeroSliderVariant; label: string }>
+                  ).map((styleOpt) => (
+                    <button
+                      key={`mob-${styleOpt.id}`}
+                      type="button"
+                      onClick={async () => {
+                        const updated = setMobileVariant(styleOpt.id);
+                        const synced = await onSaveHeroSliderVariant?.(
+                          updated.desktop,
+                          updated.mobile
+                        );
+                        if (synced === false) return;
+                        onNotify(`تم تفعيل ${styleOpt.label} للموبايل ومزامنته لجميع الأجهزة`);
+                      }}
+                      className={`rounded-xl border px-3 py-2 text-xs font-extrabold transition-colors cursor-pointer text-right flex items-center justify-between gap-2 ${
+                        deviceVariants.mobile === styleOpt.id
+                          ? 'bg-fuchsia-600 border-fuchsia-500 text-white'
+                          : 'bg-[#0c1821] border-white/10 text-[#b7c9ef] hover:text-white'
+                      }`}
+                    >
+                      <span className="truncate">{styleOpt.label}</span>
+                      {deviceVariants.mobile === styleOpt.id && (
+                        <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
 

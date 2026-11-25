@@ -1,0 +1,69 @@
+@keyframes rtvMobileStoryProgress {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+@keyframes rtvMobileKenBurns {
+  0% {
+    transform: scale(1.01);
+  }
+  100% {
+    transform: scale(1.08);
+  }
+}
+
+@keyframes rtvMobileSlideFadeUp {
+  0% {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes rtvMobileCardPop {
+  0% {
+    opacity: 0.45;
+    transform: scale(0.94);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.rtv-mobile-story-progress {
+  transform-origin: right center;
+  animation: rtvMobileStoryProgress var(--rtv-story-duration, 6000ms) linear forwards;
+}
+
+.rtv-mobile-story-progress.is-paused {
+  animation-play-state: paused;
+}
+
+.rtv-mobile-ken-burns {
+  animation: rtvMobileKenBurns 11s ease-out forwards;
+  will-change: transform;
+}
+
+.rtv-mobile-fade-up {
+  animation: rtvMobileSlideFadeUp 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.rtv-mobile-card-pop {
+  animation: rtvMobileCardPop 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rtv-mobile-ken-burns,
+  .rtv-mobile-fade-up,
+  .rtv-mobile-card-pop {
+    animation: none !important;
+  }
+}

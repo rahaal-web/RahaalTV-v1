@@ -24,7 +24,11 @@ import {
 } from '../../types/media';
 import { DEFAULT_HOME_CONFIG, normalizeHomeConfig } from '../../lib/homeConfig';
 import { optimizeTmdbUrl } from '../../lib/mediaImages';
-import { HeroSliderVariant, useHeroSliderVariant } from '../../lib/heroSliderMode';
+import {
+  HeroSliderVariant,
+  isMobileDedicatedSliderVariant,
+  useHeroSliderDeviceVariants,
+} from '../../lib/heroSliderMode';
 import { useStreamV4SliderConfig } from '../../lib/streamV4SliderConfig';
 import { StreamV4SliderSettingsPanel } from './StreamV4SliderSettingsPanel';
 
@@ -37,7 +41,10 @@ interface SliderCustomizationPanelProps {
   isOwner?: boolean;
   onGetAuthToken?: () => Promise<string | undefined>;
   onSaveHomeConfig: (next: HomeLayoutConfig) => Promise<void>;
-  onSaveHeroSliderVariant?: (variant: HeroSliderVariant) => Promise<boolean | void> | boolean | void;
+  onSaveHeroSliderVariant?: (
+    variant: HeroSliderVariant,
+    mobileVariant?: HeroSliderVariant
+  ) => Promise<boolean | void> | boolean | void;
   onNotify: (msg: string) => void;
 }
 
@@ -122,22 +129,54 @@ export function SliderCustomizationPanel({
   onNotify,
 }: SliderCustomizationPanelProps) {
   const [draft, setDraft] = useState<HomeLayoutConfig>(() => normalizeHomeConfig(homeConfig));
-  const [heroSliderVariant, setHeroSliderVariant] = useHeroSliderVariant();
+  const {
+    variants: deviceVariants,
+    setDesktopVariant,
+    setMobileVariant,
+  } = useHeroSliderDeviceVariants();
   const [v4Config] = useStreamV4SliderConfig();
   const [previewDevice, setPreviewDevice] = useState<'desktop' | 'mobile'>('desktop');
   const [previewSlideIdx, setPreviewSlideIdx] = useState(0);
   const [saving, setSaving] = useState(false);
 
-  const handleSelectSliderVariant = async (variant: HeroSliderVariant) => {
-    setHeroSliderVariant(variant);
-    const synced = await onSaveHeroSliderVariant?.(variant);
+  const activePreviewVariant: HeroSliderVariant =
+    previewDevice === 'mobile' ? deviceVariants.mobile : deviceVariants.desktop;
+
+  const describeVariantAr = (v: HeroSliderVariant): string => {
+    switch (v) {
+      case 'cinematic':
+        return 'السلايدر السينمائي 3D';
+      case 'stream_v4':
+        return 'سلايدر الشعارات (Cinema V4)';
+      case 'mobile_stories':
+        return 'ستوري عمودي سينمائي (Mobile Stories)';
+      case 'mobile_cards':
+        return 'كروت عائمة 3D (Mobile Coverflow)';
+      case 'mobile_spotlight':
+        return 'سبوت لايت مدمج (Mobile Spotlight)';
+      case 'original':
+      default:
+        return 'السلايدر الأساسي (Original)';
+    }
+  };
+
+  const handleSelectDesktopVariant = async (variant: HeroSliderVariant) => {
+    const updated = setDesktopVariant(variant);
+    setPreviewDevice('desktop');
+    const synced = await onSaveHeroSliderVariant?.(updated.desktop, updated.mobile);
     if (synced === false) return;
     onNotify(
-      variant === 'cinematic'
-        ? 'تم تفعيل السلايدر السينمائي 3D (Cinematic Slider) على الرئيسية ومزامنته لجميع الأجهزة فوراً'
-        : variant === 'stream_v4'
-          ? 'تم تفعيل السلايدر الرابع (Cinema Logo Hero) بألوان وهوية الموقع ومزامنته لجميع الأجهزة فوراً'
-          : 'تم الرجوع إلى السلايدر الأساسي (Original Slider) ومزامنته لجميع الأجهزة'
+      `تم تفعيل «${describeVariantAr(updated.desktop)}» لمتصفح الكمبيوتر ومزامنته لجميع الأجهزة فوراً`
+    );
+  };
+
+  const handleSelectMobileVariant = async (variant: HeroSliderVariant) => {
+    const updated = setMobileVariant(variant);
+    setPreviewDevice('mobile');
+    const synced = await onSaveHeroSliderVariant?.(updated.desktop, updated.mobile);
+    if (synced === false) return;
+    onNotify(
+      `تم تفعيل «${describeVariantAr(updated.mobile)}» للموبايل ومزامنته لجميع الأجهزة فوراً`
     );
   };
 
@@ -272,106 +311,238 @@ export function SliderCustomizationPanel({
         </div>
       </div>
 
-      {/* Slider Design Mode Switcher (Original vs Cinematic) */}
-      <div className="rounded-3xl bg-[#0c1821] border border-white/[0.08] p-6 space-y-4">
+      {/* Slider Design Mode Switcher (Independent Desktop & Mobile Selection) */}
+      <div className="rounded-3xl bg-[#0c1821] border border-white/[0.08] p-6 space-y-6">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-3">
           <div className="flex items-center gap-2">
             <Clapperboard className="w-5 h-5 rtv-admin-accent-text" />
             <h3 className="font-display text-base font-extrabold text-white">
-              اختيار تصميم السلايدر (Slider Design Style)
+              اختيار تصميم السلايدر حسب الجهاز (كمبيوتر / موبايل)
             </h3>
           </div>
           <span className="rounded-lg bg-emerald-500/15 border border-emerald-400/30 px-2.5 py-0.5 text-[10px] font-extrabold text-emerald-300">
-            تبديل فوري ومستقل
+            تبديل مستقل وفوري لكل جهاز
           </span>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
-          <button
-            type="button"
-            onClick={() => handleSelectSliderVariant('original')}
-            className={`rounded-2xl border p-4 text-right transition-all cursor-pointer flex flex-col gap-2 ${
-              heroSliderVariant === 'original'
-                ? 'rtv-admin-accent-soft border-sky-400/50 shadow-md'
-                : 'bg-[#1a242e]/65 border-white/[0.08] hover:border-white/20'
-            }`}
-          >
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-sm font-extrabold text-white">
-                1. السلايدر الأساسي (Original)
-              </span>
-              {heroSliderVariant === 'original' && (
-                <span className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2 py-0.5 text-[10px] font-extrabold text-white shrink-0">
-                  <CheckCircle2 className="w-3 h-3" />
-                  مفعّل الآن
-                </span>
-              )}
+        {/* 1. Desktop Browser Slider Selector */}
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Monitor className="w-4 h-4 text-sky-400" />
+              <h4 className="text-sm font-extrabold text-white">
+                أولاً: سلايدر متصفح الكمبيوتر (Desktop)
+              </h4>
             </div>
-            <p className="text-xs text-[#b7c9ef] leading-relaxed">
-              السلايدر الأصلي الكامل للموقع بكل تصميمه وألوانه وأزراره وعناصر التحكم والمصغرات دون أي تغيير.
-            </p>
-          </button>
+            <span className="text-[11px] font-bold text-[#b7c9ef]">
+              المفعّل حالياً:{' '}
+              <strong className="text-sky-300">
+                {describeVariantAr(deviceVariants.desktop)}
+              </strong>
+            </span>
+          </div>
 
-          <button
-            type="button"
-            onClick={() => handleSelectSliderVariant('cinematic')}
-            className={`rounded-2xl border p-4 text-right transition-all cursor-pointer flex flex-col gap-2 ${
-              heroSliderVariant === 'cinematic'
-                ? 'rtv-admin-accent-soft border-sky-400/50 shadow-md'
-                : 'bg-[#1a242e]/65 border-white/[0.08] hover:border-white/20'
-            }`}
-          >
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-sm font-extrabold text-white">
-                2. السلايدر السينمائي 3D
-              </span>
-              {heroSliderVariant === 'cinematic' && (
-                <span className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2 py-0.5 text-[10px] font-extrabold text-white shrink-0">
-                  <CheckCircle2 className="w-3 h-3" />
-                  مفعّل الآن
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+            <button
+              type="button"
+              onClick={() => void handleSelectDesktopVariant('original')}
+              className={`rounded-2xl border p-4 text-right transition-all cursor-pointer flex flex-col gap-2 ${
+                deviceVariants.desktop === 'original'
+                  ? 'rtv-admin-accent-soft border-sky-400/50 shadow-md'
+                  : 'bg-[#1a242e]/65 border-white/[0.08] hover:border-white/20'
+              }`}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm font-extrabold text-white">
+                  1. السلايدر الأساسي (Original)
                 </span>
-              )}
-            </div>
-            <p className="text-xs text-[#b7c9ef] leading-relaxed">
-              تصميم سينمائي فاخر ثلاثي الأبعاد (Premium 3D) بعمق بصري وحركة Zoom ناعمة، يعرض الصورة واسم العمل فقط بدون أزرار.
-            </p>
-          </button>
+                {deviceVariants.desktop === 'original' && (
+                  <span className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2 py-0.5 text-[10px] font-extrabold text-white shrink-0">
+                    <CheckCircle2 className="w-3 h-3" />
+                    مفعّل للكمبيوتر
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-[#b7c9ef] leading-relaxed">
+                السلايدر الأصلي الكامل للموقع بكل تصميمه وألوانه وأزراره وعناصر التحكم والمصغرات دون أي تغيير.
+              </p>
+            </button>
 
-          <button
-            type="button"
-            onClick={() => handleSelectSliderVariant('stream_v4')}
-            className={`rounded-2xl border p-4 text-right transition-all cursor-pointer flex flex-col gap-2 ${
-              heroSliderVariant === 'stream_v4'
-                ? 'rtv-admin-accent-soft border-sky-400/50 shadow-md'
-                : 'bg-[#1a242e]/65 border-white/[0.08] hover:border-white/20'
-            }`}
-          >
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-sm font-extrabold text-white">
-                4. سلايدر الشعارات (Cinema V4)
-              </span>
-              {heroSliderVariant === 'stream_v4' && (
-                <span className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2 py-0.5 text-[10px] font-extrabold text-white shrink-0">
-                  <CheckCircle2 className="w-3 h-3" />
-                  مفعّل الآن
+            <button
+              type="button"
+              onClick={() => void handleSelectDesktopVariant('cinematic')}
+              className={`rounded-2xl border p-4 text-right transition-all cursor-pointer flex flex-col gap-2 ${
+                deviceVariants.desktop === 'cinematic'
+                  ? 'rtv-admin-accent-soft border-sky-400/50 shadow-md'
+                  : 'bg-[#1a242e]/65 border-white/[0.08] hover:border-white/20'
+              }`}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm font-extrabold text-white">
+                  2. السلايدر السينمائي 3D
                 </span>
-              )}
+                {deviceVariants.desktop === 'cinematic' && (
+                  <span className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2 py-0.5 text-[10px] font-extrabold text-white shrink-0">
+                    <CheckCircle2 className="w-3 h-3" />
+                    مفعّل للكمبيوتر
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-[#b7c9ef] leading-relaxed">
+                تصميم سينمائي فاخر ثلاثي الأبعاد (Premium 3D) بعمق بصري وحركة Zoom ناعمة، يعرض الصورة واسم العمل فقط بدون أزرار.
+              </p>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => void handleSelectDesktopVariant('stream_v4')}
+              className={`rounded-2xl border p-4 text-right transition-all cursor-pointer flex flex-col gap-2 ${
+                deviceVariants.desktop === 'stream_v4'
+                  ? 'rtv-admin-accent-soft border-sky-400/50 shadow-md'
+                  : 'bg-[#1a242e]/65 border-white/[0.08] hover:border-white/20'
+              }`}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm font-extrabold text-white">
+                  3. سلايدر الشعارات (Cinema V4)
+                </span>
+                {deviceVariants.desktop === 'stream_v4' && (
+                  <span className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2 py-0.5 text-[10px] font-extrabold text-white shrink-0">
+                    <CheckCircle2 className="w-3 h-3" />
+                    مفعّل للكمبيوتر
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-[#b7c9ef] leading-relaxed">
+                تقليب سينمائي بالتمويه والتلاشي (Blur Dissolve) مع ظهور النصوص من الأسفل للأعلى، وشعارات PNG للأفلام في السلايدر والشريط السفلي.
+              </p>
+            </button>
+          </div>
+        </div>
+
+        {/* 2. Mobile Viewport Slider Selector (3 Dedicated Mobile Styles + Optional Desktop Styles) */}
+        <div className="space-y-3 border-t border-white/10 pt-5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Smartphone className="w-4 h-4 text-fuchsia-400" />
+              <h4 className="text-sm font-extrabold text-white">
+                ثانياً: سلايدر الموبايل (Mobile)
+              </h4>
+              <span className="rounded-md bg-fuchsia-500/15 border border-fuchsia-400/35 px-2 py-0.5 text-[10px] font-extrabold text-fuchsia-300">
+                3 تصاميم جديدة مخصصة للهواتف
+              </span>
             </div>
-            <p className="text-xs text-[#b7c9ef] leading-relaxed">
-              تقليب سينمائي بالتمويه والتلاشي (Blur Dissolve) مع ظهور النصوص من الأسفل للأعلى، وشعارات PNG للأفلام في السلايدر والشريط السفلي.
-            </p>
-          </button>
+            <span className="text-[11px] font-bold text-[#b7c9ef]">
+              المفعّل حالياً:{' '}
+              <strong className="text-fuchsia-300">
+                {describeVariantAr(deviceVariants.mobile)}
+              </strong>
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+            {(
+              [
+                {
+                  id: 'mobile_stories' as HeroSliderVariant,
+                  title: '1. ستوري عمودي سينمائي (Stories)',
+                  desc: 'عرض بوستر طولي بملء شاشة الموبايل مع شريط تقدم علوي مقطّع مثل القصص، وأزرار مشاهدة وتفاصيل مريحة لإبهام اليد.',
+                  tag: 'ستايل موبايل 1',
+                },
+                {
+                  id: 'mobile_cards' as HeroSliderVariant,
+                  title: '2. كروت عائمة 3D (Coverflow)',
+                  desc: 'كارت بوستر مركزي بارز مع إطلالة جانبية ثلاثية الأبعاد للكارت السابق والتالي وخلفية مموهة متناغمة مع العمل.',
+                  tag: 'ستايل موبايل 2',
+                },
+                {
+                  id: 'mobile_spotlight' as HeroSliderVariant,
+                  title: '3. سبوت لايت مدمج (Spotlight)',
+                  desc: 'خلفية عرض علوية تتداخل مع بطاقة معلومات وبوستر مصغر عائم وملخص قصة مختصر — يحافظ على مساحة الشاشة للأقسام.',
+                  tag: 'ستايل موبايل 3',
+                },
+              ] as const
+            ).map((opt) => {
+              const isSelected = deviceVariants.mobile === opt.id;
+              return (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => void handleSelectMobileVariant(opt.id)}
+                  className={`rounded-2xl border p-4 text-right transition-all cursor-pointer flex flex-col gap-2 ${
+                    isSelected
+                      ? 'bg-fuchsia-500/15 border-fuchsia-400/60 shadow-md'
+                      : 'bg-[#1a242e]/65 border-white/[0.08] hover:border-white/20'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm font-extrabold text-white">
+                      {opt.title}
+                    </span>
+                    {isSelected ? (
+                      <span className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2 py-0.5 text-[10px] font-extrabold text-white shrink-0">
+                        <CheckCircle2 className="w-3 h-3" />
+                        مفعّل للموبايل
+                      </span>
+                    ) : (
+                      <span className="rounded-md bg-fuchsia-500/15 border border-fuchsia-400/30 px-2 py-0.5 text-[10px] font-bold text-fuchsia-300 shrink-0">
+                        {opt.tag}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-[#b7c9ef] leading-relaxed">{opt.desc}</p>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Optional: reuse any desktop slider on mobile too */}
+          <div className="rounded-2xl bg-[#1a242e]/50 border border-white/[0.06] p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+            <span className="text-[11px] font-bold text-[#b7c9ef]">
+              أو استخدم أحد سلايدرات الكمبيوتر على الموبايل أيضاً:
+            </span>
+            <div className="flex flex-wrap items-center gap-2">
+              {(
+                [
+                  { id: 'original', label: 'الأساسي (Original)' },
+                  { id: 'cinematic', label: 'السينمائي 3D' },
+                  { id: 'stream_v4', label: 'Cinema V4' },
+                ] as Array<{ id: HeroSliderVariant; label: string }>
+              ).map((classicOpt) => {
+                const isSelected = deviceVariants.mobile === classicOpt.id;
+                return (
+                  <button
+                    key={classicOpt.id}
+                    type="button"
+                    onClick={() => void handleSelectMobileVariant(classicOpt.id)}
+                    className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-[11px] font-extrabold transition-colors cursor-pointer ${
+                      isSelected
+                        ? 'bg-emerald-600 border-emerald-500 text-white'
+                        : 'bg-[#0c1821] border-white/10 text-[#b7c9ef] hover:text-white'
+                    }`}
+                  >
+                    {isSelected && <CheckCircle2 className="w-3 h-3" />}
+                    <span>{classicOpt.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         </div>
       </div>
 
       {/* Live Preview Box */}
       <div className="rounded-3xl bg-[#0c1821] border border-white/[0.08] p-6 space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-3">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Eye className="w-5 h-5 rtv-admin-accent-text" />
             <h3 className="font-display text-base font-extrabold text-white">
               المعاينة المباشرة للسلايدر الرئيسي
             </h3>
+            <span className="rounded-lg bg-white/10 border border-white/15 px-2.5 py-0.5 text-[10px] font-extrabold text-[#b7c9ef]">
+              {previewDevice === 'mobile' ? 'معاينة الموبايل:' : 'معاينة الكمبيوتر:'}{' '}
+              {describeVariantAr(activePreviewVariant)}
+            </span>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -424,7 +595,200 @@ export function SliderCustomizationPanel({
         </div>
 
         {/* Isolated Cinema Site Preview */}
-        {heroSliderVariant === 'cinematic' ? (
+        {isMobileDedicatedSliderVariant(activePreviewVariant) ? (
+          <div className="rtv-site-preview mx-auto max-w-[360px] rounded-2xl overflow-hidden border border-white/15 bg-[var(--rtv-site-bg,#0f0f0f)] relative transition-all">
+            {activePreviewVariant === 'mobile_stories' ? (
+              <div className="relative h-[470px] w-full flex flex-col justify-between">
+                {activeSlide && (
+                  <img
+                    src={optimizeTmdbUrl(activeSlide.poster || activeSlide.backdrop, 'w500')}
+                    alt={activeSlide.title}
+                    className="pointer-events-none absolute inset-0 h-full w-full object-cover object-[50%_18%]"
+                  />
+                )}
+                <div
+                  className="pointer-events-none absolute inset-0"
+                  style={{
+                    background:
+                      'linear-gradient(to bottom, rgba(8,8,12,0.8) 0%, transparent 32%), linear-gradient(to top, #0f0f0f 0%, rgba(15,15,15,0.88) 28%, transparent 72%)',
+                  }}
+                />
+                <div className="relative z-10 p-3.5 space-y-2">
+                  <div className="flex items-center gap-1.5">
+                    {previewSlides.map((s, idx) => (
+                      <span
+                        key={s.id}
+                        className={`h-[3px] flex-1 rounded-full ${
+                          idx === previewSlideIdx % Math.max(1, previewSlides.length)
+                            ? 'bg-[var(--rtv-site-accent,#E50914)]'
+                            : idx < previewSlideIdx
+                              ? 'bg-white'
+                              : 'bg-white/25'
+                        }`}
+                      />
+                    ))}
+                  </div>
+                  <span className="inline-flex items-center gap-1 rounded-full bg-black/55 border border-white/15 px-2.5 py-0.5 text-[10px] font-bold text-white">
+                    <Sparkles className="w-3 h-3 text-[var(--rtv-site-accent,#E50914)]" />
+                    <span>{draft.heroBadgeText || 'ستوري مميز'}</span>
+                  </span>
+                </div>
+                <div className="relative z-10 p-4 text-right space-y-2.5">
+                  <div className="flex items-center gap-1.5 text-[10px] font-bold">
+                    <span className="rounded bg-[var(--rtv-site-accent,#E50914)] px-1.5 py-0.5 font-latin font-black text-white">
+                      {activeSlide?.quality || '4K'}
+                    </span>
+                    <span className="rounded bg-white/10 px-1.5 py-0.5 font-latin text-white/90">
+                      {activeSlide?.year || '2026'}
+                    </span>
+                  </div>
+                  <h4 className="font-display text-xl font-black text-white leading-tight line-clamp-2">
+                    {activeSlide?.title || 'عمل سينمائي مميز'}
+                  </h4>
+                  <div className="flex items-center gap-2">
+                    <span className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl bg-[var(--rtv-site-accent,#E50914)] py-2.5 text-xs font-extrabold text-white">
+                      <Play className="w-3.5 h-3.5 fill-current" />
+                      <span>{draft.heroPrimaryCta || 'مشاهدة الآن'}</span>
+                    </span>
+                    <span className="rounded-xl bg-white/15 border border-white/20 px-3.5 py-2.5 text-xs font-bold text-white">
+                      التفاصيل
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ) : activePreviewVariant === 'mobile_cards' ? (
+              <div className="relative h-[450px] w-full pt-5 pb-4 px-3 flex flex-col justify-between overflow-hidden">
+                {activeSlide && (
+                  <img
+                    src={optimizeTmdbUrl(activeSlide.backdrop || activeSlide.poster, 'w500')}
+                    alt=""
+                    className="pointer-events-none absolute inset-0 h-full w-full object-cover opacity-40 blur-2xl scale-110"
+                  />
+                )}
+                <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/50 via-transparent to-[#0f0f0f]" />
+                <div className="relative z-10 flex items-center justify-center pt-2">
+                  <div className="-ml-5 w-[100px] aspect-[2/3] rounded-xl overflow-hidden border border-white/15 opacity-55 scale-90 -rotate-3 bg-black/40">
+                    {previewSlides[(previewSlideIdx + previewSlides.length - 1) % Math.max(1, previewSlides.length)] && (
+                      <img
+                        src={optimizeTmdbUrl(
+                          previewSlides[(previewSlideIdx + previewSlides.length - 1) % Math.max(1, previewSlides.length)]?.poster || '',
+                          'w342'
+                        )}
+                        alt=""
+                        className="h-full w-full object-cover"
+                      />
+                    )}
+                  </div>
+                  <div className="relative z-20 w-[170px] aspect-[2/3] rounded-2xl overflow-hidden border border-white/25 shadow-2xl ring-1 ring-[var(--rtv-site-accent,#E50914)]/50">
+                    {activeSlide && (
+                      <img
+                        src={optimizeTmdbUrl(activeSlide.poster || activeSlide.backdrop, 'w500')}
+                        alt={activeSlide.title}
+                        className="h-full w-full object-cover"
+                      />
+                    )}
+                    <span className="absolute top-2 right-2 rounded bg-[var(--rtv-site-accent,#E50914)] px-1.5 py-0.5 font-latin text-[9px] font-black text-white">
+                      {activeSlide?.quality || '4K'}
+                    </span>
+                  </div>
+                  <div className="-mr-5 w-[100px] aspect-[2/3] rounded-xl overflow-hidden border border-white/15 opacity-55 scale-90 rotate-3 bg-black/40">
+                    {previewSlides[(previewSlideIdx + 1) % Math.max(1, previewSlides.length)] && (
+                      <img
+                        src={optimizeTmdbUrl(
+                          previewSlides[(previewSlideIdx + 1) % Math.max(1, previewSlides.length)]?.poster || '',
+                          'w342'
+                        )}
+                        alt=""
+                        className="h-full w-full object-cover"
+                      />
+                    )}
+                  </div>
+                </div>
+                <div className="relative z-10 text-center space-y-2.5 px-2">
+                  <h4 className="font-display text-lg font-black text-white line-clamp-1">
+                    {activeSlide?.title || 'عمل سينمائي مميز'}
+                  </h4>
+                  <div className="flex items-center justify-center gap-2">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-[var(--rtv-site-accent,#E50914)] px-4 py-2 text-xs font-extrabold text-white">
+                      <Play className="w-3.5 h-3.5 fill-current" />
+                      <span>{draft.heroPrimaryCta || 'مشاهدة الآن'}</span>
+                    </span>
+                    <span className="rounded-full bg-white/12 border border-white/15 px-3.5 py-2 text-xs font-bold text-white">
+                      التفاصيل
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="relative h-[410px] w-full flex flex-col justify-between pb-3">
+                <div className="relative h-[200px] w-full overflow-hidden">
+                  {activeSlide && (
+                    <img
+                      src={optimizeTmdbUrl(activeSlide.backdrop || activeSlide.poster, 'w780')}
+                      alt={activeSlide.title}
+                      className="h-full w-full object-cover"
+                    />
+                  )}
+                  <div
+                    className="pointer-events-none absolute inset-0"
+                    style={{
+                      background:
+                        'linear-gradient(to bottom, rgba(10,10,14,0.6) 0%, transparent 45%, #0f0f0f 100%)',
+                    }}
+                  />
+                </div>
+                <div className="relative z-20 mx-3 -mt-12 rounded-2xl bg-[#18181c]/95 border border-white/12 p-3 shadow-2xl space-y-2.5">
+                  <div className="flex items-start gap-2.5">
+                    <div className="-mt-7 w-[68px] aspect-[2/3] shrink-0 rounded-xl overflow-hidden border border-white/20 shadow-lg">
+                      {activeSlide && (
+                        <img
+                          src={optimizeTmdbUrl(activeSlide.poster || activeSlide.backdrop, 'w342')}
+                          alt={activeSlide.title}
+                          className="h-full w-full object-cover"
+                        />
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1 text-right space-y-1">
+                      <div className="flex items-center gap-1.5 text-[9px] font-bold">
+                        <span className="rounded bg-[var(--rtv-site-accent,#E50914)] px-1.5 py-0.5 font-latin font-black text-white">
+                          {activeSlide?.quality || 'HD'}
+                        </span>
+                        <span className="font-latin text-white/75">{activeSlide?.year || '2026'}</span>
+                      </div>
+                      <h4 className="font-display text-sm font-black text-white line-clamp-2">
+                        {activeSlide?.title || 'عمل سينمائي مميز'}
+                      </h4>
+                      <p className="text-[10px] text-white/70 line-clamp-2">
+                        {activeSlide?.story || 'ملخص العمل يظهر هنا بشكل مدمج وأنيق.'}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="flex-1 inline-flex items-center justify-center gap-1 rounded-xl bg-[var(--rtv-site-accent,#E50914)] py-2 text-xs font-extrabold text-white">
+                      <Play className="w-3 h-3 fill-current" />
+                      <span>{draft.heroPrimaryCta || 'مشاهدة الآن'}</span>
+                    </span>
+                    <span className="rounded-xl bg-white/10 border border-white/15 px-3 py-2 text-xs font-bold text-white">
+                      التفاصيل
+                    </span>
+                  </div>
+                </div>
+                <div className="flex items-center justify-center gap-1.5 pt-1">
+                  {previewSlides.map((s, idx) => (
+                    <span
+                      key={s.id}
+                      className={`h-1.5 rounded-full ${
+                        idx === previewSlideIdx % Math.max(1, previewSlides.length)
+                          ? 'w-5 bg-[var(--rtv-site-accent,#E50914)]'
+                          : 'w-1.5 bg-white/25'
+                      }`}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        ) : activePreviewVariant === 'cinematic' ? (
           <div
             className={`rtv-site-preview mx-auto rounded-2xl overflow-hidden border border-white/15 bg-[#08080a] relative transition-all ${
               previewDevice === 'mobile' ? 'max-w-[360px] h-[440px]' : 'w-full h-[390px]'
@@ -472,7 +836,7 @@ export function SliderCustomizationPanel({
               })()}
             </div>
           </div>
-        ) : heroSliderVariant === 'stream_v4' ? (
+        ) : activePreviewVariant === 'stream_v4' ? (
           <div
             className={`rtv-site-preview mx-auto rounded-2xl overflow-hidden border border-white/15 bg-[var(--rtv-site-bg,#0f0f0f)] relative transition-all flex flex-col justify-end ${
               previewDevice === 'mobile' ? 'max-w-[360px] h-[440px]' : 'w-full h-[395px]'
@@ -922,7 +1286,7 @@ export function SliderCustomizationPanel({
         )}
       </div>
 
-      {heroSliderVariant === 'stream_v4' && (
+      {(deviceVariants.desktop === 'stream_v4' || deviceVariants.mobile === 'stream_v4') && (
         <StreamV4SliderSettingsPanel
           homeConfig={draft}
           catalog={catalog}
@@ -934,13 +1298,9 @@ export function SliderCustomizationPanel({
         />
       )}
 
-      {heroSliderVariant !== 'original' && (
+      {(deviceVariants.desktop !== 'original' || deviceVariants.mobile !== 'original') && (
         <div className="rounded-2xl bg-amber-500/10 border border-amber-400/25 px-4 py-3 text-xs text-amber-200 leading-relaxed">
-          ملاحظة:{' '}
-          {heroSliderVariant === 'cinematic'
-            ? 'التصميم السينمائي 3D يعرض الصورة واسم العمل فقط دون أي أزرار أو تفاصيل.'
-            : 'أدوات السلايدر الرابع (صور PNG + ألوان هوية الموقع + العناصر + الأحجام) موجودة أعلاه وتعمل باستقلال كامل.'}{' '}
-          الإعدادات أدناه خاصة بتخصيص <strong className="text-white">السلايدر الأساسي</strong> وتظل محفوظة كما هي عند الرجوع إليه.
+          ملاحظة: الإعدادات أدناه خاصة بتخصيص <strong className="text-white">السلايدر الأساسي (Original)</strong> وتظل محفوظة كما هي عند استخدامه على الكمبيوتر أو الموبايل.
         </div>
       )}
 

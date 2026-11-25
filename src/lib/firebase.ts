@@ -100,6 +100,7 @@ import { evaluateImageQuality } from './mediaImages';
 import {
   HeroSliderVariant,
   loadHeroSliderVariant,
+  loadMobileHeroSliderVariant,
   normalizeHeroSliderVariant,
 } from './heroSliderMode';
 import {
@@ -1535,18 +1536,27 @@ export async function diagnoseFirestoreSettingsRules(
     );
 
     let targetSliderVariant = loadHeroSliderVariant();
+    let targetMobileSliderVariant = loadMobileHeroSliderVariant();
     try {
       const existingModeSnap = await getDoc(doc(activeDb, 'settings', 'hero_slider_mode'));
       if (existingModeSnap.exists()) {
-        const modeData = existingModeSnap.data() as { variant?: unknown };
+        const modeData = existingModeSnap.data() as {
+          variant?: unknown;
+          mobileVariant?: unknown;
+        };
         targetSliderVariant = normalizeHeroSliderVariant(modeData.variant);
+        targetMobileSliderVariant =
+          modeData.mobileVariant !== undefined
+            ? normalizeHeroSliderVariant(modeData.mobileVariant)
+            : targetSliderVariant;
       }
     } catch {
-      // Fallback to local variant
+      // Fallback to local variants
     }
     const heroSliderModeProbeRes = await saveHeroSliderVariantToFirestore(
       targetSliderVariant,
-      actorUid
+      actorUid,
+      targetMobileSliderVariant
     );
 
     let targetStreamV4Cfg = loadStreamV4SliderConfig();
@@ -2352,7 +2362,8 @@ export async function clearRecentlyWatchedCollectionForUser(uid: string): Promis
 
 export async function saveHeroSliderVariantToFirestore(
   variant: HeroSliderVariant,
-  uid: string
+  uid: string,
+  mobileVariant?: HeroSliderVariant
 ): Promise<SaveImagePlaceholdersResult> {
   const activeDb = getActiveDatabase();
   const activeCfg = getActiveFirebaseConfig();
@@ -2360,14 +2371,34 @@ export async function saveHeroSliderVariantToFirestore(
   const databaseId = activeCfg.firestoreDatabaseId || '(default)';
   const actorUid = getActiveAuth().currentUser?.uid || uid;
   const normalizedVariant = normalizeHeroSliderVariant(variant);
+  const normalizedMobileVariant = normalizeHeroSliderVariant(
+    mobileVariant ?? loadMobileHeroSliderVariant()
+  );
   try {
     await setDoc(doc(activeDb, 'settings', 'hero_slider_mode'), {
       variant: normalizedVariant,
+      mobileVariant: normalizedMobileVariant,
       updatedBy: actorUid,
       updatedAt: serverTimestamp(),
     });
     return { ok: true, projectId, databaseId };
   } catch (error) {
+    if (
+      isPermissionDeniedError(error) &&
+      normalizedMobileVariant === normalizedVariant &&
+      ['original', 'cinematic', 'stream_v4'].includes(normalizedVariant)
+    ) {
+      try {
+        await setDoc(doc(activeDb, 'settings', 'hero_slider_mode'), {
+          variant: normalizedVariant,
+          updatedBy: actorUid,
+          updatedAt: serverTimestamp(),
+        });
+        return { ok: true, projectId, databaseId };
+      } catch {
+        // Fall through to normal error reporting below
+      }
+    }
     const { code, message } = getFirebaseErrorCodeAndMessage(error);
     reportClientError({
       source: 'firestore.settings.hero_slider_mode',

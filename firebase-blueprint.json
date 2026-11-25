@@ -573,10 +573,31 @@
     },
     "HeroSliderModeSettings": {
       "title": "HeroSliderModeSettings",
-      "description": "Selected homepage hero slider design variant stored in /settings/hero_slider_mode.",
+      "description": "Selected homepage hero slider design variants for desktop and mobile stored in /settings/hero_slider_mode.",
       "type": "object",
       "properties": {
-        "variant": { "type": "string", "enum": ["original", "cinematic", "stream_v4"] },
+        "variant": {
+          "type": "string",
+          "enum": [
+            "original",
+            "cinematic",
+            "stream_v4",
+            "mobile_stories",
+            "mobile_cards",
+            "mobile_spotlight"
+          ]
+        },
+        "mobileVariant": {
+          "type": "string",
+          "enum": [
+            "original",
+            "cinematic",
+            "stream_v4",
+            "mobile_stories",
+            "mobile_cards",
+            "mobile_spotlight"
+          ]
+        },
         "updatedBy": { "type": "string", "minLength": 1, "maxLength": 128 },
         "updatedAt": { "type": "string", "format": "date-time" }
       },

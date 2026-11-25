@@ -121,7 +121,7 @@ import {
 import { installTvSpatialNavigation } from './lib/tvNavigation';
 import {
   normalizeHeroSliderVariant,
-  saveHeroSliderVariant,
+  saveHeroSliderDeviceVariants,
 } from './lib/heroSliderMode';
 import { saveStreamV4SliderConfig } from './lib/streamV4SliderConfig';
 import {
@@ -1174,8 +1174,13 @@ export default function App() {
       doc(activeDb, 'settings', 'hero_slider_mode'),
       (snap) => {
         if (!snap.exists()) return;
-        const raw = snap.data() as { variant?: unknown };
-        saveHeroSliderVariant(normalizeHeroSliderVariant(raw?.variant));
+        const raw = snap.data() as { variant?: unknown; mobileVariant?: unknown };
+        const desktop = normalizeHeroSliderVariant(raw?.variant);
+        const mobile =
+          raw?.mobileVariant !== undefined
+            ? normalizeHeroSliderVariant(raw.mobileVariant)
+            : desktop;
+        saveHeroSliderDeviceVariants(desktop, mobile);
       },
       () => {
         // Ignore if settings/hero_slider_mode rule is not yet deployed

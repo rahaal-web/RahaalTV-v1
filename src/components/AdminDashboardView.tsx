@@ -283,7 +283,8 @@ import {
 } from '../lib/scraperAdaptersDb';
 import {
   HeroSliderVariant,
-  saveHeroSliderVariant,
+  loadMobileHeroSliderVariant,
+  saveHeroSliderDeviceVariants,
 } from '../lib/heroSliderMode';
 import {
   AdminWorkspacePrefs,
@@ -2864,8 +2865,12 @@ export function AdminDashboardView({
   };
 
   const handleSaveHeroSliderVariant = useCallback(
-    async (variant: HeroSliderVariant): Promise<boolean> => {
-      const clean = saveHeroSliderVariant(variant);
+    async (
+      variant: HeroSliderVariant,
+      mobileVariant?: HeroSliderVariant
+    ): Promise<boolean> => {
+      const targetMobile = mobileVariant ?? loadMobileHeroSliderVariant();
+      const clean = saveHeroSliderDeviceVariants(variant, targetMobile);
       if (!hasActor || !activeActorUid) {
         onNotifyRef.current(
           'تم تفعيل نمط السلايدر محلياً فقط — يرجى تسجيل الدخول بحساب المالك لمزامنته مع الموبايل'
@@ -2879,7 +2884,11 @@ export function AdminDashboardView({
         return false;
       }
       try {
-        const res = await saveHeroSliderVariantToFirestore(clean, activeActorUid);
+        const res = await saveHeroSliderVariantToFirestore(
+          clean.desktop,
+          activeActorUid,
+          clean.mobile
+        );
         if (!res.ok) {
           onNotifyRef.current(
             `تم تفعيل نمط السلايدر محلياً — قواعد (${res.projectId}/${res.databaseId}) رفضت الكتابة إلى settings/hero_slider_mode. انسخ firestore.rules واضغط Publish في Firebase Console.`
