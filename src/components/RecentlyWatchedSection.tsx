@@ -594,26 +594,26 @@ export function RecentlyWatchedSection({
             const hasMetaFooter =
               uiConfig.showMediaTitle || uiConfig.showWatchedAt || uiConfig.showEpisodeInfo;
             const isGlassOverlay = activeCardStyle === 'rw-3d-glass';
-            const isNeonBevel = activeCardStyle === 'rw-3d-neon-bevel';
             const isFloatingStage = activeCardStyle === 'rw-3d-floating-stage';
             const isVelvetArch = activeCardStyle === 'rw-3d-velvet-arch';
 
             return (
               <article
                 key={`${rec.id}::${posterSrc}`}
+                onContextMenu={(e) => e.preventDefault()}
                 style={{
                   width: `${layout.cardWidthPx}px`,
                   minWidth: `${layout.cardWidthPx}px`,
                   flex: '0 0 auto',
                 }}
-                className={`rtv-rw-3d-card rtv-rw-3d--${activeCardStyle} group snap-start relative flex flex-col`}
+                className={`rtv-rw-3d-card rtv-rw-3d--${activeCardStyle} group snap-start relative flex flex-col select-none`}
               >
                 <div className="rtv-rw-3d-shell relative flex flex-1 flex-col overflow-hidden">
                   {/* Fixed-Aspect Media Image (Zero CLS) */}
                   <div
                     onClick={() => onResumeItem(rec, matchedMedia)}
                     style={{ aspectRatio: aspectRatioCss }}
-                    className={`relative w-full overflow-hidden bg-[#111] cursor-pointer ${
+                    className={`relative w-full overflow-hidden bg-[#121212] cursor-pointer ${
                       isFloatingStage ? 'rounded-xl' : isVelvetArch ? 'rounded-t-[24px]' : ''
                     }`}
                   >
@@ -638,11 +638,7 @@ export function RecentlyWatchedSection({
                             <span>مكتمل</span>
                           </span>
                         ) : rec.episodeNumber ? (
-                          <span
-                            className={`font-latin rounded-lg px-2 py-0.5 text-[10px] font-black text-white shadow-lg ${
-                              isNeonBevel ? 'bg-purple-600/95' : 'bg-[#E50914]/95'
-                            }`}
-                          >
+                          <span className="font-latin rounded-lg bg-[#E50914]/95 px-2 py-0.5 text-[10px] font-black text-white shadow-lg">
                             {rec.seasonNumber ? `S${rec.seasonNumber} · ` : ''}E{rec.episodeNumber}
                           </span>
                         ) : (
@@ -656,6 +652,8 @@ export function RecentlyWatchedSection({
                     {/* Quick Remove Button */}
                     <button
                       type="button"
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onTouchStart={(e) => e.stopPropagation()}
                       onClick={(e) => {
                         e.stopPropagation();
                         onRemoveItem(rec);
@@ -669,11 +667,7 @@ export function RecentlyWatchedSection({
 
                     {/* Center Resume Play Icon (Elevated in Z-Space) */}
                     <div className="rtv-card-3d-z-lg pointer-events-none absolute inset-0 z-20 flex items-center justify-center">
-                      <div
-                        className={`flex h-11 w-11 items-center justify-center rounded-full text-white shadow-[0_10px_24px_rgba(229,9,20,0.55)] scale-95 sm:scale-90 sm:opacity-0 transition-all duration-200 group-hover:scale-100 group-hover:opacity-100 ${
-                          isNeonBevel ? 'bg-purple-600' : 'bg-[#E50914]/95'
-                        }`}
-                      >
+                      <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#E50914]/95 text-white shadow-[0_10px_24px_rgba(229,9,20,0.55)] scale-95 sm:scale-90 sm:opacity-0 transition-all duration-200 group-hover:scale-100 group-hover:opacity-100">
                         <Play className="w-4.5 h-4.5 fill-current mr-[-2px]" />
                       </div>
                     </div>
@@ -683,11 +677,7 @@ export function RecentlyWatchedSection({
                       <div className="absolute inset-x-0 bottom-0 z-20 h-1.5 bg-white/15">
                         <div
                           className={`h-full transition-all duration-300 ${
-                            rec.completed
-                              ? 'bg-[#4CAF50]'
-                              : isNeonBevel
-                                ? 'bg-gradient-to-l from-purple-400 to-fuchsia-500 shadow-[0_0_8px_rgba(192,38,211,0.8)]'
-                                : 'bg-[#E50914]'
+                            rec.completed ? 'bg-[#4CAF50]' : 'bg-[#E50914]'
                           }`}
                           style={{ width: `${Math.max(pct, 6)}%` }}
                         />
@@ -699,7 +689,7 @@ export function RecentlyWatchedSection({
                   <div
                     className={`rtv-card-3d-z-sm flex flex-1 flex-col justify-between gap-2 p-2.5 text-right ${
                       isGlassOverlay
-                        ? '-mt-5 mx-2 mb-2 rounded-xl bg-black/65 backdrop-blur-md border border-sky-300/25 shadow-lg'
+                        ? '-mt-5 mx-2 mb-2 rounded-xl bg-[#181818]/85 backdrop-blur-md border border-white/15 shadow-lg'
                         : ''
                     }`}
                   >
@@ -728,7 +718,7 @@ export function RecentlyWatchedSection({
                               <span />
                             )}
                             {uiConfig.showWatchedAt && (
-                              <span className="shrink-0 text-[#b7c9ef]/80">
+                              <span className="shrink-0 text-[#a3a3a3]">
                                 {formatRelativeArabicTime(rec.lastWatchedAtMs)}
                               </span>
                             )}
@@ -741,11 +731,7 @@ export function RecentlyWatchedSection({
                       <button
                         type="button"
                         onClick={() => onResumeItem(rec, matchedMedia)}
-                        className={`flex-1 inline-flex min-h-[34px] items-center justify-center gap-1 rounded-xl border py-1.5 text-[11px] font-extrabold text-white transition-colors cursor-pointer ${
-                          isVelvetArch
-                            ? 'bg-pink-600/25 hover:bg-pink-600 border-pink-400/40'
-                            : 'bg-[#E50914]/20 hover:bg-[#E50914] border-[#E50914]/40'
-                        }`}
+                        className="flex-1 inline-flex min-h-[34px] items-center justify-center gap-1 rounded-xl border bg-[#E50914]/20 hover:bg-[#E50914] border-[#E50914]/40 py-1.5 text-[11px] font-extrabold text-white transition-colors cursor-pointer"
                       >
                         <Play className="w-3 h-3 fill-current" />
                         <span>{rec.completed ? 'إعادة' : 'متابعة'}</span>
@@ -755,7 +741,7 @@ export function RecentlyWatchedSection({
                         onClick={() => onOpenDetails(rec, matchedMedia)}
                         aria-label={`تفاصيل ${title}`}
                         title="صفحة التفاصيل"
-                        className="inline-flex h-[34px] w-[34px] items-center justify-center rounded-xl bg-white/[0.06] hover:bg-white/15 border border-white/10 text-[#b7c9ef] hover:text-white transition-colors cursor-pointer shrink-0"
+                        className="inline-flex h-[34px] w-[34px] items-center justify-center rounded-xl bg-white/[0.06] hover:bg-white/15 border border-white/10 text-[#a3a3a3] hover:text-white transition-colors cursor-pointer shrink-0"
                       >
                         <Info className="w-3.5 h-3.5" />
                       </button>

@@ -363,8 +363,10 @@ export function Header({
                   alt={username || 'حسابي'}
                   loading="eager"
                   decoding="async"
+                  draggable={false}
                   referrerPolicy="no-referrer"
-                  className="h-5 w-5 rounded-full object-cover border border-white/40 shrink-0"
+                  onContextMenu={(e) => e.preventDefault()}
+                  className="pointer-events-none select-none h-5 w-5 rounded-full object-cover border border-white/40 shrink-0"
                 />
               ) : (
                 <UserIcon className={`w-4 h-4 shrink-0 ${isGuest ? 'text-[#f9c400]' : ''}`} />
@@ -387,20 +389,20 @@ export function Header({
         </div>
       </header>
 
-      {/* Mobile Slide-Over Hamburger Drawer (One-Handed Friendly RTL) */}
+      {/* Mobile Slide-Over Hamburger Drawer (Left-anchored in RTL to match icon side) */}
       {mobileMenuOpen && (
         <div
           role="dialog"
           aria-modal="true"
           aria-label="القائمة الجانبية"
           data-rtv-focus-trap="true"
-          className="fixed inset-0 z-50 flex lg:hidden"
+          className="fixed inset-0 z-50 flex justify-end lg:hidden"
         >
           <div
             className="fixed inset-0 bg-black/75 backdrop-blur-sm"
             onClick={closeMobileMenu}
           />
-          <div className="relative z-10 flex h-full w-80 max-w-[88vw] flex-col bg-[#141414] border-l border-white/10 p-4 sm:p-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] overflow-y-auto">
+          <div className="rtv-mobile-drawer-left relative z-10 flex h-full w-80 max-w-[88vw] flex-col bg-[#141414] border-r border-white/10 p-4 sm:p-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] overflow-y-auto shadow-2xl">
             <div className="flex items-center justify-between pb-4 mb-4 border-b border-white/10">
               {!isLogoHidden ? (
                 <Logo size="sm" showSubtitle branding={branding} fallbackSiteName={resolvedBrandName} />

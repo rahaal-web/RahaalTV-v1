@@ -78,6 +78,7 @@ export function MediaPreviewModal({
   cardStyle = 'clean',
 }: MediaPreviewModalProps) {
   const [previewMode, setPreviewMode] = useState<'page' | 'card'>('page');
+  const [previewWatchlist, setPreviewWatchlist] = useState(false);
   const [testServerIdx, setTestServerIdx] = useState<number | null>(null);
   const [selectedEpNum, setSelectedEpNum] = useState<number>(
     item?.seasons?.[0]?.episodes?.[0]?.number || 1
@@ -86,6 +87,7 @@ export function MediaPreviewModal({
 
   useEffect(() => {
     setTestServerIdx(null);
+    setPreviewWatchlist(false);
     setSelectedEpNum(item?.seasons?.[0]?.episodes?.[0]?.number || 1);
   }, [item?.id]);
 
@@ -212,8 +214,8 @@ export function MediaPreviewModal({
                 <MovieCard
                   item={item}
                   onSelect={() => setPreviewMode('page')}
-                  isInWatchlist={false}
-                  onToggleWatchlist={() => {}}
+                  isInWatchlist={previewWatchlist}
+                  onToggleWatchlist={() => setPreviewWatchlist((v) => !v)}
                   variant={cardStyle}
                 />
               </div>

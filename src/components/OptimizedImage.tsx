@@ -472,7 +472,9 @@ export function OptimizedImage({
     <div
       ref={containerRef}
       data-image-state={effectiveState}
-      className={`relative isolate overflow-hidden ${className}`}
+      data-rtv-no-img-menu="true"
+      onContextMenu={(e) => e.preventDefault()}
+      className={`relative isolate overflow-hidden select-none ${className}`}
       style={disablePlaceholder ? style : surfaceStyle}
     >
       {/* Loading / Error Placeholder Layer */}
@@ -491,7 +493,9 @@ export function OptimizedImage({
                 src={appearance.customImageUrl}
                 alt=""
                 aria-hidden="true"
-                className="absolute inset-0 h-full w-full object-cover"
+                draggable={false}
+                onContextMenu={(e) => e.preventDefault()}
+                className="pointer-events-none select-none absolute inset-0 h-full w-full object-cover"
               />
             )}
 
@@ -527,11 +531,12 @@ export function OptimizedImage({
           height={height}
           loading="eager"
           decoding="async"
-          draggable={draggable}
+          draggable={draggable ?? false}
           aria-hidden={ariaHidden}
           referrerPolicy={referrerPolicy}
+          onContextMenu={(e) => e.preventDefault()}
           onError={() => setErrorFallbackFailed(true)}
-          className={`relative z-10 block h-full w-full transition-opacity ${imgClassName}`}
+          className={`pointer-events-none select-none relative z-10 block h-full w-full transition-opacity ${imgClassName}`}
           style={{ transitionDuration: `${appearance.fadeInDurationMs}ms` }}
         />
       ) : null}
@@ -550,12 +555,13 @@ export function OptimizedImage({
           loading="eager"
           decoding="async"
           {...(priority ? { fetchPriority: 'high' as const } : {})}
-          draggable={draggable}
+          draggable={draggable ?? false}
           aria-hidden={ariaHidden}
           referrerPolicy={referrerPolicy}
+          onContextMenu={(e) => e.preventDefault()}
           onLoad={handleImgLoad}
           onError={handleImgError}
-          className={`relative z-10 block h-full w-full transition-opacity ${
+          className={`pointer-events-none select-none relative z-10 block h-full w-full transition-opacity ${
             effectiveState === 'loaded' ? 'opacity-100' : 'opacity-0'
           } ${imgClassName}`}
           style={{ transitionDuration: `${appearance.fadeInDurationMs}ms` }}

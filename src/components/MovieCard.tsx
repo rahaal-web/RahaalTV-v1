@@ -1,10 +1,34 @@
-import { useRef, useState, type CSSProperties, type PointerEvent } from 'react';
-import { Bookmark, Check, ChevronDown, ChevronUp, Download, Film, Globe, Languages, Play, Star, Tag } from 'lucide-react';
+import {
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type CSSProperties,
+  type MouseEvent,
+  type PointerEvent,
+  type TouchEvent,
+} from 'react';
+import {
+  Bookmark,
+  Check,
+  ChevronDown,
+  ChevronUp,
+  Download,
+  Film,
+  Globe,
+  Languages,
+  Play,
+  Star,
+  Tag,
+} from 'lucide-react';
 import { FALLBACK_POSTER } from '../lib/mediaFilters';
 import { getPosterUrl } from '../lib/mediaImages';
 import { HomeCardStyle, MediaItem } from '../types/media';
 import { OptimizedImage } from './OptimizedImage';
-import { MovieCard3DVariant } from './MovieCardVariants';
+import {
+  type CardTouchPreviewBindings,
+  MovieCard3DVariant,
+} from './MovieCardVariants';
 
 interface MovieCardProps {
   item: MediaItem;
@@ -13,6 +37,12 @@ interface MovieCardProps {
   onToggleWatchlist: (item: MediaItem) => void;
   variant?: HomeCardStyle;
   priority?: boolean;
+}
+
+const TOUCH_PREVIEW_EVENT = 'rtv-card-touch-preview';
+
+function stopActionBubble(e: { stopPropagation: () => void }) {
+  e.stopPropagation();
 }
 
 export function MovieCardSkeleton() {
@@ -36,7 +66,147 @@ export function MovieCard({
   priority = false,
 }: MovieCardProps) {
   const [isShowcaseFlipped, setIsShowcaseFlipped] = useState(false);
+  const [touchPreviewActive, setTouchPreviewActive] = useState(false);
   const showcaseCardRef = useRef<HTMLElement | null>(null);
+  const rootArticleRef = useRef<HTMLElement | null>(null);
+  const cardInstanceId = useId();
+
+  const pressTimerRef = useRef<number | null>(null);
+  const dismissTimerRef = useRef<number | null>(null);
+  const touchStartPosRef = useRef<{ x: number; y: number } | null>(null);
+  const suppressClickUntilRef = useRef<number>(0);
+
+  const clearPressTimer = () => {
+    if (pressTimerRef.current !== null) {
+      window.clearTimeout(pressTimerRef.current);
+      pressTimerRef.current = null;
+    }
+  };
+
+  const clearDismissTimer = () => {
+    if (dismissTimerRef.current !== null) {
+      window.clearTimeout(dismissTimerRef.current);
+      dismissTimerRef.current = null;
+    }
+  };
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const onOtherCardPreview = (ev: Event) => {
+      const detail = (ev as CustomEvent<{ id?: string }>).detail;
+      if (detail?.id && detail.id !== cardInstanceId) {
+        setTouchPreviewActive(false);
+      }
+    };
+    window.addEventListener(TOUCH_PREVIEW_EVENT, onOtherCardPreview);
+    return () => {
+      window.removeEventListener(TOUCH_PREVIEW_EVENT, onOtherCardPreview);
+      clearPressTimer();
+      clearDismissTimer();
+    };
+  }, [cardInstanceId]);
+
+  useEffect(() => {
+    if (!touchPreviewActive || typeof document === 'undefined') return;
+    const scheduleAutoDismiss = () => {
+      clearDismissTimer();
+      dismissTimerRef.current = window.setTimeout(() => {
+        setTouchPreviewActive(false);
+      }, 4200);
+    };
+    scheduleAutoDismiss();
+
+    const onOutsideTouch = (ev: Event) => {
+      const target = ev.target as Node | null;
+      const host = rootArticleRef.current || showcaseCardRef.current;
+      if (host && target && host.contains(target)) {
+        return;
+      }
+      setTouchPreviewActive(false);
+    };
+
+    document.addEventListener('touchstart', onOutsideTouch, { passive: true });
+    document.addEventListener('pointerdown', onOutsideTouch, { passive: true });
+    return () => {
+      clearDismissTimer();
+      document.removeEventListener('touchstart', onOutsideTouch);
+      document.removeEventListener('pointerdown', onOutsideTouch);
+    };
+  }, [touchPreviewActive]);
+
+  const handleTouchStart = (e: TouchEvent<HTMLElement>) => {
+    if (e.touches.length > 1) {
+      clearPressTimer();
+      return;
+    }
+    const target = e.target as HTMLElement | null;
+    if (target && target.closest('button, a, input, select, textarea')) {
+      return;
+    }
+    const touch = e.touches[0];
+    if (!touch) return;
+    touchStartPosRef.current = { x: touch.clientX, y: touch.clientY };
+    clearPressTimer();
+    pressTimerRef.current = window.setTimeout(() => {
+      pressTimerRef.current = null;
+      suppressClickUntilRef.current = Date.now() + 750;
+      setTouchPreviewActive(true);
+      try {
+        window.dispatchEvent(
+          new CustomEvent(TOUCH_PREVIEW_EVENT, { detail: { id: cardInstanceId } })
+        );
+        navigator.vibrate?.(10);
+      } catch {
+        // Ignore vibration/event errors on unsupported devices
+      }
+    }, 230);
+  };
+
+  const handleTouchMove = (e: TouchEvent<HTMLElement>) => {
+    if (!touchStartPosRef.current || !e.touches[0]) return;
+    const dx = Math.abs(e.touches[0].clientX - touchStartPosRef.current.x);
+    const dy = Math.abs(e.touches[0].clientY - touchStartPosRef.current.y);
+    if (dx > 10 || dy > 10) {
+      clearPressTimer();
+      touchStartPosRef.current = null;
+    }
+  };
+
+  const handleTouchEnd = () => {
+    clearPressTimer();
+    touchStartPosRef.current = null;
+  };
+
+  const handleTouchCancel = () => {
+    clearPressTimer();
+    touchStartPosRef.current = null;
+  };
+
+  const handleClickCapture = (e: MouseEvent<HTMLElement>) => {
+    if (Date.now() < suppressClickUntilRef.current) {
+      const target = e.target as HTMLElement | null;
+      if (target && target.closest('button')) {
+        return;
+      }
+      e.preventDefault();
+      e.stopPropagation();
+      suppressClickUntilRef.current = 0;
+    }
+  };
+
+  const handleContextMenu = (e: MouseEvent<HTMLElement>) => {
+    e.preventDefault();
+  };
+
+  const touchBindings: CardTouchPreviewBindings = {
+    'data-touch-preview': touchPreviewActive ? 'true' : undefined,
+    onTouchStart: handleTouchStart,
+    onTouchMove: handleTouchMove,
+    onTouchEnd: handleTouchEnd,
+    onTouchCancel: handleTouchCancel,
+    onClickCapture: handleClickCapture,
+    onContextMenu: handleContextMenu,
+  };
 
   const handleShowcasePointerMove = (e: PointerEvent<HTMLElement>) => {
     if (e.pointerType !== 'mouse' || isShowcaseFlipped) return;
@@ -52,8 +222,8 @@ export function MovieCard({
     if (!rect.width || !rect.height) return;
     const px = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
     const py = Math.min(1, Math.max(0, (e.clientY - rect.top) / rect.height));
-    const rx = (0.5 - py) * 18; // -9deg .. +9deg
-    const ry = (px - 0.5) * 20; // -10deg .. +10deg
+    const rx = (0.5 - py) * 18;
+    const ry = (px - 0.5) * 20;
     el.setAttribute('data-tilting', 'true');
     el.style.setProperty('--rtv-rx', `${rx.toFixed(2)}deg`);
     el.style.setProperty('--rtv-ry', `${ry.toFixed(2)}deg`);
@@ -84,7 +254,11 @@ export function MovieCard({
 
   if (variant === 'classic') {
     return (
-      <article className="moov-card moov-card-perspective group relative aspect-[2/3] w-full rounded-[20px] border border-white/[0.08] bg-[#181818] overflow-hidden shadow-lg">
+      <article
+        ref={rootArticleRef}
+        {...touchBindings}
+        className="moov-card moov-card-perspective group relative aspect-[2/3] w-full rounded-[20px] border border-white/[0.08] bg-[#181818] overflow-hidden shadow-lg select-none"
+      >
         {/* Front Face */}
         <div
           onClick={() => onSelect(item)}
@@ -134,21 +308,26 @@ export function MovieCard({
         </div>
 
         {/* Back Face */}
-        <div className="moov-card-back absolute inset-0 flex flex-col justify-between rounded-[20px] bg-gradient-to-b from-[#202020] via-[#161616] to-[#0f0f0f] p-3 border border-white/10 overflow-hidden">
+        <div className="moov-card-back absolute inset-0 z-20 flex flex-col justify-between rounded-[20px] bg-gradient-to-b from-[#202020] via-[#161616] to-[#0f0f0f] p-3 border border-white/10 overflow-hidden">
           <div className="min-h-0">
             <div className="flex items-center justify-between gap-2 mb-1.5">
               <span className="font-latin text-xs font-bold text-[#f9c400] flex items-center gap-1">
                 <Star className="w-3.5 h-3.5 fill-[#f9c400]" />
-                {viewerAvg ? <span dir="ltr">{viewerAvg}/5</span> : <span className="font-sans text-[11px] text-[#b7c9ef]">بدون تقييم</span>}
+                {viewerAvg ? <span dir="ltr">{viewerAvg}/5</span> : <span className="font-sans text-[11px] text-[#a3a3a3]">بدون تقييم</span>}
               </span>
               <button
                 type="button"
+                onPointerDown={stopActionBubble}
+                onTouchStart={stopActionBubble}
+                onTouchEnd={stopActionBubble}
                 onClick={(e) => {
+                  e.preventDefault();
                   e.stopPropagation();
                   onToggleWatchlist(item);
                 }}
                 aria-label={isInWatchlist ? 'إزالة من قائمتي' : 'إضافة إلى قائمتي'}
-                className={`inline-flex items-center justify-center w-8 h-8 rounded-lg border transition-colors cursor-pointer ${
+                aria-pressed={isInWatchlist}
+                className={`relative z-30 inline-flex items-center justify-center w-8 h-8 rounded-lg border transition-colors cursor-pointer touch-manipulation ${
                   isInWatchlist
                     ? 'bg-[#4CAF50]/20 border-[#4CAF50] text-[#4CAF50]'
                     : 'bg-white/5 border-white/10 text-[#a3a3a3] hover:text-white hover:border-white/30'
@@ -209,6 +388,9 @@ export function MovieCard({
           <div className="mt-2 grid grid-cols-2 gap-1.5 shrink-0">
             <button
               type="button"
+              onPointerDown={stopActionBubble}
+              onTouchStart={stopActionBubble}
+              onTouchEnd={stopActionBubble}
               onClick={() => onSelect(item, false)}
               className="inline-flex items-center justify-center gap-1 rounded-xl bg-[#E50914] hover:bg-[#f40612] px-2 py-2 text-[11px] font-extrabold text-white transition-colors shadow-md cursor-pointer"
             >
@@ -218,6 +400,9 @@ export function MovieCard({
 
             <button
               type="button"
+              onPointerDown={stopActionBubble}
+              onTouchStart={stopActionBubble}
+              onTouchEnd={stopActionBubble}
               onClick={(e) => {
                 e.stopPropagation();
                 onSelect(item, true);
@@ -250,6 +435,7 @@ export function MovieCard({
     return (
       <article
         ref={showcaseCardRef}
+        {...touchBindings}
         style={showcaseStyle}
         onPointerMove={handleShowcasePointerMove}
         onPointerLeave={resetShowcaseTilt}
@@ -259,7 +445,7 @@ export function MovieCard({
           {/* FRONT 3D FACE */}
           <div
             onClick={() => onSelect(item)}
-            className={`rtv-showcase-3d-face relative flex h-full flex-col rounded-[24px] bg-[#141824] cursor-pointer ${
+            className={`rtv-showcase-3d-face relative flex h-full flex-col rounded-[24px] bg-[#181818] cursor-pointer ${
               isShowcaseFlipped ? 'pointer-events-none' : 'pointer-events-auto'
             }`}
           >
@@ -268,18 +454,23 @@ export function MovieCard({
               <div className="rtv-showcase-3d-glare absolute inset-0" />
             </div>
 
-            {/* Top Corner Floating White Rounded-Square Watchlist Button (Popped in 3D Z-Space) */}
+            {/* Top Corner Floating Watchlist Button (Popped in 3D Z-Space) */}
             <button
               type="button"
+              onPointerDown={stopActionBubble}
+              onTouchStart={stopActionBubble}
+              onTouchEnd={stopActionBubble}
               onClick={(e) => {
+                e.preventDefault();
                 e.stopPropagation();
                 onToggleWatchlist(item);
               }}
               aria-label={isInWatchlist ? 'إزالة من قائمتي' : 'إضافة إلى قائمتي'}
-              className={`rtv-showcase-3d-layer-lg absolute top-2.5 left-2.5 sm:top-3 sm:left-3 z-40 inline-flex h-9 w-9 sm:h-8 sm:w-8 items-center justify-center rounded-xl shadow-[0_8px_18px_rgba(0,0,0,0.45)] transition-colors cursor-pointer ${
+              aria-pressed={isInWatchlist}
+              className={`rtv-showcase-3d-layer-lg absolute top-2.5 left-2.5 sm:top-3 sm:left-3 z-40 inline-flex h-9 w-9 sm:h-8 sm:w-8 items-center justify-center rounded-xl border shadow-[0_8px_18px_rgba(0,0,0,0.45)] transition-colors cursor-pointer touch-manipulation ${
                 isInWatchlist
-                  ? 'bg-[#f9c400] text-[#141824]'
-                  : 'bg-white/95 text-[#141824] hover:bg-[#f9c400]'
+                  ? 'bg-[#E50914] border-[#E50914] text-white'
+                  : 'bg-black/70 border-white/20 text-white hover:bg-[#E50914] hover:border-[#E50914]'
               }`}
             >
               {isInWatchlist ? (
@@ -290,7 +481,7 @@ export function MovieCard({
             </button>
 
             {/* Poster Image (Clipped to Top Rounded Corners) */}
-            <div className="relative aspect-[4/4.3] w-full rounded-t-[24px] overflow-hidden bg-[#0e121b]">
+            <div className="relative aspect-[4/4.3] w-full rounded-t-[24px] overflow-hidden bg-[#121212]">
               <OptimizedImage
                 src={posterSrc}
                 fallbackSrc={FALLBACK_POSTER}
@@ -299,22 +490,22 @@ export function MovieCard({
                 priority={priority}
                 loading={priority ? 'eager' : 'lazy'}
                 className="h-full w-full"
-                imgClassName="object-cover object-top transition-transform duration-500 ease-out group-hover:scale-105"
+                imgClassName="rtv-v-img object-cover object-top transition-transform duration-500 ease-out group-hover:scale-105"
               />
-              <div className="pointer-events-none absolute inset-0 z-10 bg-gradient-to-t from-[#141824] via-[#141824]/45 via-35% to-transparent" />
+              <div className="pointer-events-none absolute inset-0 z-10 bg-gradient-to-t from-[#181818] via-[#181818]/45 via-35% to-transparent" />
             </div>
 
             {/* Top Dark Info Panel with Curved Bottom Cutout */}
-            <div className="relative z-10 -mt-5 flex flex-1 flex-col justify-between bg-[#141824] rounded-b-[26px] px-3 sm:px-4 pt-0.5 pb-2.5 text-right [transform-style:preserve-3d]">
+            <div className="relative z-10 -mt-5 flex flex-1 flex-col justify-between bg-[#181818] rounded-b-[26px] px-3 sm:px-4 pt-0.5 pb-2.5 text-right [transform-style:preserve-3d]">
               <div className="rtv-showcase-3d-layer-md space-y-1">
                 <h3
                   style={{ fontSize: 'calc(var(--rtv-card-title-size, 13px) + 2px)' }}
-                  className="font-display font-extrabold text-white leading-snug line-clamp-1 group-hover:text-[#f9c400] transition-colors"
+                  className="rtv-v-title font-display font-extrabold text-white leading-snug line-clamp-1 group-hover:text-[#E50914] transition-colors"
                 >
                   {item.title}
                 </h3>
 
-                <p className="text-[10.5px] sm:text-[11px] font-medium text-[#b7c9ef]/75 truncate tabular-nums">
+                <p className="text-[10.5px] sm:text-[11px] font-medium text-[#a3a3a3] truncate tabular-nums">
                   {subtitleMeta}
                 </p>
 
@@ -360,6 +551,9 @@ export function MovieCard({
                 <div className="flex justify-center">
                   <button
                     type="button"
+                    onPointerDown={stopActionBubble}
+                    onTouchStart={stopActionBubble}
+                    onTouchEnd={stopActionBubble}
                     onClick={(e) => {
                       e.stopPropagation();
                       resetShowcaseTilt();
@@ -385,7 +579,7 @@ export function MovieCard({
 
           {/* BACK 3D FACE (Revealed on 3D Flip via ^ button) */}
           <div
-            className={`rtv-showcase-3d-back absolute inset-0 flex flex-col justify-between rounded-[24px] bg-gradient-to-b from-[#1a2030] via-[#141824] to-[#0d1018] border border-white/15 p-3.5 sm:p-4 text-right overflow-hidden ${
+            className={`rtv-showcase-3d-back absolute inset-0 flex flex-col justify-between rounded-[24px] bg-gradient-to-b from-[#202020] via-[#181818] to-[#0f0f0f] border border-white/15 p-3.5 sm:p-4 text-right overflow-hidden ${
               isShowcaseFlipped ? 'pointer-events-auto' : 'pointer-events-none'
             }`}
           >
@@ -393,6 +587,9 @@ export function MovieCard({
               <div className="flex items-center justify-between gap-2">
                 <button
                   type="button"
+                  onPointerDown={stopActionBubble}
+                  onTouchStart={stopActionBubble}
+                  onTouchEnd={stopActionBubble}
                   onClick={(e) => {
                     e.stopPropagation();
                     setIsShowcaseFlipped(false);
@@ -406,15 +603,20 @@ export function MovieCard({
 
                 <button
                   type="button"
+                  onPointerDown={stopActionBubble}
+                  onTouchStart={stopActionBubble}
+                  onTouchEnd={stopActionBubble}
                   onClick={(e) => {
+                    e.preventDefault();
                     e.stopPropagation();
                     onToggleWatchlist(item);
                   }}
                   aria-label={isInWatchlist ? 'إزالة من قائمتي' : 'إضافة إلى قائمتي'}
-                  className={`inline-flex h-8 w-8 items-center justify-center rounded-xl transition-colors cursor-pointer ${
+                  aria-pressed={isInWatchlist}
+                  className={`inline-flex h-8 w-8 items-center justify-center rounded-xl border transition-colors cursor-pointer touch-manipulation ${
                     isInWatchlist
-                      ? 'bg-[#f9c400] text-[#141824]'
-                      : 'bg-white text-[#141824] hover:bg-[#f9c400]'
+                      ? 'bg-[#E50914] border-[#E50914] text-white'
+                      : 'bg-white/10 border-white/20 text-white hover:bg-[#E50914] hover:border-[#E50914]'
                   }`}
                 >
                   {isInWatchlist ? <Check className="w-4 h-4 stroke-[2.5]" /> : <Bookmark className="w-4 h-4 stroke-[2.2]" />}
@@ -424,12 +626,12 @@ export function MovieCard({
               <h3
                 onClick={() => onSelect(item)}
                 style={{ fontSize: 'calc(var(--rtv-card-title-size, 13px) + 1px)' }}
-                className="font-display font-extrabold text-white leading-snug line-clamp-2 cursor-pointer hover:text-[#f9c400] transition-colors"
+                className="font-display font-extrabold text-white leading-snug line-clamp-2 cursor-pointer hover:text-[#E50914] transition-colors"
               >
                 {item.title}
               </h3>
 
-              <div className="flex flex-wrap items-center gap-1.5 text-[10.5px] text-[#b7c9ef]/85">
+              <div className="flex flex-wrap items-center gap-1.5 text-[10.5px] text-[#a3a3a3]">
                 <span className="font-latin font-bold text-[#f9c400]">{item.year || '2026'}</span>
                 <span aria-hidden="true">·</span>
                 <span className="font-latin text-white">{item.quality || 'HD'}</span>
@@ -447,6 +649,9 @@ export function MovieCard({
             <div className="grid grid-cols-2 gap-2 pt-2 shrink-0">
               <button
                 type="button"
+                onPointerDown={stopActionBubble}
+                onTouchStart={stopActionBubble}
+                onTouchEnd={stopActionBubble}
                 onClick={() => onSelect(item, false)}
                 className="inline-flex items-center justify-center gap-1 rounded-xl bg-[#E50914] hover:bg-[#f40612] px-2.5 py-2.5 text-[11px] font-black text-white shadow-md transition-colors cursor-pointer"
               >
@@ -455,6 +660,9 @@ export function MovieCard({
               </button>
               <button
                 type="button"
+                onPointerDown={stopActionBubble}
+                onTouchStart={stopActionBubble}
+                onTouchEnd={stopActionBubble}
                 onClick={(e) => {
                   e.stopPropagation();
                   onSelect(item, true);
@@ -487,19 +695,25 @@ export function MovieCard({
         setIsFlipped={setIsShowcaseFlipped}
         cardRef={(node) => {
           showcaseCardRef.current = node;
+          rootArticleRef.current = node;
         }}
         onPointerMove={handleShowcasePointerMove}
         onPointerLeave={resetShowcaseTilt}
         onResetTilt={resetShowcaseTilt}
         onSelect={onSelect}
         onToggleWatchlist={onToggleWatchlist}
+        touchBindings={touchBindings}
       />
     );
   }
 
   /* Default: Modern Clean Dark Card (Netflix / YouTube inspired, zero clutter) */
   return (
-    <article className="group relative flex flex-col rounded-2xl bg-[#181818] border border-white/[0.07] overflow-hidden transition-all duration-300 ease-out hover:-translate-y-1 hover:border-white/20 hover:bg-[#202020] hover:shadow-[0_20px_42px_rgba(0,0,0,0.72)]">
+    <article
+      ref={rootArticleRef}
+      {...touchBindings}
+      className="rtv-card-clean group relative flex flex-col rounded-2xl bg-[#181818] border border-white/[0.07] overflow-hidden transition-all duration-300 ease-out hover:-translate-y-1 hover:border-white/20 hover:bg-[#202020] hover:shadow-[0_20px_42px_rgba(0,0,0,0.72)] select-none"
+    >
       {/* Poster Container */}
       <div
         onClick={() => onSelect(item)}
@@ -513,7 +727,7 @@ export function MovieCard({
           priority={priority}
           loading={priority ? 'eager' : 'lazy'}
           className="h-full w-full"
-          imgClassName="object-cover object-top transition-transform duration-500 ease-out group-hover:scale-105"
+          imgClassName="rtv-card-clean-img object-cover object-top transition-transform duration-500 ease-out group-hover:scale-105"
         />
 
         {/* Measured Contrast Scrim */}
@@ -532,12 +746,17 @@ export function MovieCard({
         {/* Top-Left Watchlist Quick Action */}
         <button
           type="button"
+          onPointerDown={stopActionBubble}
+          onTouchStart={stopActionBubble}
+          onTouchEnd={stopActionBubble}
           onClick={(e) => {
+            e.preventDefault();
             e.stopPropagation();
             onToggleWatchlist(item);
           }}
           aria-label={isInWatchlist ? 'إزالة من قائمتي' : 'إضافة إلى قائمتي'}
-          className={`absolute top-2 left-2 sm:top-2.5 sm:left-2.5 z-20 inline-flex h-10 w-10 sm:h-8 sm:w-8 items-center justify-center rounded-xl sm:rounded-lg backdrop-blur-md border transition-all cursor-pointer ${
+          aria-pressed={isInWatchlist}
+          className={`rtv-card-clean-watchlist absolute top-2 left-2 sm:top-2.5 sm:left-2.5 z-30 inline-flex h-10 w-10 sm:h-8 sm:w-8 items-center justify-center rounded-xl sm:rounded-lg backdrop-blur-md border transition-all cursor-pointer touch-manipulation ${
             isInWatchlist
               ? 'bg-[#E50914] border-[#E50914] text-white opacity-100'
               : 'bg-black/65 border-white/15 text-white/85 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 hover:bg-[#E50914] hover:border-[#E50914] hover:text-white'
@@ -548,7 +767,7 @@ export function MovieCard({
 
         {/* Center Hover Play Button */}
         <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center">
-          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#E50914]/95 text-white shadow-[0_8px_24px_rgba(229,9,20,0.5)] scale-90 opacity-0 transition-all duration-200 group-hover:scale-100 group-hover:opacity-100">
+          <div className="rtv-card-clean-play flex h-12 w-12 items-center justify-center rounded-full bg-[#E50914]/95 text-white shadow-[0_8px_24px_rgba(229,9,20,0.5)] scale-90 opacity-0 transition-all duration-200 group-hover:scale-100 group-hover:opacity-100">
             <Play className="w-5 h-5 fill-current mr-[-2px]" />
           </div>
         </div>
@@ -561,7 +780,7 @@ export function MovieCard({
       >
         <h3
           style={{ fontSize: 'var(--rtv-card-title-size, 13px)' }}
-          className="font-display font-bold text-white leading-snug line-clamp-1 group-hover:text-[#E50914] transition-colors"
+          className="rtv-card-clean-title font-display font-bold text-white leading-snug line-clamp-1 group-hover:text-[#E50914] transition-colors"
         >
           {item.title}
         </h3>

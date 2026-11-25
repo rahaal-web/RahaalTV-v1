@@ -2999,8 +2999,10 @@ export function LoginModal({
                 alt={firebaseUser.displayName || 'User'}
                 loading="lazy"
                 decoding="async"
+                draggable={false}
+                onContextMenu={(e) => e.preventDefault()}
                 referrerPolicy="no-referrer"
-                className="mx-auto h-16 w-16 rounded-2xl object-cover border-2 border-[#D92321]"
+                className="mx-auto h-16 w-16 rounded-2xl object-cover border-2 border-[#D92321] pointer-events-none select-none"
               />
             ) : (
               <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-[#D92321]/20 border border-[#D92321] text-xl font-black text-white">

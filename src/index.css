@@ -42,6 +42,20 @@
     -webkit-font-smoothing: antialiased;
   }
 
+  img,
+  picture,
+  [data-rtv-no-img-menu="true"] {
+    -webkit-touch-callout: none !important;
+    -webkit-user-drag: none !important;
+    user-select: none !important;
+    -webkit-user-select: none !important;
+  }
+
+  .rtv-site-root img,
+  .rtv-site-preview img {
+    pointer-events: none;
+  }
+
   .rtv-hero-fullbleed {
     width: 100vw;
     max-width: 100vw;
@@ -513,13 +527,27 @@
   .moov-card:focus-within .moov-card-front {
     transform: rotateY(-90deg);
     opacity: 0.15;
+    pointer-events: none;
   }
 
   .moov-card:hover .moov-card-back,
   .moov-card:focus-within .moov-card-back {
     transform: rotateY(0deg);
     opacity: 1;
+    pointer-events: auto;
   }
+}
+
+.moov-card[data-touch-preview="true"] .moov-card-front {
+  transform: rotateY(-90deg);
+  opacity: 0.15;
+  pointer-events: none;
+}
+
+.moov-card[data-touch-preview="true"] .moov-card-back {
+  transform: rotateY(0deg);
+  opacity: 1;
+  pointer-events: auto;
 }
 
 /* Marquee News Ticker */
@@ -985,8 +1013,46 @@ html[data-rtv-low-spec="true"] .rtv-placeholder-shimmer {
   transition: opacity 0.28s ease;
 }
 
-.rtv-showcase-3d-wrap:hover .rtv-showcase-3d-glare {
+.rtv-showcase-3d-wrap:hover .rtv-showcase-3d-glare,
+.rtv-showcase-3d-wrap[data-touch-preview="true"] .rtv-showcase-3d-glare {
   opacity: 1;
+}
+
+.rtv-showcase-3d-wrap[data-touch-preview="true"] .rtv-showcase-3d-inner {
+  transform: rotateX(4deg) rotateY(-5deg) translateY(-6px) translateZ(10px);
+}
+
+.rtv-showcase-3d-wrap[data-touch-preview="true"] .rtv-v-img {
+  transform: scale(1.06);
+}
+
+.rtv-showcase-3d-wrap[data-touch-preview="true"] .rtv-v-title {
+  color: #E50914;
+}
+
+/* Clean Card Mobile Long-Press Effect */
+.rtv-card-clean[data-touch-preview="true"] {
+  transform: translateY(-4px);
+  border-color: rgba(255, 255, 255, 0.22);
+  background-color: #202020;
+  box-shadow: 0 20px 42px rgba(0, 0, 0, 0.72);
+}
+
+.rtv-card-clean[data-touch-preview="true"] .rtv-card-clean-img {
+  transform: scale(1.06);
+}
+
+.rtv-card-clean[data-touch-preview="true"] .rtv-card-clean-watchlist {
+  opacity: 1 !important;
+}
+
+.rtv-card-clean[data-touch-preview="true"] .rtv-card-clean-play {
+  opacity: 1 !important;
+  transform: scale(1) !important;
+}
+
+.rtv-card-clean[data-touch-preview="true"] .rtv-card-clean-title {
+  color: #E50914;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1142,6 +1208,7 @@ html[data-rtv-low-spec="true"] .rtv-placeholder-shimmer {
 
 /* ============================================================
    20 Professional 3D Main Card Styles (.rtv-card-3d-*)
+   Unified RahaL TV Default Obsidian & Crimson Palette
    ============================================================ */
 .rtv-card-3d-wrap {
   perspective: 1100px;
@@ -1164,6 +1231,11 @@ html[data-rtv-low-spec="true"] .rtv-placeholder-shimmer {
   .rtv-card-3d-wrap:hover .rtv-card-3d-inner {
     transform: rotateX(var(--rtv-rx, 4deg)) rotateY(var(--rtv-ry, -4deg)) translateY(-6px) translateZ(10px);
   }
+}
+
+.rtv-card-3d-wrap[data-touch-preview="true"] .rtv-card-3d-inner {
+  transform: rotateX(5deg) rotateY(-5deg) translateY(-7px) translateZ(12px);
+  border-color: rgba(229, 9, 20, 0.48);
 }
 
 .rtv-card-3d-wrap:active .rtv-card-3d-inner {
@@ -1193,11 +1265,107 @@ html[data-rtv-low-spec="true"] .rtv-placeholder-shimmer {
   transition: opacity 0.28s ease;
 }
 
-.rtv-card-3d-wrap:hover .rtv-card-3d-sheen {
+.rtv-card-3d-wrap:hover .rtv-card-3d-sheen,
+.rtv-card-3d-wrap[data-touch-preview="true"] .rtv-card-3d-sheen {
   opacity: 1;
 }
 
-/* Individual 18 Distinct Architectural Card Identities (Styles 3..20 — RahaL TV Original Palette) */
+/* Mobile Long-Press Effect Triggers Matching Every Card Architecture */
+.rtv-card-3d-wrap[data-touch-preview="true"] .rtv-v-img {
+  transform: scale(1.07);
+}
+
+.rtv-card-3d-wrap[data-touch-preview="true"] .rtv-v-img-unzoom {
+  transform: scale(1);
+}
+
+.rtv-card-3d-wrap[data-touch-preview="true"] .rtv-v-img-dim {
+  transform: scale(1.05);
+  filter: brightness(0.75);
+}
+
+.rtv-card-3d-wrap[data-touch-preview="true"] .rtv-v-play {
+  opacity: 1;
+}
+
+.rtv-card-3d-wrap[data-touch-preview="true"] .rtv-v-title {
+  color: #E50914;
+}
+
+.rtv-card-3d-wrap[data-touch-preview="true"] .rtv-v-expand {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+
+.rtv-card-3d-wrap[data-touch-preview="true"] .rtv-v-dock {
+  transform: translateY(-4px);
+}
+
+.rtv-card-3d-wrap[data-touch-preview="true"] .rtv-v-bar {
+  width: 100%;
+}
+
+.rtv-card-3d-wrap[data-touch-preview="true"] .rtv-curtain-panel-left {
+  transform: translateX(-100%);
+}
+
+.rtv-card-3d-wrap[data-touch-preview="true"] .rtv-curtain-panel-right {
+  transform: translateX(100%);
+}
+
+.rtv-card-3d-wrap[data-touch-preview="true"] .rtv-v-stub {
+  transform: translateY(2px);
+}
+
+.rtv-card-3d-wrap[data-touch-preview="true"] .rtv-v-bracket-tl {
+  top: 4px;
+  left: 4px;
+  width: 20px;
+  height: 20px;
+}
+
+.rtv-card-3d-wrap[data-touch-preview="true"] .rtv-v-bracket-tr {
+  top: 4px;
+  right: 4px;
+  width: 20px;
+  height: 20px;
+}
+
+.rtv-card-3d-wrap[data-touch-preview="true"] .rtv-v-bracket-bl {
+  bottom: 4px;
+  left: 4px;
+  border-color: #E50914;
+}
+
+.rtv-card-3d-wrap[data-touch-preview="true"] .rtv-v-bracket-br {
+  bottom: 4px;
+  right: 4px;
+  border-color: #E50914;
+}
+
+.rtv-card-3d-wrap[data-touch-preview="true"] .rtv-v-ring {
+  transform: scale(1.05);
+  --tw-ring-color: #E50914;
+}
+
+.rtv-card-3d-wrap[data-touch-preview="true"] .rtv-v-polaroid {
+  transform: rotate(0deg) translateY(-6px);
+}
+
+.rtv-card-3d-wrap[data-touch-preview="true"] .rtv-v-slice {
+  transform: translateY(-4px);
+}
+
+.rtv-card-3d-wrap[data-touch-preview="true"] .rtv-v-icon-pill {
+  background-color: #E50914;
+  color: #ffffff;
+}
+
+.rtv-card-3d-wrap[data-touch-preview="true"] .rtv-v-cta-text {
+  color: #ffffff;
+}
+
+/* Individual 18 Distinct Architectural Card Identities (Default RahaL TV Palette) */
 .rtv-card-3d--3d-obsidian-tilt .rtv-card-3d-inner {
   border: 1px solid rgba(255, 255, 255, 0.1);
   box-shadow: 0 22px 44px -12px rgba(0, 0, 0, 0.88);
@@ -1224,8 +1392,8 @@ html[data-rtv-low-spec="true"] .rtv-placeholder-shimmer {
 }
 
 .rtv-card-3d--3d-gold-bevel .rtv-card-3d-inner {
-  border: 1.5px solid rgba(249, 196, 0, 0.5);
-  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.85), inset 0 0 0 1px rgba(249, 196, 0, 0.14);
+  border: 1.5px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.85), inset 0 0 0 1px rgba(229, 9, 20, 0.28);
 }
 
 .rtv-deck-back-left {
@@ -1243,6 +1411,14 @@ html[data-rtv-low-spec="true"] .rtv-placeholder-shimmer {
   .rtv-card-3d--3d-stacked-deck:hover .rtv-deck-back-right {
     transform: rotate(7deg) translateX(9px) translateY(6px);
   }
+}
+
+.rtv-card-3d--3d-stacked-deck[data-touch-preview="true"] .rtv-deck-back-left {
+  transform: rotate(-7deg) translateX(-9px) translateY(6px);
+}
+
+.rtv-card-3d--3d-stacked-deck[data-touch-preview="true"] .rtv-deck-back-right {
+  transform: rotate(7deg) translateX(9px) translateY(6px);
 }
 
 .rtv-card-3d--3d-stacked-deck .rtv-card-3d-inner {
@@ -1263,20 +1439,22 @@ html[data-rtv-low-spec="true"] .rtv-placeholder-shimmer {
 .rtv-curtain-panel-left {
   background: repeating-linear-gradient(
     90deg,
-    #450a0a 0px,
-    #7f1d1d 4px,
-    #2a0606 8px
+    #181818 0px,
+    #2b2b2b 4px,
+    #0f0f0f 8px
   );
+  border-right: 1px solid rgba(229, 9, 20, 0.55);
   box-shadow: 4px 0 14px rgba(0, 0, 0, 0.75);
 }
 
 .rtv-curtain-panel-right {
   background: repeating-linear-gradient(
     90deg,
-    #2a0606 0px,
-    #7f1d1d 4px,
-    #450a0a 8px
+    #0f0f0f 0px,
+    #2b2b2b 4px,
+    #181818 8px
   );
+  border-left: 1px solid rgba(229, 9, 20, 0.55);
   box-shadow: -4px 0 14px rgba(0, 0, 0, 0.75);
 }
 
@@ -1290,6 +1468,11 @@ html[data-rtv-low-spec="true"] .rtv-placeholder-shimmer {
     transform: translateZ(34px) translateY(-12px) scale(1.03);
     box-shadow: 0 24px 38px rgba(0, 0, 0, 0.88);
   }
+}
+
+.rtv-card-3d--3d-poster-lift[data-touch-preview="true"] .rtv-card-3d-poster-pop {
+  transform: translateZ(34px) translateY(-12px) scale(1.03);
+  box-shadow: 0 24px 38px rgba(0, 0, 0, 0.88);
 }
 
 .rtv-card-3d--3d-corner-fold .rtv-card-3d-inner {
@@ -1329,7 +1512,7 @@ html[data-rtv-low-spec="true"] .rtv-placeholder-shimmer {
 }
 
 .rtv-card-3d--3d-spotlight-arc .rtv-card-3d-inner {
-  background: radial-gradient(circle at 50% 0%, rgba(229, 9, 20, 0.24), transparent 55%), #141414;
+  background: radial-gradient(circle at 50% 0%, rgba(229, 9, 20, 0.22), transparent 55%), #181818;
   border: 1px solid rgba(255, 255, 255, 0.1);
   box-shadow: 0 22px 42px rgba(0, 0, 0, 0.86);
 }
@@ -1362,7 +1545,7 @@ html[data-rtv-low-spec="true"] .rtv-placeholder-shimmer {
 
 /* ============================================================
    7 Professional 3D Recently Watched Card Styles (.rtv-rw-3d-*)
-   Smooth Mobile Horizontal Scroll + Crisp 3D Elevation
+   Unified RahaL TV Default Obsidian & Crimson Palette
    ============================================================ */
 .rtv-rw-3d-card {
   perspective: 900px;
@@ -1386,17 +1569,17 @@ html[data-rtv-low-spec="true"] .rtv-placeholder-shimmer {
 }
 
 .rtv-rw-3d--rw-3d-tilt .rtv-rw-3d-shell {
-  background: linear-gradient(165deg, #1b222c 0%, #11161d 100%);
-  border: 1px solid rgba(217, 35, 33, 0.35);
+  background: linear-gradient(165deg, #202020 0%, #141414 100%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 18px;
-  box-shadow: 0 16px 32px rgba(0, 0, 0, 0.68), inset 0 1px 0 rgba(255, 255, 255, 0.14);
+  box-shadow: 0 16px 32px rgba(0, 0, 0, 0.72), inset 0 1px 0 rgba(255, 255, 255, 0.12);
 }
 
 .rtv-rw-3d--rw-3d-glass .rtv-rw-3d-shell {
-  background: linear-gradient(175deg, rgba(20, 38, 58, 0.92), rgba(11, 20, 32, 0.96));
-  border: 1px solid rgba(56, 189, 248, 0.38);
+  background: linear-gradient(175deg, rgba(24, 24, 24, 0.94), rgba(15, 15, 15, 0.98));
+  border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 22px;
-  box-shadow: 0 18px 34px rgba(14, 165, 233, 0.2), inset 0 1px 1px rgba(255, 255, 255, 0.22);
+  box-shadow: 0 18px 34px rgba(0, 0, 0, 0.78), inset 0 1px 1px rgba(255, 255, 255, 0.18);
 }
 
 .rtv-rw-3d--rw-3d-stacked::after {
@@ -1404,8 +1587,8 @@ html[data-rtv-low-spec="true"] .rtv-placeholder-shimmer {
   position: absolute;
   inset: 6px 8px -5px 8px;
   border-radius: 18px;
-  background: #241b12;
-  border: 1px solid rgba(245, 158, 11, 0.32);
+  background: #202020;
+  border: 1px solid rgba(229, 9, 20, 0.35);
   transform: translateZ(-12px) translateY(4px);
   z-index: 0;
   pointer-events: none;
@@ -1413,39 +1596,131 @@ html[data-rtv-low-spec="true"] .rtv-placeholder-shimmer {
 
 .rtv-rw-3d--rw-3d-stacked .rtv-rw-3d-shell {
   z-index: 2;
-  background: linear-gradient(170deg, #1d1914 0%, #110e0b 100%);
-  border: 1.5px solid rgba(245, 158, 11, 0.45);
+  background: linear-gradient(170deg, #181818 0%, #0f0f0f 100%);
+  border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 18px;
   box-shadow: 0 16px 32px rgba(0, 0, 0, 0.75);
 }
 
 .rtv-rw-3d--rw-3d-neon-bevel .rtv-rw-3d-shell {
-  background: linear-gradient(160deg, #17122b 0%, #0d0a1a 100%);
-  border: 1.5px solid rgba(168, 85, 247, 0.5);
+  background: linear-gradient(160deg, #181818 0%, #0f0f0f 100%);
+  border: 1.5px solid rgba(229, 9, 20, 0.48);
   border-radius: 16px;
-  box-shadow: 0 14px 32px rgba(168, 85, 247, 0.22), 0 12px 24px rgba(0, 0, 0, 0.78);
+  box-shadow: 0 14px 32px rgba(229, 9, 20, 0.18), 0 12px 24px rgba(0, 0, 0, 0.78);
 }
 
 .rtv-rw-3d--rw-3d-floating-stage .rtv-rw-3d-shell {
-  background: linear-gradient(180deg, #11211b 0%, #0a1410 100%);
-  border: 1px solid rgba(34, 197, 94, 0.36);
+  background: linear-gradient(180deg, #1c1c1c 0%, #101010 100%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 20px;
   padding: 5px;
-  box-shadow: 0 18px 34px rgba(0, 0, 0, 0.76), 0 5px 0 rgba(34, 197, 94, 0.22);
+  box-shadow: 0 18px 34px rgba(0, 0, 0, 0.78), 0 5px 0 rgba(229, 9, 20, 0.28);
 }
 
 .rtv-rw-3d--rw-3d-prism .rtv-rw-3d-shell {
-  background: linear-gradient(145deg, #0d2129 0%, #071217 100%);
-  border: 1.5px solid rgba(6, 182, 212, 0.45);
+  background: linear-gradient(145deg, #1a1a1a 0%, #0f0f0f 100%);
+  border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 18px;
-  box-shadow: 0 16px 34px rgba(6, 182, 212, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.22);
+  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.76), inset 0 1px 0 rgba(255, 255, 255, 0.18);
 }
 
 .rtv-rw-3d--rw-3d-velvet-arch .rtv-rw-3d-shell {
-  background: linear-gradient(175deg, #251320 0%, #140a11 100%);
-  border: 1.5px solid rgba(236, 72, 153, 0.45);
+  background: linear-gradient(175deg, #1a1a1a 0%, #0f0f0f 100%);
+  border: 1.5px solid rgba(229, 9, 20, 0.42);
   border-radius: 26px 26px 18px 18px;
-  box-shadow: 0 18px 36px rgba(0, 0, 0, 0.78), inset 0 1px 0 rgba(255, 255, 255, 0.16);
+  box-shadow: 0 18px 36px rgba(0, 0, 0, 0.78), inset 0 1px 0 rgba(255, 255, 255, 0.14);
+}
+
+/* ============================================================
+   Left-Anchored Mobile Navigation Drawer Animation
+   ============================================================ */
+@keyframes rtvMobileDrawerSlideLeft {
+  0% {
+    transform: translateX(-100%);
+    opacity: 0.75;
+  }
+  100% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.rtv-mobile-drawer-left {
+  animation: rtvMobileDrawerSlideLeft 0.24s cubic-bezier(0.22, 1, 0.36, 1) both;
+  will-change: transform, opacity;
+}
+
+/* ============================================================
+   Full-Screen Snappy Cinema Entry Transition (Single Media Page)
+   ============================================================ */
+@keyframes rtvCinemaEntryOverlay {
+  0% {
+    opacity: 0;
+  }
+  12% {
+    opacity: 1;
+  }
+  72% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes rtvCinemaEntryStage {
+  0% {
+    opacity: 0;
+    transform: scale(0.84) translateY(14px);
+  }
+  26% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+  74% {
+    opacity: 1;
+    transform: scale(1.04) translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.16) translateY(-10px);
+  }
+}
+
+@keyframes rtvSingleViewEnter {
+  0% {
+    opacity: 0.25;
+    transform: scale(0.985) translateY(8px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.rtv-cinema-entry-overlay {
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  animation: rtvCinemaEntryOverlay 0.46s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.rtv-cinema-entry-beam {
+  background: radial-gradient(
+    circle at 50% 42%,
+    rgba(229, 9, 20, 0.32) 0%,
+    rgba(229, 9, 20, 0.09) 38%,
+    rgba(15, 15, 15, 0.94) 76%
+  );
+}
+
+.rtv-cinema-entry-stage {
+  animation: rtvCinemaEntryStage 0.46s cubic-bezier(0.22, 1, 0.36, 1) both;
+  will-change: transform, opacity;
+}
+
+.rtv-single-view-enter {
+  animation: rtvSingleViewEnter 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1462,10 +1737,24 @@ html[data-rtv-low-spec="true"] .rtv-placeholder-shimmer {
   .rtv-card-3d-sheen {
     display: none;
   }
+  .rtv-mobile-drawer-left,
+  .rtv-cinema-entry-overlay,
+  .rtv-cinema-entry-stage,
+  .rtv-single-view-enter {
+    animation: none !important;
+  }
 }
 
 html[data-rtv-low-spec="true"] .rtv-card-3d-inner,
 html[data-rtv-low-spec="true"] .rtv-rw-3d-shell {
   transition: transform 0.15s ease !important;
 }
+
+html[data-rtv-low-spec="true"] .rtv-mobile-drawer-left,
+html[data-rtv-low-spec="true"] .rtv-cinema-entry-overlay,
+html[data-rtv-low-spec="true"] .rtv-cinema-entry-stage,
+html[data-rtv-low-spec="true"] .rtv-single-view-enter {
+  animation: none !important;
+}
+
 

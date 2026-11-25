@@ -64,8 +64,10 @@ export function Logo({
             alt={cfg.siteName || 'Logo'}
             loading="eager"
             decoding="async"
+            draggable={false}
+            onContextMenu={(e) => e.preventDefault()}
             style={{ width: `${scaledWidth}px`, height: `${scaledHeight}px` }}
-            className="object-contain shrink-0 rounded-lg"
+            className="pointer-events-none select-none object-contain shrink-0 rounded-lg"
           />
         ) : (
           <div

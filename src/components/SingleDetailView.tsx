@@ -344,7 +344,7 @@ export function SingleDetailView({
   };
 
   return (
-    <div className="pb-10 overflow-x-hidden">
+    <div className="rtv-single-view-enter pb-10 overflow-x-hidden">
       {/* 1. Compact Single Hero Head */}
       <section className="relative overflow-hidden border-b border-white/[0.08] bg-[#0c1821]">
         <OptimizedImage

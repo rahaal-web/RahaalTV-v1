@@ -39,6 +39,7 @@ import {
   saveStoredHomeConfig,
 } from './lib/homeConfig';
 import { FALLBACK_BACKDROP, FALLBACK_POSTER, resolveMediaAssetUrl } from './lib/mediaFilters';
+import { getPosterUrl } from './lib/mediaImages';
 import { loadStoredPlayerTheme, saveStoredPlayerTheme } from './lib/playerTheme';
 import {
   applyTypographyToDocument,
@@ -255,6 +256,14 @@ export default function App() {
   } | null>(null);
   const [footerTopic, setFooterTopic] = useState<FooterTopic | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [entryTransition, setEntryTransition] = useState<{
+    key: number;
+    title: string;
+    poster: string;
+    quality: string;
+    year: string;
+  } | null>(null);
+  const entryTimerRef = useRef<number | null>(null);
   const clientCapabilities = useMemo(() => detectClientCapabilities(), []);
   const [compatBannerDismissed, setCompatBannerDismissed] = useState(false);
 
@@ -775,6 +784,35 @@ export default function App() {
 
   useEffect(() => {
     return installGlobalPopupShieldGuards();
+  }, []);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const isProtectedImageTarget = (target: EventTarget | null) => {
+      if (!(target instanceof Element)) return false;
+      const tag = target.tagName;
+      if (tag === 'IMG' || tag === 'PICTURE') return true;
+      return Boolean(target.closest('picture, [data-rtv-no-img-menu="true"]'));
+    };
+    const onContextMenuCapture = (e: MouseEvent) => {
+      if (isProtectedImageTarget(e.target)) {
+        e.preventDefault();
+      }
+    };
+    const onDragStartCapture = (e: DragEvent) => {
+      if (isProtectedImageTarget(e.target)) {
+        e.preventDefault();
+      }
+    };
+    document.addEventListener('contextmenu', onContextMenuCapture, true);
+    document.addEventListener('dragstart', onDragStartCapture, true);
+    return () => {
+      document.removeEventListener('contextmenu', onContextMenuCapture, true);
+      document.removeEventListener('dragstart', onDragStartCapture, true);
+      if (entryTimerRef.current !== null) {
+        window.clearTimeout(entryTimerRef.current);
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -1427,6 +1465,27 @@ export default function App() {
 
   const handleSelectMedia = useCallback(
     (item: MediaItem, openDownloads = false) => {
+      if (typeof window !== 'undefined') {
+        const reduced =
+          window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ||
+          document.documentElement.getAttribute('data-rtv-low-spec') === 'true';
+        if (!reduced) {
+          if (entryTimerRef.current !== null) {
+            window.clearTimeout(entryTimerRef.current);
+          }
+          setEntryTransition({
+            key: Date.now(),
+            title: item.title,
+            poster: getPosterUrl(item, 'detail_poster'),
+            quality: item.quality || 'HD',
+            year: String(item.year || '2026'),
+          });
+          entryTimerRef.current = window.setTimeout(() => {
+            entryTimerRef.current = null;
+            setEntryTransition(null);
+          }, 480);
+        }
+      }
       const watchKey = (item.slug || item.id).trim();
       setSelectedMediaId(item.id);
       navigateToRoute(
@@ -2071,6 +2130,7 @@ export default function App() {
             )
           ) : matchedSingleMedia ? (
             <SingleDetailView
+              key={matchedSingleMedia.id}
               catalog={activeCatalog}
               item={matchedSingleMedia}
               initialEpisode={routeEpisode}
@@ -2257,6 +2317,44 @@ export default function App() {
           <span className="leading-snug">{toastMessage}</span>
         </div>
       )}
+      {/* Full-Screen Snappy Cinema Entry Transition */}
+      {entryTransition && (
+        <div
+          key={entryTransition.key}
+          aria-hidden="true"
+          className="rtv-cinema-entry-overlay fixed inset-0 z-[95] pointer-events-none flex items-center justify-center overflow-hidden"
+        >
+          <div className="rtv-cinema-entry-curtain absolute inset-0 bg-[#0f0f0f]" />
+          <div
+            className="rtv-cinema-entry-backdrop absolute inset-0 bg-cover bg-center opacity-30 blur-2xl scale-110"
+            style={{ backgroundImage: `url("${entryTransition.poster}")` }}
+          />
+          <div className="rtv-cinema-entry-beam absolute inset-0" />
+          <div className="rtv-cinema-entry-stage relative z-10 flex flex-col items-center gap-3 px-6 text-center">
+            <div className="rtv-cinema-entry-ring relative w-32 sm:w-40 aspect-[2/3] overflow-hidden rounded-2xl border-2 border-[#E50914] bg-[#181818] shadow-[0_24px_64px_rgba(229,9,20,0.45)]">
+              <img
+                src={entryTransition.poster}
+                alt=""
+                draggable={false}
+                className="h-full w-full object-cover object-top pointer-events-none select-none"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-transparent to-transparent" />
+            </div>
+            <div className="space-y-1 max-w-xs">
+              <div className="flex items-center justify-center gap-2 text-[11px] font-black">
+                <span className="font-latin rounded bg-[#E50914] px-2 py-0.5 text-white">
+                  {entryTransition.quality}
+                </span>
+                <span className="font-latin text-[#a3a3a3]">{entryTransition.year}</span>
+              </div>
+              <p className="font-display text-base sm:text-lg font-black text-white line-clamp-1 drop-shadow-[0_2px_12px_rgba(0,0,0,0.9)]">
+                {entryTransition.title}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Offline Connectivity Indicator */}
       <OfflineIndicator />
     </div>
