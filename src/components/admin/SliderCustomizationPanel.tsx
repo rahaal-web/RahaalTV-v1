@@ -26,12 +26,15 @@ import { DEFAULT_HOME_CONFIG, normalizeHomeConfig } from '../../lib/homeConfig';
 import { optimizeTmdbUrl } from '../../lib/mediaImages';
 import { HeroSliderVariant, useHeroSliderVariant } from '../../lib/heroSliderMode';
 import { useShowcaseSliderConfig } from '../../lib/showcaseSliderConfig';
+import { useStreamV4SliderConfig } from '../../lib/streamV4SliderConfig';
 import { ShowcaseSliderSettingsPanel } from './ShowcaseSliderSettingsPanel';
+import { StreamV4SliderSettingsPanel } from './StreamV4SliderSettingsPanel';
 
 interface SliderCustomizationPanelProps {
   homeConfig: HomeLayoutConfig;
   catalog: MediaItem[];
   busy?: boolean;
+  onGetAuthToken?: () => Promise<string | undefined>;
   onSaveHomeConfig: (next: HomeLayoutConfig) => Promise<void>;
   onNotify: (msg: string) => void;
 }
@@ -108,12 +111,14 @@ export function SliderCustomizationPanel({
   homeConfig,
   catalog,
   busy = false,
+  onGetAuthToken,
   onSaveHomeConfig,
   onNotify,
 }: SliderCustomizationPanelProps) {
   const [draft, setDraft] = useState<HomeLayoutConfig>(() => normalizeHomeConfig(homeConfig));
   const [heroSliderVariant, setHeroSliderVariant] = useHeroSliderVariant();
   const [showcaseConfig] = useShowcaseSliderConfig();
+  const [v4Config] = useStreamV4SliderConfig();
   const [previewDevice, setPreviewDevice] = useState<'desktop' | 'mobile'>('desktop');
   const [previewSlideIdx, setPreviewSlideIdx] = useState(0);
   const [saving, setSaving] = useState(false);
@@ -125,7 +130,9 @@ export function SliderCustomizationPanel({
         ? 'تم تفعيل السلايدر السينمائي 3D (Cinematic Slider) على الرئيسية فوراً'
         : variant === 'showcase'
           ? 'تم تفعيل السلايدر الاستعراضي الثالث (Showcase Slider) على الرئيسية فوراً'
-          : 'تم الرجوع إلى السلايدر الأساسي (Original Slider) كما هو تماماً'
+          : variant === 'stream_v4'
+            ? 'تم تفعيل السلايدر الرابع (Cinema Logo Hero) بألوان وهوية الموقع فوراً'
+            : 'تم الرجوع إلى السلايدر الأساسي (Original Slider) كما هو تماماً'
     );
   };
 
@@ -274,7 +281,7 @@ export function SliderCustomizationPanel({
           </span>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3.5">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3.5">
           <button
             type="button"
             onClick={() => handleSelectSliderVariant('original')}
@@ -286,7 +293,7 @@ export function SliderCustomizationPanel({
           >
             <div className="flex items-center justify-between gap-2">
               <span className="text-sm font-extrabold text-white">
-                1. السلايدر الأساسي (Original Slider)
+                1. السلايدر الأساسي (Original)
               </span>
               {heroSliderVariant === 'original' && (
                 <span className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2 py-0.5 text-[10px] font-extrabold text-white shrink-0">
@@ -311,7 +318,7 @@ export function SliderCustomizationPanel({
           >
             <div className="flex items-center justify-between gap-2">
               <span className="text-sm font-extrabold text-white">
-                2. السلايدر السينمائي 3D (Cinematic)
+                2. السلايدر السينمائي 3D
               </span>
               {heroSliderVariant === 'cinematic' && (
                 <span className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2 py-0.5 text-[10px] font-extrabold text-white shrink-0">
@@ -346,7 +353,32 @@ export function SliderCustomizationPanel({
               )}
             </div>
             <p className="text-xs text-[#b7c9ef] leading-relaxed">
-              تصميم استعراضي مطابق لمنصات العرض الكبرى: عنوان ضخم على اليمين مع النبذة وطاقم العمل وزر «شاهد وحمل الان» وشريط أسماء الأعمال بالأسفل.
+              تصميم استعراضي بواجهة ثابتة وشريط أسماء الأعمال وشعارات PNG مستقلة في الأسفل.
+            </p>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleSelectSliderVariant('stream_v4')}
+            className={`rounded-2xl border p-4 text-right transition-all cursor-pointer flex flex-col gap-2 ${
+              heroSliderVariant === 'stream_v4'
+                ? 'rtv-admin-accent-soft border-sky-400/50 shadow-md'
+                : 'bg-[#1a242e]/65 border-white/[0.08] hover:border-white/20'
+            }`}
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm font-extrabold text-white">
+                4. سلايدر الشعارات (Cinema V4)
+              </span>
+              {heroSliderVariant === 'stream_v4' && (
+                <span className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2 py-0.5 text-[10px] font-extrabold text-white shrink-0">
+                  <CheckCircle2 className="w-3 h-3" />
+                  مفعّل الآن
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-[#b7c9ef] leading-relaxed">
+              التصميم المرجعي (Owl Stage) بألوان وهوية موقعك، حركة تمرير أفقية ناعمة، وشعارات PNG للأفلام في السلايدر والشريط السفلي.
             </p>
           </button>
         </div>
@@ -647,6 +679,192 @@ export function SliderCustomizationPanel({
               )}
             </div>
           </div>
+        ) : heroSliderVariant === 'stream_v4' ? (
+          <div
+            className={`rtv-site-preview mx-auto rounded-2xl overflow-hidden border border-white/15 bg-[var(--rtv-site-bg,#0f0f0f)] relative transition-all flex flex-col justify-end ${
+              previewDevice === 'mobile' ? 'max-w-[360px] h-[440px]' : 'w-full h-[395px]'
+            }`}
+          >
+            {activeSlide && (
+              <img
+                src={optimizeTmdbUrl(activeSlide.backdrop || activeSlide.poster, 'w780')}
+                alt={activeSlide.title}
+                loading="lazy"
+                decoding="async"
+                className={`pointer-events-none absolute inset-0 h-full w-full object-cover ${
+                  previewDevice === 'mobile' ? 'object-[50%_18%]' : 'object-[24%_20%]'
+                }`}
+              />
+            )}
+            <div
+              className="pointer-events-none absolute inset-0"
+              style={{
+                opacity: v4Config.scrimIntensityPct / 100,
+                background:
+                  'linear-gradient(to left, rgba(15,15,15,0.96) 0%, rgba(15,15,15,0.82) 28%, rgba(15,15,15,0.38) 56%, transparent 82%), linear-gradient(to top, #0f0f0f 0%, rgba(15,15,15,0.9) 18%, transparent 56%)',
+              }}
+            />
+            {(() => {
+              const previewAccent =
+                v4Config.colorMode === 'custom'
+                  ? v4Config.customAccentColor
+                  : 'var(--rtv-site-accent, #E50914)';
+              const activePng = activeSlide ? v4Config.titleLogos[activeSlide.id] : '';
+              return (
+                <div className="relative z-10 p-5 sm:p-7 space-y-3">
+                  <div className="max-w-[340px] space-y-2 text-right">
+                    {v4Config.showTitle &&
+                      (v4Config.usePngLogoInHero && activePng ? (
+                        <img
+                          src={activePng}
+                          alt={activeSlide?.title || ''}
+                          referrerPolicy="no-referrer"
+                          style={{
+                            maxHeight: `${
+                              previewDevice === 'mobile'
+                                ? Math.round(v4Config.logoMaxHeightPx * 0.6)
+                                : Math.round(v4Config.logoMaxHeightPx * 0.78)
+                            }px`,
+                            maxWidth: `${
+                              previewDevice === 'mobile'
+                                ? Math.min(230, v4Config.logoMaxWidthPx)
+                                : Math.min(300, v4Config.logoMaxWidthPx)
+                            }px`,
+                          }}
+                          className="object-contain object-right drop-shadow"
+                        />
+                      ) : (
+                        <h4
+                          style={{
+                            fontSize: `${
+                              previewDevice === 'mobile'
+                                ? Math.max(20, Math.round(v4Config.titleSizePx * 0.65))
+                                : Math.round(v4Config.titleSizePx * 0.8)
+                            }px`,
+                          }}
+                          className="font-display font-black text-white leading-tight drop-shadow"
+                        >
+                          {activeSlide?.title || 'Heart of the Beast'}
+                        </h4>
+                      ))}
+
+                    {v4Config.showMetadata && (
+                      <p
+                        style={{ fontSize: `${v4Config.metaSizePx}px` }}
+                        className="font-bold text-white/90"
+                      >
+                        {activeSlide?.kind === 'series' ? 'مسلسلات' : 'افلام'} •{' '}
+                        {activeSlide?.genres?.slice(0, 2).join(' ، ') || 'اكشن ، اثارة'} •{' '}
+                        {activeSlide?.year || '2026'}
+                      </p>
+                    )}
+
+                    {v4Config.showStory && (
+                      <p
+                        style={{
+                          fontSize: `${v4Config.storySizePx}px`,
+                          display: '-webkit-box',
+                          WebkitBoxOrient: 'vertical',
+                          WebkitLineClamp: v4Config.storyLines,
+                          overflow: 'hidden',
+                        }}
+                        className="text-white/80 leading-relaxed"
+                      >
+                        {activeSlide?.story ||
+                          'تصميم السلايدر الرابع مطابق للمرجع مع شعارات PNG وألوان موقع Rahaal TV.'}
+                      </p>
+                    )}
+
+                    {v4Config.showCast && (activeSlide?.cast?.length || 0) > 0 && (
+                      <p
+                        style={{ fontSize: `${v4Config.castSizePx}px` }}
+                        className="font-bold text-white/90"
+                      >
+                        {activeSlide!.cast
+                          .slice(0, 3)
+                          .map((c) => c.name)
+                          .join(' • ')}
+                      </p>
+                    )}
+
+                    {(v4Config.showWatchBtn || v4Config.showWatchlistBtn) && (
+                      <div className="flex items-center gap-2 pt-1">
+                        {v4Config.showWatchBtn && (
+                          <span
+                            style={{ backgroundColor: previewAccent }}
+                            className="inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-[11px] font-extrabold text-white shadow-lg"
+                          >
+                            <Play className="w-3 h-3 fill-current" />
+                            <span>{v4Config.watchBtnText || 'شاهد وحمل الان'}</span>
+                          </span>
+                        )}
+                        {v4Config.showWatchlistBtn && (
+                          <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/20 border border-white/20 text-xs font-bold text-white">
+                            +
+                          </span>
+                        )}
+                      </div>
+                    )}
+
+                    {v4Config.showTagline && activeSlide?.tagline && (
+                      <p className="inline-flex items-center gap-1.5 text-[11px] font-bold text-white/90">
+                        <span
+                          style={{ backgroundColor: previewAccent }}
+                          className="inline-block h-3 w-[3px] rounded-full"
+                        />
+                        <span>{activeSlide.tagline}</span>
+                      </p>
+                    )}
+                  </div>
+
+                  {v4Config.showBottomStrip && (
+                    <div className="pt-2 flex items-center justify-between gap-3 overflow-hidden">
+                      {previewSlides
+                        .slice(0, previewDevice === 'mobile' ? 3 : 5)
+                        .map((s, idx) => {
+                          const isAct = idx === previewSlideIdx % previewSlides.length;
+                          const stripPng = v4Config.titleLogos[s.id];
+                          return (
+                            <div key={s.id} className="relative pb-1.5 text-center truncate">
+                              {v4Config.usePngLogoInStrip && stripPng ? (
+                                <img
+                                  src={stripPng}
+                                  alt={s.title}
+                                  referrerPolicy="no-referrer"
+                                  style={{
+                                    height: `${Math.min(34, v4Config.stripLogoHeightPx)}px`,
+                                  }}
+                                  className={`mx-auto object-contain ${
+                                    isAct ? 'opacity-100' : 'opacity-70'
+                                  }`}
+                                />
+                              ) : (
+                                <span
+                                  style={{
+                                    fontSize: `${Math.min(16, v4Config.stripTextSizePx)}px`,
+                                  }}
+                                  className={`font-black truncate ${
+                                    isAct ? 'text-white' : 'text-white/65'
+                                  }`}
+                                >
+                                  {s.englishTitle || s.title}
+                                </span>
+                              )}
+                              {isAct && (
+                                <span
+                                  style={{ backgroundColor: previewAccent }}
+                                  className="block mx-auto mt-1 h-[2.5px] w-8 rounded-full"
+                                />
+                              )}
+                            </div>
+                          );
+                        })}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+          </div>
         ) : (
         <div
           className={`rtv-site-preview mx-auto rounded-2xl overflow-hidden border border-white/15 bg-[#0a0b0e] relative transition-all ${
@@ -845,12 +1063,23 @@ export function SliderCustomizationPanel({
         />
       )}
 
+      {heroSliderVariant === 'stream_v4' && (
+        <StreamV4SliderSettingsPanel
+          homeConfig={draft}
+          catalog={catalog}
+          onGetAuthToken={onGetAuthToken}
+          onNotify={onNotify}
+        />
+      )}
+
       {heroSliderVariant !== 'original' && (
         <div className="rounded-2xl bg-amber-500/10 border border-amber-400/25 px-4 py-3 text-xs text-amber-200 leading-relaxed">
           ملاحظة:{' '}
           {heroSliderVariant === 'cinematic'
             ? 'التصميم السينمائي 3D يعرض الصورة واسم العمل فقط دون أي أزرار أو تفاصيل.'
-            : 'أدوات السلايدر الثالث (صور PNG + العناصر + الأحجام) موجودة أعلاه وتعمل باستقلال كامل.'}{' '}
+            : heroSliderVariant === 'showcase'
+              ? 'أدوات السلايدر الثالث (صور PNG + العناصر + الأحجام) موجودة أعلاه وتعمل باستقلال كامل.'
+              : 'أدوات السلايدر الرابع (صور PNG + ألوان هوية الموقع + العناصر + الأحجام) موجودة أعلاه وتعمل باستقلال كامل.'}{' '}
           الإعدادات أدناه خاصة بتخصيص <strong className="text-white">السلايدر الأساسي</strong> وتظل محفوظة كما هي عند الرجوع إليه.
         </div>
       )}

@@ -48,6 +48,7 @@ import { OptimizedImage } from './OptimizedImage';
 import { RunningRabbitLoader } from './RunningRabbitLoader';
 import { CinematicHeroSlider } from './CinematicHeroSlider';
 import { ShowcaseHeroSlider } from './ShowcaseHeroSlider';
+import { StreamV4HeroSlider } from './StreamV4HeroSlider';
 import { useHeroSliderVariant } from '../lib/heroSliderMode';
 
 interface HomeViewProps {
@@ -521,6 +522,17 @@ export function HomeView({
           />
         ) : heroSliderVariant === 'showcase' ? (
           <ShowcaseHeroSlider
+            slides={heroSlides}
+            autoPlayEnabled={autoPlayEnabled}
+            slideIntervalSec={slideIntervalSec}
+            pauseOnHover={pauseOnHover}
+            watchlistIds={watchlistIds}
+            onSelectMedia={onSelectMedia}
+            onPlayNow={onPlayNow}
+            onToggleWatchlist={onToggleWatchlist}
+          />
+        ) : heroSliderVariant === 'stream_v4' ? (
+          <StreamV4HeroSlider
             slides={heroSlides}
             autoPlayEnabled={autoPlayEnabled}
             slideIntervalSec={slideIntervalSec}

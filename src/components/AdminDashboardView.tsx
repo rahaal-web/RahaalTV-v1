@@ -72,6 +72,7 @@ import {
   Trash2,
   Tv,
   Type,
+  Upload,
   Users,
   Wand2,
   Wrench,
@@ -248,6 +249,11 @@ import {
   normalizeHomeConfig,
   saveStoredHomeConfig,
 } from '../lib/homeConfig';
+import {
+  getStreamV4MoviePngLogo,
+  setStreamV4MoviePngLogo,
+  uploadTransparentSliderPng,
+} from '../lib/streamV4SliderConfig';
 import { loadStoredRecentlyWatchedUiConfig } from '../lib/recentlyWatchedConfig';
 import {
   applyTypographyToDocument,
@@ -1195,6 +1201,8 @@ export function AdminDashboardView({
   const [searchQuery, setSearchQuery] = useState('');
   const [kindFilter, setKindFilter] = useState<string>('all');
   const [editingItem, setEditingItem] = useState<MediaItem | null>(null);
+  const [editingSliderPngUrl, setEditingSliderPngUrl] = useState('');
+  const [uploadingSliderPng, setUploadingSliderPng] = useState(false);
   const [editorTab, setEditorTab] = useState<EditorSubTab>('basic');
   const [isCreatingNew, setIsCreatingNew] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -1662,6 +1670,7 @@ export function AdminDashboardView({
     const fresh = createEmptyMedia();
     setIsCreatingNew(true);
     setEditingItem(fresh);
+    setEditingSliderPngUrl('');
     setEditorImageProposal(null);
     setEditorTab('basic');
     setCategoriesText(fresh.categories.join('، '));
@@ -1671,6 +1680,7 @@ export function AdminDashboardView({
   const openEditorForExisting = (item: MediaItem) => {
     setIsCreatingNew(false);
     setEditorImageProposal(null);
+    setEditingSliderPngUrl(getStreamV4MoviePngLogo(item.id));
     const resolvedPoster = getPosterUrl(item);
     const backdropInfo = getBackdropInfo(item);
     setEditingItem({
@@ -1698,6 +1708,7 @@ export function AdminDashboardView({
     const draft = scrapedToMediaItem(scraped);
     setIsCreatingNew(true);
     setEditingItem(draft);
+    setEditingSliderPngUrl('');
     setEditorImageProposal(null);
     setEditorTab('basic');
     setCategoriesText(draft.categories.join('، '));
@@ -1877,6 +1888,7 @@ export function AdminDashboardView({
         activeActorUid,
         !existsInDb
       );
+      setStreamV4MoviePngLogo(verification.cleanedItem.id, editingSliderPngUrl);
       const removedNote =
         verification.removedCount > 0
           ? ` (تم منع واستبعاد ${verification.removedCount} سيرفر معطل أو صفحة موقع تلقائياً)`
@@ -4837,6 +4849,12 @@ export function AdminDashboardView({
                   homeConfig={activeHomeConfig}
                   catalog={catalog}
                   busy={busyAction}
+                  onGetAuthToken={async () => {
+                    if (user && typeof (user as User).getIdToken === 'function') {
+                      return await (user as User).getIdToken();
+                    }
+                    return undefined;
+                  }}
                   onSaveHomeConfig={handleSaveHomeConfig}
                   onNotify={onNotify}
                 />
@@ -7473,6 +7491,106 @@ export function AdminDashboardView({
                             </div>
                           </div>
                         )}
+
+                        {/* Slider-Only PNG Title Logo Upload (Appears ONLY when movie is placed in 4th Slider) */}
+                        <div className="rounded-xl border border-white/10 bg-[#0c1821]/90 p-3.5 space-y-2.5">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div>
+                              <span className="text-xs font-extrabold text-white">
+                                صورة شعار الفيلم PNG (للسلايدر الرابع فقط)
+                              </span>
+                              <p className="text-[11px] text-[#b7c9ef]/85 mt-0.5">
+                                تظهر هذه الصورة بدلاً من اسم الفيلم فقط عند إضافة الفيلم إلى السلايدر، ولا تظهر على بطاقات الموقع.
+                              </p>
+                            </div>
+                            <div className="h-11 w-32 shrink-0 rounded-lg bg-[#060608] border border-white/15 flex items-center justify-center p-1 overflow-hidden">
+                              {editingSliderPngUrl ? (
+                                <img
+                                  src={editingSliderPngUrl}
+                                  alt="معاينة شعار السلايدر PNG"
+                                  referrerPolicy="no-referrer"
+                                  className="max-h-full max-w-full object-contain"
+                                />
+                              ) : (
+                                <span className="text-[10px] font-bold text-white/40">بدون PNG</span>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-2">
+                            <input
+                              type="url"
+                              dir="ltr"
+                              value={
+                                editingSliderPngUrl.startsWith('data:')
+                                  ? ''
+                                  : editingSliderPngUrl
+                              }
+                              onChange={(e) => setEditingSliderPngUrl(e.target.value)}
+                              placeholder={
+                                editingSliderPngUrl.startsWith('data:')
+                                  ? 'تم رفع صورة PNG — أو الصق رابطاً جديداً'
+                                  : 'https://.../movie-title-logo.png'
+                              }
+                              className="flex-1 min-w-[180px] rounded-xl bg-[#1a242e] border border-white/10 px-3 py-2 font-latin text-xs text-white focus:border-[#E50914] focus:outline-none"
+                            />
+                            <label className="inline-flex items-center gap-1.5 rounded-xl bg-[#E50914] hover:bg-[#f40612] px-3.5 py-2 text-xs font-extrabold text-white cursor-pointer shrink-0">
+                              {uploadingSliderPng ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              ) : (
+                                <Upload className="w-3.5 h-3.5" />
+                              )}
+                              <span>{uploadingSliderPng ? 'جاري الرفع...' : 'رفع PNG'}</span>
+                              <input
+                                type="file"
+                                accept="image/png,image/webp,image/svg+xml"
+                                className="hidden"
+                                onChange={async (e) => {
+                                  const file = e.target.files?.[0];
+                                  e.target.value = '';
+                                  if (!file) return;
+                                  setUploadingSliderPng(true);
+                                  try {
+                                    const token =
+                                      user && typeof (user as User).getIdToken === 'function'
+                                        ? await (user as User).getIdToken().catch(() => undefined)
+                                        : undefined;
+                                    const res = await uploadTransparentSliderPng(file, token);
+                                    setEditingSliderPngUrl(res.url);
+                                    if (!isCreatingNew && editingItem?.id) {
+                                      setStreamV4MoviePngLogo(editingItem.id, res.url);
+                                    }
+                                    onNotify('تم تجهيز صورة الشعار PNG للسلايدر بنجاح');
+                                  } catch (err) {
+                                    onNotify(
+                                      err instanceof Error
+                                        ? err.message
+                                        : 'تعذر معالجة صورة PNG المختارة.'
+                                    );
+                                  } finally {
+                                    setUploadingSliderPng(false);
+                                  }
+                                }}
+                              />
+                            </label>
+                            {editingSliderPngUrl && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingSliderPngUrl('');
+                                  if (!isCreatingNew && editingItem?.id) {
+                                    setStreamV4MoviePngLogo(editingItem.id, '');
+                                  }
+                                  onNotify('تمت إزالة شعار السلايدر PNG');
+                                }}
+                                className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-[#1a242e] hover:bg-red-600/25 border border-white/10 text-red-400 cursor-pointer shrink-0"
+                                title="إزالة صورة PNG"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
 
                         {/* Trailer Row */}
                         <div>

@@ -1,0 +1,576 @@
+/* ============================================================================
+   RahaL TV — Fourth Hero Slider Style: Cinema Logo Owl Stage (.rtv-v4-slider)
+   - Faithful architecture inspired by reference <main-slider><div class="owl-head">
+   - Smooth RTL-aware horizontal sliding track + swipe/drag + optional nav arrows
+   - Full-bleed <figure> backdrop with Rahaal TV site theme colors & seamless bottom fade
+   - Right-side vertically centered <article> (`top: 2.5vw; bottom: 16.5vw` desktop)
+   - Per-movie transparent PNG title logo (<picture>) shown ONLY inside slider
+   - Signature .shine watch button + circular frosted watchlist button
+   - Borderless bottom .owl-dots PNG logo navigation bar with site-accent indicator
+   Completely independent of Original, Cinematic 3D, and Showcase sliders.
+   ============================================================================ */
+
+.rtv-v4-slider {
+  position: relative;
+  width: 100vw;
+  max-width: 100vw;
+  margin-inline: calc(50% - 50vw);
+  min-height: clamp(520px, 76svh, 640px);
+  background-color: var(--rtv-site-bg, #0f0f0f);
+  color: var(--rtv-site-text, #ffffff);
+  overflow: hidden;
+  overflow-x: clip;
+  isolation: isolate;
+  touch-action: pan-y;
+}
+
+@media (max-width: 767px) and (orientation: landscape) {
+  .rtv-v4-slider {
+    min-height: clamp(410px, 90svh, 520px);
+  }
+}
+
+@media (min-width: 640px) {
+  .rtv-v4-slider {
+    min-height: clamp(540px, 64vw, var(--rtv-v4-height, 680px));
+  }
+}
+
+@media (min-width: 1024px) {
+  .rtv-v4-slider {
+    height: clamp(580px, 52vw, var(--rtv-v4-height, 680px));
+    min-height: 580px;
+  }
+}
+
+/* Horizontal Sliding Stage (Owl-Head Equivalent) */
+.rtv-v4-stage-outer {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: inherit;
+  overflow: hidden;
+}
+
+.rtv-v4-stage-track {
+  display: flex;
+  flex-direction: row;
+  width: 100%;
+  height: 100%;
+  min-height: inherit;
+  transition: transform 0.68s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+}
+
+.rtv-v4-slide {
+  position: relative;
+  flex: 0 0 100%;
+  width: 100%;
+  height: 100%;
+  min-height: inherit;
+  overflow: hidden;
+}
+
+/* Full-Bleed <figure> Backdrop */
+.rtv-v4-figure {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+  background-color: var(--rtv-site-bg, #0f0f0f);
+}
+
+.rtv-v4-bg-shell {
+  width: 100%;
+  height: 100%;
+  background: var(--rtv-site-bg, #0f0f0f);
+}
+
+.rtv-v4-bg-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 50% 18%;
+  transform: scale(1.015);
+  transition: transform 6.5s ease-out;
+}
+
+.rtv-v4-slide[data-active="true"] .rtv-v4-bg-img {
+  transform: scale(1.045);
+}
+
+@media (min-width: 1024px) {
+  .rtv-v4-bg-img {
+    object-position: 24% 20%;
+  }
+}
+
+/* Site-Identity Multi-Directional Scrim (inherits --rtv-site-bg & --rtv-site-surface-2) */
+.rtv-v4-scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  background:
+    linear-gradient(
+      to bottom,
+      color-mix(in srgb, var(--rtv-site-bg, #0f0f0f) 76%, transparent) 0%,
+      color-mix(in srgb, var(--rtv-site-bg, #0f0f0f) 24%, transparent) 18%,
+      transparent 38%
+    ),
+    linear-gradient(
+      to top,
+      var(--rtv-site-bg, #0f0f0f) 0%,
+      color-mix(in srgb, var(--rtv-site-bg, #0f0f0f) 94%, transparent) 16%,
+      color-mix(in srgb, var(--rtv-site-bg, #0f0f0f) 66%, transparent) 38%,
+      color-mix(in srgb, var(--rtv-site-bg, #0f0f0f) 18%, transparent) 64%,
+      transparent 84%
+    );
+  opacity: var(--rtv-v4-scrim-opacity, 0.88);
+}
+
+@media (min-width: 768px) {
+  .rtv-v4-scrim {
+    background:
+      linear-gradient(
+        to bottom,
+        color-mix(in srgb, var(--rtv-site-bg, #0f0f0f) 68%, transparent) 0%,
+        color-mix(in srgb, var(--rtv-site-bg, #0f0f0f) 18%, transparent) 18%,
+        transparent 38%
+      ),
+      linear-gradient(
+        to left,
+        color-mix(in srgb, var(--rtv-site-bg, #0f0f0f) 96%, var(--rtv-site-surface-2, #0c1821)) 0%,
+        color-mix(in srgb, var(--rtv-site-bg, #0f0f0f) 84%, transparent) 24%,
+        color-mix(in srgb, var(--rtv-site-bg, #0f0f0f) 46%, transparent) 48%,
+        color-mix(in srgb, var(--rtv-site-bg, #0f0f0f) 10%, transparent) 72%,
+        transparent 100%
+      ),
+      linear-gradient(
+        to top,
+        var(--rtv-site-bg, #0f0f0f) 0%,
+        color-mix(in srgb, var(--rtv-site-bg, #0f0f0f) 88%, transparent) 15%,
+        color-mix(in srgb, var(--rtv-site-bg, #0f0f0f) 44%, transparent) 32%,
+        transparent 58%
+      );
+  }
+}
+
+/* Right-Side Vertically Centered <article> (Matches Reference CSS: top 2.5vw, bottom 16.5vw) */
+.rtv-v4-article {
+  position: absolute;
+  inset-inline: 0;
+  top: 76px;
+  bottom: 92px;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  max-width: 1440px;
+  margin-inline: auto;
+  padding-inline: 16px;
+  pointer-events: none;
+}
+
+@media (min-width: 640px) {
+  .rtv-v4-article {
+    top: 84px;
+    bottom: 112px;
+    padding-inline: 28px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .rtv-v4-article {
+    top: calc(74px + 1.5vw);
+    bottom: clamp(118px, 13.5vw, 185px);
+    justify-content: center;
+    padding-inline: calc(40 * 100vw / 1440);
+  }
+}
+
+.rtv-v4-article-inner {
+  width: 100%;
+  max-width: 520px;
+  text-align: right;
+  pointer-events: auto;
+}
+
+.rtv-v4-slide[data-active="true"] .rtv-v4-article-inner {
+  animation: rtvV4EditorialIn 0.65s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* <picture> Hero PNG Title Logo */
+.rtv-v4-picture {
+  display: inline-block;
+  margin-bottom: 12px;
+  max-width: 100%;
+  cursor: pointer;
+}
+
+.rtv-v4-logo-img {
+  display: block;
+  width: auto;
+  height: auto;
+  max-height: clamp(54px, 15vw, var(--rtv-v4-logo-h, 135px));
+  max-width: min(82vw, var(--rtv-v4-logo-w, 380px));
+  object-fit: contain;
+  object-position: right center;
+  filter: drop-shadow(0 10px 26px rgba(0, 0, 0, 0.72));
+  pointer-events: none;
+}
+
+@media (min-width: 640px) {
+  .rtv-v4-logo-img {
+    max-height: var(--rtv-v4-logo-h, 135px);
+    max-width: min(100%, var(--rtv-v4-logo-w, 380px));
+  }
+}
+
+.rtv-v4-title-fallback {
+  margin: 0 0 10px;
+  color: #ffffff;
+  font-family: var(--font-display, "Cairo", "Tajawal", system-ui, sans-serif);
+  font-weight: 900;
+  font-size: clamp(24px, 6vw, var(--rtv-v4-title-size, 46px));
+  line-height: 1.08;
+  text-wrap: balance;
+  text-shadow: 0 6px 26px rgba(0, 0, 0, 0.78);
+  cursor: pointer;
+}
+
+.rtv-v4-title-fallback--latin {
+  font-family: var(--font-latin, "Cairo", system-ui, sans-serif);
+  text-transform: uppercase;
+  letter-spacing: -0.02em;
+}
+
+/* Metadata & Cast Typography */
+.rtv-v4-meta {
+  font-size: clamp(11px, 2.8vw, var(--rtv-v4-meta-size, 13px));
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.rtv-v4-story {
+  font-size: clamp(12px, 3vw, var(--rtv-v4-story-size, 14px));
+  color: rgba(235, 237, 245, 0.84);
+  line-height: 1.6;
+  max-width: 470px;
+}
+
+.rtv-v4-cast {
+  font-size: clamp(11px, 2.8vw, var(--rtv-v4-cast-size, 13px));
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+/* Action Buttons (<ul class="btns"> equivalent) */
+.rtv-v4-btns {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.rtv-v4-watch-btn {
+  position: relative;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 46px;
+  padding: 11px 32px;
+  border-radius: 999px;
+  background-color: var(--rtv-v4-accent, var(--rtv-site-accent, #E50914));
+  color: #ffffff;
+  font-weight: 800;
+  font-size: clamp(12px, 1.3vw, 15px);
+  box-shadow: 0 10px 28px var(--rtv-v4-glow, var(--rtv-site-glow, rgba(229, 9, 20, 0.45)));
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1), background-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.rtv-v4-watch-btn:hover {
+  background-color: var(--rtv-v4-accent-hover, var(--rtv-site-accent-hover, #F6121D));
+  transform: translateY(-1px);
+  box-shadow: 0 14px 34px var(--rtv-v4-glow, var(--rtv-site-glow, rgba(229, 9, 20, 0.6)));
+}
+
+.rtv-v4-watch-btn:active {
+  transform: scale(0.98);
+}
+
+/* Reference .shine diagonal light sweep */
+.rtv-v4-shine::after {
+  content: "";
+  position: absolute;
+  top: -50%;
+  inset-inline-start: -65%;
+  width: 45%;
+  height: 200%;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.32) 50%,
+    transparent 100%
+  );
+  transform: skewX(-24deg);
+  pointer-events: none;
+  opacity: 0;
+}
+
+.rtv-v4-shine:hover::after {
+  opacity: 1;
+  animation: rtvV4ShineSweep 0.85s ease forwards;
+}
+
+/* Circular Watchlist Button matching Reference Style 4 */
+.rtv-v4-watchlist-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 46px;
+  min-width: 46px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  color: #ffffff;
+  backdrop-filter: blur(8px);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: transform 0.2s ease, background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+
+.rtv-v4-watchlist-btn:hover {
+  background: rgba(255, 255, 255, 0.3);
+  transform: scale(1.05);
+}
+
+.rtv-v4-watchlist-btn[data-saved="true"] {
+  background: #ffffff;
+  border-color: #ffffff;
+  color: #0f0f0f;
+}
+
+/* Optional <span aria-label="comment"> Accent Note */
+.rtv-v4-comment {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  font-size: 12px;
+  font-weight: 700;
+  font-style: normal;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.rtv-v4-comment-bar {
+  display: inline-block;
+  width: 3px;
+  height: 14px;
+  border-radius: 999px;
+  background-color: var(--rtv-v4-accent, var(--rtv-site-accent, #E50914));
+}
+
+/* Optional Owl Nav Arrows */
+.rtv-v4-nav-btn {
+  position: absolute;
+  top: 46%;
+  transform: translateY(-50%);
+  z-index: 8;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: rgba(15, 15, 18, 0.56);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: #ffffff;
+  backdrop-filter: blur(6px);
+  cursor: pointer;
+  opacity: 0.72;
+  transition: opacity 0.2s ease, background-color 0.2s ease, transform 0.2s ease;
+}
+
+.rtv-v4-nav-btn:hover {
+  opacity: 1;
+  background-color: var(--rtv-v4-accent, var(--rtv-site-accent, #E50914));
+  border-color: transparent;
+}
+
+.rtv-v4-nav-prev {
+  inset-inline-start: 14px;
+}
+
+.rtv-v4-nav-next {
+  inset-inline-end: 14px;
+}
+
+/* Bottom Borderless .owl-dots PNG Logo Strip (Matches Screenshot 161 & 162) */
+.rtv-v4-dots-wrap {
+  position: absolute;
+  inset-inline: 0;
+  bottom: 12px;
+  z-index: 7;
+  width: 100%;
+  max-width: 1440px;
+  margin-inline: auto;
+  padding-inline: 16px;
+}
+
+@media (min-width: 640px) {
+  .rtv-v4-dots-wrap {
+    bottom: 18px;
+    padding-inline: 28px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .rtv-v4-dots-wrap {
+    bottom: clamp(18px, 2.2vw, 32px);
+    padding-inline: calc(40 * 100vw / 1440);
+  }
+}
+
+.rtv-v4-dots {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 18px;
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  padding: 6px 4px 10px;
+}
+
+@media (min-width: 1024px) {
+  .rtv-v4-dots {
+    justify-content: space-between;
+    gap: 16px;
+  }
+}
+
+.rtv-v4-dot {
+  position: relative;
+  flex: 0 0 auto;
+  scroll-snap-align: center;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 46px;
+  padding: 4px 8px 10px;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  opacity: 0.72;
+  transition: opacity 0.25s ease, transform 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.rtv-v4-dot:hover {
+  opacity: 0.96;
+  transform: translateY(-2px);
+}
+
+.rtv-v4-dot[data-active="true"] {
+  opacity: 1;
+  transform: scale(1.06);
+}
+
+.rtv-v4-dot-logo {
+  display: block;
+  width: auto;
+  height: clamp(26px, 7vw, var(--rtv-v4-strip-logo-h, 44px));
+  max-width: 155px;
+  object-fit: contain;
+  filter: drop-shadow(0 3px 12px rgba(0, 0, 0, 0.85));
+  pointer-events: none;
+}
+
+.rtv-v4-dot-text {
+  display: block;
+  max-width: 155px;
+  color: rgba(255, 255, 255, 0.86);
+  font-family: var(--font-display, "Cairo", "Tajawal", system-ui, sans-serif);
+  font-weight: 900;
+  font-size: clamp(12px, 3vw, var(--rtv-v4-strip-text-size, 15px));
+  line-height: 1.12;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.9);
+}
+
+.rtv-v4-dot-text--latin {
+  font-family: var(--font-latin, "Cairo", system-ui, sans-serif);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.rtv-v4-dot-indicator {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 44px;
+  height: 3px;
+  border-radius: 999px;
+  background-color: var(--rtv-v4-accent, var(--rtv-site-accent, #E50914));
+  box-shadow: 0 0 12px var(--rtv-v4-glow, var(--rtv-site-glow, rgba(229, 9, 20, 0.85)));
+  animation: rtvV4DotIndicatorIn 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes rtvV4EditorialIn {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 14px, 0);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes rtvV4ShineSweep {
+  0% {
+    inset-inline-start: -65%;
+  }
+  100% {
+    inset-inline-start: 135%;
+  }
+}
+
+@keyframes rtvV4DotIndicatorIn {
+  0% {
+    opacity: 0;
+    transform: translateX(-50%) scaleX(0.35);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(-50%) scaleX(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rtv-v4-stage-track,
+  .rtv-v4-bg-img,
+  .rtv-v4-slide[data-active="true"] .rtv-v4-article-inner,
+  .rtv-v4-dot-indicator {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+html[data-rtv-low-spec="true"] .rtv-v4-stage-track,
+html[data-rtv-low-spec="true"] .rtv-v4-bg-img,
+html[data-rtv-low-spec="true"] .rtv-v4-slide[data-active="true"] .rtv-v4-article-inner {
+  animation: none !important;
+  transition: none !important;
+}
