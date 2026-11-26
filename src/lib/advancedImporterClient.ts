@@ -4,284 +4,37 @@ import {
   bulkUpdateMediaInFirestore,
   saveMediaToFirestore,
 } from './firebase';
+import {
+  registerSourceIndexEntriesApi,
+  updateJobItemsStatusApi,
+} from './advancedImporterTransport';
 import type { CastMember, MediaItem } from '../types/media';
 import type {
   AdvancedImportedMovie,
   DuplicateMatchInfo,
-  ImporterJobConfig,
   ImporterJobItemStatus,
-  ImporterJobSummary,
-  ImporterPaginatedItemsResponse,
   SourceIndexEntry,
 } from '../types/advancedImporter';
 
-const ACTIVE_JOB_STORAGE_KEY = 'rahaltv_adv_importer_active_job_v1';
-
-export function getSavedActiveImporterJobId(): string {
-  try {
-    return localStorage.getItem(ACTIVE_JOB_STORAGE_KEY) || '';
-  } catch {
-    return '';
-  }
-}
-
-export function setSavedActiveImporterJobId(jobId: string): void {
-  try {
-    if (jobId) localStorage.setItem(ACTIVE_JOB_STORAGE_KEY, jobId);
-    else localStorage.removeItem(ACTIVE_JOB_STORAGE_KEY);
-  } catch {
-    // ignore storage quota errors
-  }
-}
-
-function buildApiUrl(customApiUrl: string | undefined, path: string): string {
-  const base = String(customApiUrl || '').trim().replace(/\/+$/, '');
-  return base ? `${base}${path}` : path;
-}
-
-async function getAuthHeaders(user: User | null): Promise<Record<string, string>> {
-  if (!user) throw new Error('يرجى تسجيل الدخول بحساب مسؤول أو مشرف معتمد.');
-  const token = await user.getIdToken();
-  return {
-    'Content-Type': 'application/json',
-    Authorization: `Bearer ${token}`,
-  };
-}
-
-export async function extractSingleMovieApi(params: {
-  user: User | null;
-  customApiUrl?: string;
-  url?: string;
-  rawHtml?: string;
-  useAdapters?: boolean;
-  enrichExternalMetadata?: boolean;
-}): Promise<{
-  movie: AdvancedImportedMovie;
-  strategy: string;
-  sourceDuplicate: SourceIndexEntry | null;
-}> {
-  const headers = await getAuthHeaders(params.user);
-  const res = await fetch(buildApiUrl(params.customApiUrl, '/api/advanced-importer/single'), {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({
-      url: params.url,
-      rawHtml: params.rawHtml,
-      useAdapters: params.useAdapters,
-      enrichExternalMetadata: params.enrichExternalMetadata,
-    }),
-  });
-  const data = (await res.json()) as {
-    ok?: boolean;
-    error?: string;
-    movie?: AdvancedImportedMovie;
-    strategy?: string;
-    sourceDuplicate?: SourceIndexEntry | null;
-  };
-  if (!res.ok || !data.ok || !data.movie) {
-    throw new Error(data.error || 'تعذر استخراج بيانات الفيلم.');
-  }
-  return {
-    movie: data.movie,
-    strategy: data.strategy || 'Direct Extract',
-    sourceDuplicate: data.sourceDuplicate || null,
-  };
-}
-
-export async function fetchSourceIndexApi(
-  user: User | null,
-  customApiUrl?: string
-): Promise<Record<string, SourceIndexEntry>> {
-  const headers = await getAuthHeaders(user);
-  const res = await fetch(buildApiUrl(customApiUrl, '/api/advanced-importer/source-index'), {
-    headers,
-  });
-  const data = (await res.json()) as { ok?: boolean; index?: Record<string, SourceIndexEntry> };
-  return data.ok && data.index ? data.index : {};
-}
-
-export async function registerSourceIndexEntriesApi(
-  user: User | null,
-  entries: SourceIndexEntry[],
-  customApiUrl?: string
-): Promise<void> {
-  if (!entries.length) return;
-  const headers = await getAuthHeaders(user);
-  await fetch(buildApiUrl(customApiUrl, '/api/advanced-importer/source-index'), {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({ entries }),
-  });
-}
-
-export async function listImporterJobsApi(
-  user: User | null,
-  customApiUrl?: string
-): Promise<ImporterJobSummary[]> {
-  const headers = await getAuthHeaders(user);
-  const res = await fetch(buildApiUrl(customApiUrl, '/api/advanced-importer/jobs'), { headers });
-  const data = (await res.json()) as { ok?: boolean; jobs?: ImporterJobSummary[]; error?: string };
-  if (!res.ok || !data.ok) {
-    throw new Error(data.error || 'تعذر تحميل قائمة المهام.');
-  }
-  return data.jobs || [];
-}
-
-export async function startBulkImporterJobApi(
-  user: User | null,
-  config: ImporterJobConfig,
-  customApiUrl?: string
-): Promise<ImporterJobSummary> {
-  const headers = await getAuthHeaders(user);
-  const res = await fetch(buildApiUrl(customApiUrl, '/api/advanced-importer/jobs'), {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(config),
-  });
-  const data = (await res.json()) as { ok?: boolean; job?: ImporterJobSummary; error?: string };
-  if (!res.ok || !data.ok || !data.job) {
-    throw new Error(data.error || 'تعذر بدء مهمة جلب الموقع.');
-  }
-  return data.job;
-}
-
-export async function getImporterJobApi(
-  user: User | null,
-  jobId: string,
-  customApiUrl?: string
-): Promise<ImporterJobSummary> {
-  const headers = await getAuthHeaders(user);
-  const res = await fetch(
-    buildApiUrl(customApiUrl, `/api/advanced-importer/jobs/${encodeURIComponent(jobId)}`),
-    { headers }
-  );
-  const data = (await res.json()) as { ok?: boolean; job?: ImporterJobSummary; error?: string };
-  if (!res.ok || !data.ok || !data.job) {
-    throw new Error(data.error || 'لم يتم العثور على المهمة.');
-  }
-  return data.job;
-}
-
-export async function controlImporterJobApi(
-  user: User | null,
-  jobId: string,
-  action: 'pause' | 'resume' | 'cancel' | 'retry-failed',
-  extraBody?: Record<string, unknown>,
-  customApiUrl?: string
-): Promise<ImporterJobSummary> {
-  const headers = await getAuthHeaders(user);
-  const res = await fetch(
-    buildApiUrl(customApiUrl, `/api/advanced-importer/jobs/${encodeURIComponent(jobId)}/${action}`),
-    {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(extraBody || {}),
-    }
-  );
-  const data = (await res.json()) as { ok?: boolean; job?: ImporterJobSummary; error?: string };
-  if (!res.ok || !data.ok || !data.job) {
-    throw new Error(data.error || 'فشل تنفيذ الإجراء على المهمة.');
-  }
-  return data.job;
-}
-
-export async function deleteImporterJobApi(
-  user: User | null,
-  jobId: string,
-  customApiUrl?: string
-): Promise<void> {
-  const headers = await getAuthHeaders(user);
-  await fetch(
-    buildApiUrl(customApiUrl, `/api/advanced-importer/jobs/${encodeURIComponent(jobId)}`),
-    {
-      method: 'DELETE',
-      headers,
-    }
-  );
-}
-
-export async function getPaginatedJobItemsApi(params: {
-  user: User | null;
-  jobId: string;
-  page: number;
-  pageSize: number;
-  status: 'all' | ImporterJobItemStatus;
-  search: string;
-  customApiUrl?: string;
-}): Promise<ImporterPaginatedItemsResponse> {
-  const headers = await getAuthHeaders(params.user);
-  const qs = new URLSearchParams({
-    page: String(params.page),
-    pageSize: String(params.pageSize),
-    status: params.status,
-    search: params.search,
-  });
-  const res = await fetch(
-    buildApiUrl(
-      params.customApiUrl,
-      `/api/advanced-importer/jobs/${encodeURIComponent(params.jobId)}/items?${qs.toString()}`
-    ),
-    { headers }
-  );
-  const data = (await res.json()) as ImporterPaginatedItemsResponse & { error?: string };
-  if (!res.ok || !data.ok) {
-    throw new Error(data.error || 'تعذر قراءة نتائج المهمة.');
-  }
-  return data;
-}
-
-export async function updateJobItemsStatusApi(
-  user: User | null,
-  jobId: string,
-  updates: Array<{ seq: number; status: ImporterJobItemStatus; savedMediaId?: string }>,
-  customApiUrl?: string
-): Promise<ImporterJobSummary | null> {
-  if (!updates.length) return null;
-  const headers = await getAuthHeaders(user);
-  const res = await fetch(
-    buildApiUrl(customApiUrl, `/api/advanced-importer/jobs/${encodeURIComponent(jobId)}/items-status`),
-    {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ updates }),
-    }
-  );
-  const data = (await res.json()) as { ok?: boolean; job?: ImporterJobSummary };
-  return data.ok && data.job ? data.job : null;
-}
-
-export async function downloadJobExportApi(params: {
-  user: User | null;
-  jobId: string;
-  format: 'json' | 'csv';
-  statusFilter?: string;
-  customApiUrl?: string;
-}): Promise<void> {
-  const headers = await getAuthHeaders(params.user);
-  const qs = new URLSearchParams({
-    format: params.format,
-    status: params.statusFilter || 'all',
-  });
-  const res = await fetch(
-    buildApiUrl(
-      params.customApiUrl,
-      `/api/advanced-importer/jobs/${encodeURIComponent(params.jobId)}/export?${qs.toString()}`
-    ),
-    { headers }
-  );
-  if (!res.ok) {
-    throw new Error('تعذر تصدير ملف النتائج من الخادم.');
-  }
-  const blob = await res.blob();
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `rahaltv-importer-${params.jobId}.${params.format}`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 5000);
-}
+export {
+  _setStaticBackendDetectedForTest,
+  controlImporterJobApi,
+  deleteImporterJobApi,
+  downloadJobExportApi,
+  extractSingleMovieApi,
+  fetchSourceIndexApi,
+  getImporterJobApi,
+  getPaginatedJobItemsApi,
+  getSavedActiveImporterJobId,
+  listImporterJobsApi,
+  parseJsonResponseSafe,
+  registerSourceIndexEntriesApi,
+  setSavedActiveImporterJobId,
+  shouldUseBrowserImporter,
+  startBulkImporterJobApi,
+  StaticBackendUnavailableError,
+  updateJobItemsStatusApi,
+} from './advancedImporterTransport';
 
 // =========================================================================
 // Duplicate Detection Engine (Source URL, Movie ID, Title + Year)

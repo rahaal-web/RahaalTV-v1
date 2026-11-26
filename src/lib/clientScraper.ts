@@ -21,7 +21,7 @@ import {
   parseSrcsetBestUrl,
 } from './imageMatching';
 
-function upgradeKnownImageUrlScraper(rawUrl: string | undefined | null): string {
+export function upgradeKnownImageUrlScraper(rawUrl: string | undefined | null): string {
   const clean = String(rawUrl || '').trim();
   if (!clean || !/^https?:\/\//i.test(clean)) return clean;
   if (/image\.tmdb\.org\/t\/p\//i.test(clean)) {
@@ -350,6 +350,25 @@ export default {
     const reqUrl = new URL(request.url);
     if (reqUrl.pathname === '/api/client-logs' && request.method === 'POST') {
       return handleClientErrorLog(request);
+    }
+
+    if (reqUrl.pathname.startsWith('/api/')) {
+      return new Response(
+        JSON.stringify({
+          ok: false,
+          code: 'STATIC_WORKER_NO_NODE_API',
+          error:
+            'هذه الواجهة البرمجية تتطلب خادم Node.js — سيتم استخدام محرك المتصفح و Cloudflare Worker المدمج تلقائياً.',
+        }),
+        {
+          status: 404,
+          headers: {
+            ...CORS_HEADERS,
+            'Content-Type': 'application/json; charset=utf-8',
+            'Cache-Control': 'no-store',
+          },
+        }
+      );
     }
 
     let target = (reqUrl.searchParams.get('url') || '').trim();
@@ -1803,7 +1822,7 @@ export function parseHtmlToMediaWithHintsBrowser(
   };
 }
 
-function isLikelyContentUrl(candidateUrl: string, allowedOrigins: string[]): boolean {
+export function isLikelyContentUrl(candidateUrl: string, allowedOrigins: string[]): boolean {
   try {
     const u = new URL(candidateUrl);
     if (!['http:', 'https:'].includes(u.protocol)) return false;
@@ -1832,7 +1851,7 @@ function isLikelyContentUrl(candidateUrl: string, allowedOrigins: string[]): boo
   }
 }
 
-function extractListingLinksAndPaginationBrowser(html: string, pageUrl: string) {
+export function extractListingLinksAndPaginationBrowser(html: string, pageUrl: string) {
   const doc = new DOMParser().parseFromString(html, 'text/html');
   const baseOrigin = new URL(pageUrl).origin;
   const canonicalHref =
@@ -2131,7 +2150,7 @@ function parseBloggerJsonEntries(json: BloggerFeedJson, origin: string, maxItems
   return { siteTitle, items };
 }
 
-async function tryBloggerFeedBrowser(
+export async function tryBloggerFeedBrowser(
   origin: string,
   maxItems: number
 ): Promise<{ siteTitle: string; items: ScrapedPayload[] } | null> {
@@ -2205,7 +2224,7 @@ async function tryBloggerFeedBrowser(
   return null;
 }
 
-async function tryWordPressApiBrowser(
+export async function tryWordPressApiBrowser(
   origin: string,
   maxItems: number
 ): Promise<{ siteTitle: string; items: ScrapedPayload[] } | null> {
@@ -2250,7 +2269,7 @@ async function tryWordPressApiBrowser(
   }
 }
 
-async function trySitemapDiscoveryBrowser(origin: string, maxItems: number): Promise<string[]> {
+export async function trySitemapDiscoveryBrowser(origin: string, maxItems: number): Promise<string[]> {
   const candidates = [`${origin}/sitemap.xml`, `${origin}/post-sitemap.xml`];
   const discovered: string[] = [];
 
@@ -2618,7 +2637,7 @@ function canonicalizeCompareUrlBrowser(rawUrl?: string): string {
   }
 }
 
-async function scrapeFullItemInBrowser(
+export async function scrapeFullItemInBrowser(
   mainUrl: string,
   mainHtml: string,
   options?: { skipEpisodeCrawl?: boolean }

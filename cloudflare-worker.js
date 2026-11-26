@@ -281,6 +281,25 @@ export default {
       return handleWorkerDbApi(request, env, reqUrl.pathname);
     }
 
+    if (reqUrl.pathname.startsWith('/api/')) {
+      return new Response(
+        JSON.stringify({
+          ok: false,
+          code: 'STATIC_WORKER_NO_NODE_API',
+          error:
+            'هذه الواجهة البرمجية تتطلب خادم Node.js — سيتم استخدام محرك المتصفح و Cloudflare Worker المدمج تلقائياً.',
+        }),
+        {
+          status: 404,
+          headers: {
+            ...CORS_HEADERS,
+            'Content-Type': 'application/json; charset=utf-8',
+            'Cache-Control': 'no-store',
+          },
+        }
+      );
+    }
+
     let target = (reqUrl.searchParams.get('url') || '').trim();
     const isPing = reqUrl.searchParams.has('ping');
 

@@ -16,26 +16,19 @@ import {
   resolveApiEndpoint,
   shouldSkipBackendApiCalls,
 } from './clientScraper';
-import { normalizeScraperAdapter } from './scraperAdapterUtils';
+import {
+  loadLocalScraperAdapters,
+  normalizeScraperAdapter,
+  STORAGE_ADAPTERS_KEY,
+} from './scraperAdapterUtils';
 import {
   ScraperAdapter,
   ScraperAdapterVersionRecord,
 } from '../types/scraperAdapter';
 
-const STORAGE_ADAPTERS_KEY = 'rahaltv_scraper_adapters_v1';
 const STORAGE_VERSIONS_KEY = 'rahaltv_scraper_adapter_versions_v1';
 
-export function loadLocalScraperAdapters(): ScraperAdapter[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_ADAPTERS_KEY);
-    if (!raw) return [];
-    const arr = JSON.parse(raw) as unknown;
-    if (!Array.isArray(arr)) return [];
-    return arr.map((item) => normalizeScraperAdapter(item as Partial<ScraperAdapter>));
-  } catch {
-    return [];
-  }
-}
+export { loadLocalScraperAdapters };
 
 export function saveLocalScraperAdapters(adapters: ScraperAdapter[]): ScraperAdapter[] {
   const normalized = adapters.map((a) => normalizeScraperAdapter(a));

@@ -411,3 +411,18 @@ export function parseImportedAdaptersJson(rawJson: string): {
     };
   }
 }
+
+export const STORAGE_ADAPTERS_KEY = 'rahaltv_scraper_adapters_v1';
+
+export function loadLocalScraperAdapters(): ScraperAdapter[] {
+  try {
+    if (typeof localStorage === 'undefined') return [];
+    const raw = localStorage.getItem(STORAGE_ADAPTERS_KEY);
+    if (!raw) return [];
+    const arr = JSON.parse(raw) as unknown;
+    if (!Array.isArray(arr)) return [];
+    return arr.map((item) => normalizeScraperAdapter(item as Partial<ScraperAdapter>));
+  } catch {
+    return [];
+  }
+}
