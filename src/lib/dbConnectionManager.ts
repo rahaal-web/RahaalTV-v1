@@ -9,8 +9,11 @@ import {
   getDocFromServer,
   getDocs,
   getFirestore,
+  initializeFirestore,
   limit,
   onSnapshot,
+  persistentLocalCache,
+  persistentMultipleTabManager,
   query,
   serverTimestamp,
   setDoc,
@@ -518,8 +521,27 @@ export function getFirestoreInstanceForProfile(profile: DatabaseConnectionProfil
   const cacheKey = `${appKey}::${dbId}`;
   const cached = firestoreCache.get(cacheKey);
   if (cached) return cached;
-  const fs =
-    dbId === '(default)' ? getFirestore(app) : getFirestore(app, dbId);
+
+  let fs: Firestore;
+  const canUseIndexedDbCache =
+    typeof window !== 'undefined' && typeof indexedDB !== 'undefined';
+  if (canUseIndexedDbCache) {
+    try {
+      const settings = {
+        localCache: persistentLocalCache({
+          tabManager: persistentMultipleTabManager(),
+        }),
+      };
+      fs =
+        dbId === '(default)'
+          ? initializeFirestore(app, settings)
+          : initializeFirestore(app, settings, dbId);
+    } catch {
+      fs = dbId === '(default)' ? getFirestore(app) : getFirestore(app, dbId);
+    }
+  } else {
+    fs = dbId === '(default)' ? getFirestore(app) : getFirestore(app, dbId);
+  }
   firestoreCache.set(cacheKey, fs);
   return fs;
 }

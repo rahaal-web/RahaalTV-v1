@@ -1,7 +1,19 @@
 import { CSSProperties, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Compass, Home, Wrench, X } from 'lucide-react';
 import { onAuthStateChanged, User } from 'firebase/auth';
-import { collection, doc, onSnapshot, orderBy, query, where } from 'firebase/firestore';
+import {
+  collection,
+  doc,
+  documentId,
+  getDoc,
+  getDocs,
+  getDocsFromCache,
+  limit,
+  onSnapshot,
+  orderBy,
+  query,
+  where,
+} from 'firebase/firestore';
 import type { AdminTab } from './components/AdminDashboardView';
 import { isTabAccessible } from './components/admin/adminNavigation';
 import { ActorProfileView } from './components/ActorProfileView';
@@ -38,7 +50,18 @@ import {
   normalizeHomeConfig,
   saveStoredHomeConfig,
 } from './lib/homeConfig';
-import { FALLBACK_BACKDROP, FALLBACK_POSTER, resolveMediaAssetUrl } from './lib/mediaFilters';
+import {
+  clearCachedCatalogSnapshot,
+  configureCatalogCacheFallbacks,
+  loadCachedCatalogSnapshot,
+  mergeProgressiveMediaItems,
+  normalizeFirestoreMediaRecord,
+  saveCachedCatalogSnapshot,
+  sortMediaCatalog,
+} from './lib/catalogCache';
+import { FALLBACK_BACKDROP, FALLBACK_POSTER } from './lib/mediaFilters';
+
+configureCatalogCacheFallbacks(FALLBACK_POSTER, FALLBACK_BACKDROP);
 import { getPosterUrl } from './lib/mediaImages';
 import { loadStoredPlayerTheme, saveStoredPlayerTheme } from './lib/playerTheme';
 import {
@@ -293,8 +316,10 @@ export default function App() {
   const canAccessAdmin = effectiveAdminRole !== null;
   const isOwnerAdmin = effectiveAdminRole === 'owner';
 
-  // Live Firestore Data State
-  const [firestoreCatalog, setFirestoreCatalog] = useState<MediaItem[]>([]);
+  // Live Firestore Data State (hydrates synchronously from compact local cache on repeat visits)
+  const [firestoreCatalog, setFirestoreCatalog] = useState<MediaItem[]>(() =>
+    loadCachedCatalogSnapshot()
+  );
   const [ratingsByMediaId, setRatingsByMediaId] = useState<
     Record<string, { average: number; count: number }>
   >({});
@@ -316,7 +341,7 @@ export default function App() {
 
   useEffect(() => {
     return subscribeActiveDatabaseChange(() => {
-      setFirestoreCatalog([]);
+      setFirestoreCatalog(loadCachedCatalogSnapshot());
       setInitialMediaLoaded(false);
       setDbConnectionStatus('connecting');
       setDbConnectionError(null);
@@ -399,7 +424,12 @@ export default function App() {
   const visibleStarterItems = starterCleared
     ? []
     : CATALOG_ITEMS.filter((item) => !dismissedStarterIds.includes(item.id));
-  const rawActiveCatalog = isFirestoreSeeded ? firestoreCatalog : visibleStarterItems;
+  // Never flash demo starter items while initial database load is still in flight
+  const rawActiveCatalog = isFirestoreSeeded
+    ? firestoreCatalog
+    : initialMediaLoaded
+      ? visibleStarterItems
+      : [];
   const activeCatalog = useMemo(
     () =>
       rawActiveCatalog.map((item) => {
@@ -861,101 +891,16 @@ export default function App() {
     }
   }, [starterCleared]);
 
-  // 1. Public Firestore Listeners (/media and /settings/general)
+  // 1. Public Firestore Listeners (Stage-0 cache -> Stage-1 fast slice -> Stage-2 full sync)
   useEffect(() => {
     const activeDb = getActiveDatabase();
     const mediaPath = 'media';
-    const unsubMedia = onSnapshot(
-      collection(activeDb, mediaPath),
-      (snapshot) => {
-        const docs = snapshot.docs.map((d) => {
-          const raw = d.data() as Partial<MediaItem> & {
-            createdAt?: { toMillis?: () => number };
-            updatedAt?: { toMillis?: () => number };
-          };
-          const createdAtMs =
-            raw.createdAt && typeof raw.createdAt.toMillis === 'function'
-              ? raw.createdAt.toMillis()
-              : 0;
-          const updatedAtMs =
-            raw.updatedAt && typeof raw.updatedAt.toMillis === 'function'
-              ? raw.updatedAt.toMillis()
-              : createdAtMs;
-          const poster = resolveMediaAssetUrl(raw.poster_url || raw.poster, FALLBACK_POSTER);
-          const rawDistinctBackdrop =
-            raw.backdrop_url !== undefined
-              ? resolveMediaAssetUrl(raw.backdrop_url, '')
-              : resolveMediaAssetUrl(raw.backdrop, '');
-          const backdropUrlNormalized =
-            rawDistinctBackdrop && rawDistinctBackdrop !== poster ? rawDistinctBackdrop : '';
-          const backdrop = rawDistinctBackdrop || FALLBACK_BACKDROP;
-          const parsedImdb = Number(raw.imdb);
-          return {
-            ...raw,
-            id: String(raw.id || d.id),
-            slug: raw.slug || String(raw.id || d.id),
-            title: raw.title || raw.englishTitle || 'عمل بدون عنوان',
-            englishTitle: raw.englishTitle || raw.title || 'Untitled',
-            kind: raw.kind || 'movie',
-            categories: Array.isArray(raw.categories) && raw.categories.length > 0 ? raw.categories : ['افلام'],
-            genres: Array.isArray(raw.genres) ? raw.genres : [],
-            year: String(raw.year || '2026'),
-            country: raw.country || 'غير محدد',
-            language: raw.language || 'مترجم للعربية',
-            quality: raw.quality || 'HD',
-            duration: raw.duration || '',
-            imdb: Number.isFinite(parsedImdb) ? parsedImdb : 0,
-            votes: raw.votes || '0',
-            story: raw.story || '',
-            cast: Array.isArray(raw.cast) ? raw.cast : [],
-            servers: Array.isArray(raw.servers) ? raw.servers : [],
-            downloads: Array.isArray(raw.downloads) ? raw.downloads : [],
-            seasons: Array.isArray(raw.seasons) ? raw.seasons : [],
-            franchiseIds: Array.isArray(raw.franchiseIds) ? raw.franchiseIds : [],
-            poster,
-            backdrop,
-            poster_url: poster,
-            backdrop_url: backdropUrlNormalized,
-            createdAtMs,
-            updatedAtMs,
-          } as MediaItem;
-        });
-        docs.sort((a, b) => {
-          const tDiff = (b.updatedAtMs || b.createdAtMs || 0) - (a.updatedAtMs || a.createdAtMs || 0);
-          if (tDiff !== 0) return tDiff;
-          return (parseInt(b.year || '0', 10) || 0) - (parseInt(a.year || '0', 10) || 0);
-        });
-        setFirestoreCatalog(docs);
-        setInitialMediaLoaded(true);
-        setDbConnectionStatus('connected');
-        setDbConnectionError(null);
-        recordDatabaseConnected();
-        if (docs.length > 0) {
-          // Once Firestore holds live items, prevent initial fallback items from popping back if DB is cleared later
-          setStarterCleared(true);
-        }
-      },
-      (error) => {
-        setInitialMediaLoaded(true);
-        const classified = classifyFirestoreConnectionError(error);
-        setDbConnectionStatus(classified.status);
-        setDbConnectionError(classified.message);
-        recordDatabaseOutage(
-          classified.status === 'error' || classified.status === 'connecting'
-            ? 'offline'
-            : classified.status,
-          classified.message,
-          error instanceof Error ? error.message : String(error)
-        );
-        try {
-          handleFirestoreError(error, OperationType.LIST, mediaPath);
-        } catch {
-          // Keep fallback catalog visible instead of crashing on network/permission errors
-        }
-      }
-    );
-
     const settingsPath = 'settings/general';
+    let cancelled = false;
+    let fullMediaSnapshotReceived = false;
+    let secondaryAttached = false;
+    const secondaryUnsubs: Array<() => void> = [];
+
     let cloudGeneralHome: Partial<HomeLayoutConfig> | null = null;
     let cloudSplitHomeLayout: Partial<HomeLayoutConfig> | null = null;
     let cloudSplitSliderStyle: Partial<HomeLayoutConfig> | null = null;
@@ -965,6 +910,17 @@ export default function App() {
     let cloudGeneralBranding: WebsiteBrandingConfig | null = null;
     let cloudSplitBranding: WebsiteBrandingConfig | null = null;
     let cloudSplitBrandingUpdatedMs = 0;
+
+    const getStoredPriorityHeroIds = (): string[] => {
+      const storedHome = loadStoredHomeConfig();
+      return Array.from(
+        new Set(
+          [storedHome.heroMediaId, ...(storedHome.heroSlideIds || [])].filter(
+            (id): id is string => typeof id === 'string' && /^[a-zA-Z0-9_-]{1,128}$/.test(id)
+          )
+        )
+      ).slice(0, 12);
+    };
 
     const readSnapUpdatedMs = (raw: Record<string, unknown> | undefined): number => {
       const ts = raw?.updatedAt as { toMillis?: () => number } | undefined;
@@ -1003,6 +959,7 @@ export default function App() {
       );
     };
 
+    // Lightweight critical settings listeners attach immediately
     const unsubSettings = onSnapshot(
       doc(activeDb, 'settings', 'general'),
       (snap) => {
@@ -1187,89 +1144,238 @@ export default function App() {
       }
     );
 
-    const unsubStreamV4Slider = onSnapshot(
-      doc(activeDb, 'settings', 'stream_v4_slider'),
-      (snap) => {
-        if (!snap.exists()) return;
-        const raw = snap.data() as Record<string, unknown>;
-        saveStreamV4SliderConfig(raw);
-      },
-      () => {
-        // Ignore if settings/stream_v4_slider rule is not yet deployed
-      }
-    );
+    // Stage 2: full real-time media collection + larger secondary payloads (stream_v4_slider, fonts, ratings)
+    const attachSecondaryListeners = () => {
+      if (cancelled || secondaryAttached) return;
+      secondaryAttached = true;
 
-    const fontsPath = 'fonts';
-    const unsubFonts = onSnapshot(
-      collection(activeDb, fontsPath),
-      (snapshot) => {
-        const nextFonts: Partial<Record<CustomFontSlot, CustomFontRecord>> = {};
-        snapshot.docs.forEach((d) => {
-          const raw = d.data() as Partial<CustomFontRecord>;
-          const slot: CustomFontSlot | null =
-            d.id === 'arabic' || raw.id === 'arabic'
-              ? 'arabic'
-              : d.id === 'english' || raw.id === 'english'
-                ? 'english'
-                : null;
-          if (!slot || !raw.sourceUrl || !raw.family) return;
-          nextFonts[slot] = {
-            id: slot,
-            family: String(raw.family),
-            fileName: String(raw.fileName || 'custom-font'),
-            format: raw.format || 'woff2',
-            sourceUrl: String(raw.sourceUrl),
-          };
-        });
-        saveStoredCustomFonts(nextFonts);
-        setCustomFonts(nextFonts);
-      },
-      (error) => {
-        try {
-          handleFirestoreError(error, OperationType.LIST, fontsPath);
-        } catch {
-          // Keep locally stored custom fonts if cloud rules for /fonts are not yet deployed
-        }
-      }
-    );
-
-    const ratingsPath = 'ratings';
-    const unsubRatings = onSnapshot(
-      collection(activeDb, ratingsPath),
-      (snapshot) => {
-        const sums: Record<string, { total: number; count: number }> = {};
-        snapshot.docs.forEach((d) => {
-          const data = d.data() as { mediaId?: unknown; stars?: unknown };
-          const mediaKey = sanitizeRatingMediaId(String(data.mediaId || ''));
-          const stars = Math.round(Number(data.stars) || 0);
-          if (!mediaKey || stars < 1 || stars > 5) return;
-          if (!sums[mediaKey]) {
-            sums[mediaKey] = { total: 0, count: 0 };
+      const unsubMedia = onSnapshot(
+        collection(activeDb, mediaPath),
+        (snapshot) => {
+          if (cancelled) return;
+          fullMediaSnapshotReceived = true;
+          const docs = sortMediaCatalog(
+            snapshot.docs.map((d) =>
+              normalizeFirestoreMediaRecord(d.id, d.data() as Record<string, unknown>)
+            )
+          );
+          setFirestoreCatalog(docs);
+          setInitialMediaLoaded(true);
+          setDbConnectionStatus('connected');
+          setDbConnectionError(null);
+          recordDatabaseConnected();
+          if (docs.length > 0) {
+            // Once Firestore holds live items, prevent initial fallback items from popping back if DB is cleared later
+            setStarterCleared(true);
+            saveCachedCatalogSnapshot(docs, { priorityIds: getStoredPriorityHeroIds() });
+          } else if (!snapshot.metadata.fromCache) {
+            clearCachedCatalogSnapshot();
           }
-          sums[mediaKey].total += stars;
-          sums[mediaKey].count += 1;
-        });
-
-        const nextAgg: Record<string, { average: number; count: number }> = {};
-        Object.entries(sums).forEach(([key, val]) => {
-          nextAgg[key] = {
-            average: val.total / val.count,
-            count: val.count,
-          };
-        });
-        setRatingsByMediaId(nextAgg);
-      },
-      (error) => {
-        try {
-          handleFirestoreError(error, OperationType.LIST, ratingsPath);
-        } catch {
-          // Keep app functional if ratings rules are not deployed yet
+        },
+        (error) => {
+          if (cancelled) return;
+          setInitialMediaLoaded(true);
+          const classified = classifyFirestoreConnectionError(error);
+          setDbConnectionStatus(classified.status);
+          setDbConnectionError(classified.message);
+          recordDatabaseOutage(
+            classified.status === 'error' || classified.status === 'connecting'
+              ? 'offline'
+              : classified.status,
+            classified.message,
+            error instanceof Error ? error.message : String(error)
+          );
+          try {
+            handleFirestoreError(error, OperationType.LIST, mediaPath);
+          } catch {
+            // Keep fallback catalog visible instead of crashing on network/permission errors
+          }
         }
-      }
-    );
+      );
+      secondaryUnsubs.push(unsubMedia);
+
+      const unsubStreamV4Slider = onSnapshot(
+        doc(activeDb, 'settings', 'stream_v4_slider'),
+        (snap) => {
+          if (!snap.exists()) return;
+          const raw = snap.data() as Record<string, unknown>;
+          saveStreamV4SliderConfig(raw);
+        },
+        () => {
+          // Ignore if settings/stream_v4_slider rule is not yet deployed
+        }
+      );
+      secondaryUnsubs.push(unsubStreamV4Slider);
+
+      const fontsPath = 'fonts';
+      const unsubFonts = onSnapshot(
+        collection(activeDb, fontsPath),
+        (snapshot) => {
+          const nextFonts: Partial<Record<CustomFontSlot, CustomFontRecord>> = {};
+          snapshot.docs.forEach((d) => {
+            const raw = d.data() as Partial<CustomFontRecord>;
+            const slot: CustomFontSlot | null =
+              d.id === 'arabic' || raw.id === 'arabic'
+                ? 'arabic'
+                : d.id === 'english' || raw.id === 'english'
+                  ? 'english'
+                  : null;
+            if (!slot || !raw.sourceUrl || !raw.family) return;
+            nextFonts[slot] = {
+              id: slot,
+              family: String(raw.family),
+              fileName: String(raw.fileName || 'custom-font'),
+              format: raw.format || 'woff2',
+              sourceUrl: String(raw.sourceUrl),
+            };
+          });
+          saveStoredCustomFonts(nextFonts);
+          setCustomFonts(nextFonts);
+        },
+        (error) => {
+          try {
+            handleFirestoreError(error, OperationType.LIST, fontsPath);
+          } catch {
+            // Keep locally stored custom fonts if cloud rules for /fonts are not yet deployed
+          }
+        }
+      );
+      secondaryUnsubs.push(unsubFonts);
+
+      const ratingsPath = 'ratings';
+      const unsubRatings = onSnapshot(
+        collection(activeDb, ratingsPath),
+        (snapshot) => {
+          const sums: Record<string, { total: number; count: number }> = {};
+          snapshot.docs.forEach((d) => {
+            const data = d.data() as { mediaId?: unknown; stars?: unknown };
+            const mediaKey = sanitizeRatingMediaId(String(data.mediaId || ''));
+            const stars = Math.round(Number(data.stars) || 0);
+            if (!mediaKey || stars < 1 || stars > 5) return;
+            if (!sums[mediaKey]) {
+              sums[mediaKey] = { total: 0, count: 0 };
+            }
+            sums[mediaKey].total += stars;
+            sums[mediaKey].count += 1;
+          });
+
+          const nextAgg: Record<string, { average: number; count: number }> = {};
+          Object.entries(sums).forEach(([key, val]) => {
+            nextAgg[key] = {
+              average: val.total / val.count,
+              count: val.count,
+            };
+          });
+          setRatingsByMediaId(nextAgg);
+        },
+        (error) => {
+          try {
+            handleFirestoreError(error, OperationType.LIST, ratingsPath);
+          } catch {
+            // Keep app functional if ratings rules are not deployed yet
+          }
+        }
+      );
+      secondaryUnsubs.push(unsubRatings);
+    };
+
+    const stage2FallbackTimer = window.setTimeout(() => {
+      attachSecondaryListeners();
+    }, 850);
+
+    const runStage1NetworkSlice = () => {
+      if (cancelled || fullMediaSnapshotReceived) return;
+      const priorityHeroIds = getStoredPriorityHeroIds();
+      const initialSingleKey = initialRoute.view === 'single' ? initialRoute.watchKey : null;
+      const isInitialKeyValidId =
+        typeof initialSingleKey === 'string' && /^[a-zA-Z0-9_-]{1,128}$/.test(initialSingleKey);
+
+      Promise.all([
+        getDocs(query(collection(activeDb, mediaPath), orderBy('updatedAt', 'desc'), limit(48))),
+        priorityHeroIds.length > 0
+          ? getDocs(
+              query(collection(activeDb, mediaPath), where(documentId(), 'in', priorityHeroIds))
+            ).catch(() => null)
+          : Promise.resolve(null),
+        initialSingleKey
+          ? getDocs(
+              query(collection(activeDb, mediaPath), where('slug', '==', initialSingleKey), limit(1))
+            ).catch(() => null)
+          : Promise.resolve(null),
+        isInitialKeyValidId && initialSingleKey
+          ? getDoc(doc(activeDb, mediaPath, initialSingleKey)).catch(() => null)
+          : Promise.resolve(null),
+      ])
+        .then(([latestSnap, heroSnap, singleSlugSnap, singleIdSnap]) => {
+          if (cancelled) return;
+          if (!fullMediaSnapshotReceived) {
+            const collected: MediaItem[] = [];
+            latestSnap.docs.forEach((d) =>
+              collected.push(normalizeFirestoreMediaRecord(d.id, d.data() as Record<string, unknown>))
+            );
+            heroSnap?.docs.forEach((d) =>
+              collected.push(normalizeFirestoreMediaRecord(d.id, d.data() as Record<string, unknown>))
+            );
+            singleSlugSnap?.docs.forEach((d) =>
+              collected.push(normalizeFirestoreMediaRecord(d.id, d.data() as Record<string, unknown>))
+            );
+            if (singleIdSnap && singleIdSnap.exists()) {
+              collected.push(
+                normalizeFirestoreMediaRecord(
+                  singleIdSnap.id,
+                  singleIdSnap.data() as Record<string, unknown>
+                )
+              );
+            }
+
+            if (collected.length > 0) {
+              const stage1Merged = mergeProgressiveMediaItems(collected, []);
+              setFirestoreCatalog((prev) => mergeProgressiveMediaItems(stage1Merged, prev));
+              setInitialMediaLoaded(true);
+              setDbConnectionStatus('connected');
+              setDbConnectionError(null);
+              recordDatabaseConnected();
+              setStarterCleared(true);
+              saveCachedCatalogSnapshot(stage1Merged, { priorityIds: priorityHeroIds });
+            }
+          }
+          window.clearTimeout(stage2FallbackTimer);
+          attachSecondaryListeners();
+        })
+        .catch(() => {
+          window.clearTimeout(stage2FallbackTimer);
+          attachSecondaryListeners();
+        });
+    };
+
+    // Stage 0: Instant IndexedDB persistent cache read (for repeat visits), falling back to Stage 1 on miss
+    getDocsFromCache(collection(activeDb, mediaPath))
+      .then((cachedSnap) => {
+        if (cancelled || fullMediaSnapshotReceived) return;
+        if (cachedSnap.empty) {
+          runStage1NetworkSlice();
+          return;
+        }
+        const cachedDocs = sortMediaCatalog(
+          cachedSnap.docs.map((d) =>
+            normalizeFirestoreMediaRecord(d.id, d.data() as Record<string, unknown>)
+          )
+        );
+        setFirestoreCatalog(cachedDocs);
+        setInitialMediaLoaded(true);
+        setDbConnectionStatus('connected');
+        setDbConnectionError(null);
+        setStarterCleared(true);
+        window.clearTimeout(stage2FallbackTimer);
+        attachSecondaryListeners();
+      })
+      .catch(() => {
+        runStage1NetworkSlice();
+      });
 
     return () => {
-      unsubMedia();
+      cancelled = true;
+      window.clearTimeout(stage2FallbackTimer);
       unsubSettings();
       unsubHomeLayout();
       unsubSliderStyle();
@@ -1278,11 +1384,60 @@ export default function App() {
       unsubRecentlyWatchedUi();
       unsubSiteTheme();
       unsubHeroSliderMode();
-      unsubStreamV4Slider();
-      unsubFonts();
-      unsubRatings();
+      secondaryUnsubs.forEach((u) => {
+        try {
+          u();
+        } catch {
+          // Ignore unsubscribe errors
+        }
+      });
     };
   }, [dbReconnectNonce]);
+
+  // 1-extra. Fast targeted single-item fetch if user opens an item before Stage-2 finishes (or needs full seasons)
+  useEffect(() => {
+    if (view !== 'single' || !requestedWatchKey) return;
+    const needsFetch =
+      !matchedSingleMedia ||
+      (matchedSingleMedia.kind === 'series' &&
+        (!Array.isArray(matchedSingleMedia.seasons) || matchedSingleMedia.seasons.length === 0));
+    if (!needsFetch) return;
+
+    let cancelled = false;
+    const activeDb = getActiveDatabase();
+    const isKeyValidId = /^[a-zA-Z0-9_-]{1,128}$/.test(requestedWatchKey);
+    const idToCheck =
+      matchedSingleMedia?.id && /^[a-zA-Z0-9_-]{1,128}$/.test(matchedSingleMedia.id)
+        ? matchedSingleMedia.id
+        : isKeyValidId
+          ? requestedWatchKey
+          : null;
+
+    Promise.all([
+      getDocs(
+        query(collection(activeDb, 'media'), where('slug', '==', requestedWatchKey), limit(1))
+      ).catch(() => null),
+      idToCheck ? getDoc(doc(activeDb, 'media', idToCheck)).catch(() => null) : Promise.resolve(null),
+    ]).then(([slugSnap, idSnap]) => {
+      if (cancelled) return;
+      const fetched: MediaItem[] = [];
+      slugSnap?.docs.forEach((d) =>
+        fetched.push(normalizeFirestoreMediaRecord(d.id, d.data() as Record<string, unknown>))
+      );
+      if (idSnap && idSnap.exists()) {
+        fetched.push(
+          normalizeFirestoreMediaRecord(idSnap.id, idSnap.data() as Record<string, unknown>)
+        );
+      }
+      if (fetched.length > 0) {
+        setFirestoreCatalog((prev) => mergeProgressiveMediaItems(fetched, prev));
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [view, requestedWatchKey, matchedSingleMedia, dbReconnectNonce]);
 
   // 1a. Cross-device database pointer + owner registry synchronization
   useEffect(() => {
@@ -2131,26 +2286,37 @@ export default function App() {
         )}
 
         {view === 'archive' && (
-          <CatalogArchiveView
-            catalog={activeCatalog}
-            filters={filters}
-            currentPage={archivePage}
-            pageSize={archivePageSize}
-            sortOverride={archiveSort}
-            cardStyle={siteSettings.homeConfig?.cardStyle || 'clean'}
-            onUpdateFilters={(next) => handleUpdateArchiveFilters(next)}
-            onSearchQueryChange={(q) =>
-              handleUpdateArchiveFilters({ ...filters, query: q }, { replace: true })
-            }
-            onChangePage={handleChangeArchivePage}
-            onChangePageSize={handleChangeArchivePageSize}
-            onChangeSort={handleChangeArchiveSort}
-            onResetFilters={handleResetArchiveFilters}
-            onNavigateBack={navigateBackFromUI}
-            onSelectMedia={handleSelectMedia}
-            watchlistIds={watchlistIds}
-            onToggleWatchlist={handleToggleWatchlist}
-          />
+          !initialMediaLoaded && activeCatalog.length === 0 ? (
+            <div className="mx-auto max-w-[1440px] px-4 sm:px-6 lg:px-8 pt-24 sm:pt-28 pb-16">
+              <RunningRabbitLoader
+                variant="section"
+                size="lg"
+                label="جاري تحميل المكتبة..."
+                delayMs={120}
+              />
+            </div>
+          ) : (
+            <CatalogArchiveView
+              catalog={activeCatalog}
+              filters={filters}
+              currentPage={archivePage}
+              pageSize={archivePageSize}
+              sortOverride={archiveSort}
+              cardStyle={siteSettings.homeConfig?.cardStyle || 'clean'}
+              onUpdateFilters={(next) => handleUpdateArchiveFilters(next)}
+              onSearchQueryChange={(q) =>
+                handleUpdateArchiveFilters({ ...filters, query: q }, { replace: true })
+              }
+              onChangePage={handleChangeArchivePage}
+              onChangePageSize={handleChangeArchivePageSize}
+              onChangeSort={handleChangeArchiveSort}
+              onResetFilters={handleResetArchiveFilters}
+              onNavigateBack={navigateBackFromUI}
+              onSelectMedia={handleSelectMedia}
+              watchlistIds={watchlistIds}
+              onToggleWatchlist={handleToggleWatchlist}
+            />
+          )
         )}
 
         {view === 'single' && (
