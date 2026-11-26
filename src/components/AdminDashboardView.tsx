@@ -90,6 +90,7 @@ import {
   isTabAccessible,
 } from './admin/adminNavigation';
 import { ConfirmDialog, GlobalCommandPalette } from './admin/AdminSharedUi';
+import { isBrokenServerRequest } from '../lib/serverReports';
 
 export type { AdminTab } from './admin/adminNavigation';
 
@@ -1706,6 +1707,9 @@ export function AdminDashboardView({
 
   const filteredRequests = useMemo(() => {
     if (reqStatusFilter === 'all') return requests;
+    if (reqStatusFilter === 'broken_servers') {
+      return requests.filter((r) => isBrokenServerRequest(r));
+    }
     return requests.filter((r) => r.status === reqStatusFilter);
   }, [requests, reqStatusFilter]);
 
@@ -6268,6 +6272,7 @@ export function AdminDashboardView({
                     {(
                       [
                         { id: 'all', label: 'الكل' },
+                        { id: 'broken_servers', label: 'بلاغات السيرفرات' },
                         { id: 'pending', label: 'قيد المراجعة' },
                         { id: 'approved', label: 'موافق عليه' },
                         { id: 'completed', label: 'مكتمل' },
@@ -6309,11 +6314,17 @@ export function AdminDashboardView({
                         >
                           <div className="flex flex-wrap items-start justify-between gap-3">
                             <div>
-                              <div className="flex items-center gap-2">
+                              <div className="flex flex-wrap items-center gap-2">
                                 <h3 className="text-sm font-extrabold text-white">{req.title}</h3>
                                 <span className="rounded-md bg-white/10 px-2 py-0.5 text-[11px] font-bold text-white">
                                   {req.type}
                                 </span>
+                                {isBrokenServerRequest(req) && (
+                                  <span className="inline-flex items-center gap-1 rounded-md border border-[#f9c400]/35 bg-[#f9c400]/15 px-2 py-0.5 text-[11px] font-bold text-[#f9c400]">
+                                    <AlertTriangle className="w-3 h-3 shrink-0" />
+                                    <span>بلاغ مشغّل</span>
+                                  </span>
+                                )}
                                 <span
                                   className={`rounded-md border px-2 py-0.5 text-[11px] font-bold ${badge.cls}`}
                                 >

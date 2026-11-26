@@ -10,6 +10,7 @@ import {
   ChevronRight,
   ChevronUp,
   Film,
+  Flag,
   Globe,
   History,
   LayoutDashboard,
@@ -82,6 +83,11 @@ import {
 } from '../lib/browserCompat';
 import { getBackdropUrl, getPosterUrl } from '../lib/mediaImages';
 import { PlaybackRecordReason, recordRecentlyWatchedPlayback } from '../lib/recentlyWatched';
+import {
+  buildAutoBrokenServerReportPayload,
+  hasRecentlyReportedServerIssue,
+  markServerIssueReportedLocally,
+} from '../lib/serverReports';
 import {
   AdminPrivilegeRole,
   MediaItem,
@@ -578,6 +584,12 @@ interface PlayerModalProps {
   userId?: string;
   isSignedIn?: boolean;
   onRecentlyWatchedUpdated?: () => void;
+  onReportBrokenServers?: (req: {
+    title: string;
+    type: VisitorRequest['type'];
+    notes: string;
+    dedupeKey: string;
+  }) => Promise<{ synced: boolean }>;
   onNotify?: (message: string) => void;
   onClose: () => void;
 }
@@ -673,6 +685,7 @@ export function PlayerModal({
   userId = 'guest',
   isSignedIn = false,
   onRecentlyWatchedUpdated,
+  onReportBrokenServers,
   onNotify,
   onClose,
 }: PlayerModalProps) {
@@ -703,6 +716,10 @@ export function PlayerModal({
   const [customVttUrl, setCustomVttUrl] = useState('');
   const [showSubtitleInput, setShowSubtitleInput] = useState(false);
   const [seekFeedback, setSeekFeedback] = useState<'forward' | 'backward' | null>(null);
+  const [reportSubmitting, setReportSubmitting] = useState(false);
+  const [reportedMap, setReportedMap] = useState<Record<string, boolean>>({});
+  const [centerReportOverlay, setCenterReportOverlay] = useState(false);
+  const centerReportTimerRef = useRef<number | null>(null);
   const playerBoxRef = useRef<HTMLDivElement | null>(null);
   const videoElementRef = useRef<HTMLVideoElement | null>(null);
   const hlsInstanceRef = useRef<{
@@ -921,10 +938,14 @@ export function PlayerModal({
     selectedServerRef.current = selectedServer;
   }, [selectedServer]);
 
-  // Cleanup load timer and flush close watch position on modal close / media switch
+  // Cleanup load timer, centered report alert timer, and flush close watch position on modal close / media switch
   useEffect(() => {
     return () => {
       clearLoadTimeout();
+      if (centerReportTimerRef.current !== null) {
+        window.clearTimeout(centerReportTimerRef.current);
+        centerReportTimerRef.current = null;
+      }
       if (startedPlaybackKeyRef.current) {
         flushRecentlyWatched('close');
         startedPlaybackKeyRef.current = null;
@@ -1745,6 +1766,80 @@ export function PlayerModal({
     finalStreamSrc || activeServer.url
   );
 
+  const activeSeasonNumber =
+    episodes.length > 0 ? seasons[seasonIdx]?.seasonNumber || seasonIdx + 1 : undefined;
+  const activeEpisodeNumber = episodes.length > 0 ? episodeNum : undefined;
+  const autoReportPayload = buildAutoBrokenServerReportPayload({
+    item,
+    seasonNumber: activeSeasonNumber,
+    episodeNumber: activeEpisodeNumber,
+    activeServerLabel,
+    totalServers: serversList.length,
+  });
+  const isCurrentReportSubmitted = Boolean(
+    reportedMap[autoReportPayload.dedupeKey] ||
+      hasRecentlyReportedServerIssue(autoReportPayload.dedupeKey)
+  );
+
+  const showCenteredReportConfirmation = () => {
+    if (centerReportTimerRef.current !== null) {
+      window.clearTimeout(centerReportTimerRef.current);
+    }
+    setCenterReportOverlay(true);
+    centerReportTimerRef.current = window.setTimeout(() => {
+      setCenterReportOverlay(false);
+      centerReportTimerRef.current = null;
+    }, 2600);
+  };
+
+  const handleReportBrokenServers = async () => {
+    if (reportSubmitting) return;
+    if (isCurrentReportSubmitted) {
+      showCenteredReportConfirmation();
+      return;
+    }
+
+    setReportSubmitting(true);
+    try {
+      if (onReportBrokenServers) {
+        await onReportBrokenServers(autoReportPayload);
+      } else {
+        markServerIssueReportedLocally(autoReportPayload.dedupeKey, autoReportPayload, false);
+      }
+      setReportedMap((prev) => ({ ...prev, [autoReportPayload.dedupeKey]: true }));
+      showCenteredReportConfirmation();
+    } catch {
+      markServerIssueReportedLocally(autoReportPayload.dedupeKey, autoReportPayload, false);
+      setReportedMap((prev) => ({ ...prev, [autoReportPayload.dedupeKey]: true }));
+      showCenteredReportConfirmation();
+    } finally {
+      setReportSubmitting(false);
+    }
+  };
+
+  const renderCenterReportOverlay = (insideFullscreen: boolean) => {
+    if (!centerReportOverlay) return null;
+    return (
+      <div
+        role="status"
+        aria-live="polite"
+        className={`${
+          insideFullscreen ? 'absolute' : 'fixed'
+        } inset-0 z-[80] pointer-events-none flex items-center justify-center p-4`}
+      >
+        <div className="rounded-2xl bg-[#0c1821]/95 border border-[#4CAF50]/45 px-7 py-5 shadow-2xl backdrop-blur-md text-center space-y-2 max-w-xs w-full">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-[#4CAF50]/15 border border-[#4CAF50]/40 text-[#4CAF50]">
+            <CheckCircle2 className="w-6 h-6" />
+          </div>
+          <p className="font-display text-lg font-black text-white">تم الإبلاغ</p>
+          <p className="text-xs font-bold text-[#b7c9ef] leading-relaxed">
+            تم إرسال بلاغ تلقائي عن عدم وجود سيرفر شغال
+          </p>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div
       role="dialog"
@@ -1846,14 +1941,37 @@ export function PlayerModal({
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={onClose}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-white/[0.06] border border-white/10 text-white/85 hover:bg-white/15 hover:text-white transition-colors cursor-pointer shrink-0"
-            aria-label="إغلاق المشغل"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            {!theme.showFooterBar && (
+              <button
+                type="button"
+                onClick={() => void handleReportBrokenServers()}
+                disabled={reportSubmitting}
+                title="إبلاغ عن عدم وجود سيرفر شغال"
+                aria-label="إبلاغ عن عدم وجود سيرفر شغال"
+                className={`inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-extrabold transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                  isCurrentReportSubmitted
+                    ? 'bg-[#4CAF50]/20 border-[#4CAF50]/45 text-[#4CAF50]'
+                    : 'bg-[#D92321]/15 border-[#D92321]/40 text-[#ff9d9b] hover:bg-[#D92321] hover:text-white'
+                }`}
+              >
+                {isCurrentReportSubmitted ? (
+                  <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                ) : (
+                  <Flag className="w-3.5 h-3.5 shrink-0" />
+                )}
+                <span>{isCurrentReportSubmitted ? 'تم الإبلاغ' : 'إبلاغ: لا يوجد سيرفر شغال'}</span>
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onClose}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-white/[0.06] border border-white/10 text-white/85 hover:bg-white/15 hover:text-white transition-colors cursor-pointer shrink-0"
+              aria-label="إغلاق المشغل"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         {/* Main Body: Mobile Edge-to-Edge Watch First | Desktop Server Rail + Video Stage */}
@@ -2145,6 +2263,29 @@ export function PlayerModal({
                             <RotateCw className="w-3.5 h-3.5" />
                             <span>إعادة المحاولة</span>
                           </button>
+                          <button
+                            type="button"
+                            onClick={() => void handleReportBrokenServers()}
+                            disabled={reportSubmitting}
+                            className={`inline-flex items-center gap-1.5 rounded-xl border px-4 min-h-[42px] py-2 text-xs font-extrabold transition-colors cursor-pointer ${
+                              isCurrentReportSubmitted
+                                ? 'bg-[#4CAF50]/20 border-[#4CAF50]/50 text-[#4CAF50]'
+                                : 'bg-[#D92321]/15 border-[#D92321]/45 text-[#ff9d9b] hover:bg-[#D92321] hover:text-white'
+                            }`}
+                          >
+                            {isCurrentReportSubmitted ? (
+                              <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                            ) : (
+                              <Flag className="w-3.5 h-3.5 shrink-0" />
+                            )}
+                            <span>
+                              {reportSubmitting
+                                ? 'جاري الإبلاغ...'
+                                : isCurrentReportSubmitted
+                                  ? 'تم الإبلاغ'
+                                  : 'إبلاغ: لا يوجد سيرفر شغال'}
+                            </span>
+                          </button>
                         </div>
                       </div>
                     ) : isBlockedHomepageUrl || isActiveServerFaulty ? (
@@ -2206,6 +2347,23 @@ export function PlayerModal({
                               <span>إعادة المحاولة</span>
                             </button>
                           )}
+                          <button
+                            type="button"
+                            onClick={() => void handleReportBrokenServers()}
+                            disabled={reportSubmitting}
+                            className={`inline-flex items-center gap-1.5 rounded-xl border px-3 sm:px-3.5 min-h-[38px] sm:min-h-[44px] py-1.5 text-[11px] sm:text-xs font-extrabold transition-colors cursor-pointer ${
+                              isCurrentReportSubmitted
+                                ? 'bg-[#4CAF50]/20 border-[#4CAF50]/50 text-[#4CAF50]'
+                                : 'bg-[#D92321]/15 border-[#D92321]/45 text-[#ff9d9b] hover:bg-[#D92321] hover:text-white'
+                            }`}
+                          >
+                            {isCurrentReportSubmitted ? (
+                              <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                            ) : (
+                              <Flag className="w-3.5 h-3.5 shrink-0" />
+                            )}
+                            <span>{isCurrentReportSubmitted ? 'تم الإبلاغ' : 'إبلاغ عن السيرفرات'}</span>
+                          </button>
                         </div>
                       </div>
                     ) : finalStreamSrc ? (
@@ -2563,9 +2721,27 @@ export function PlayerModal({
                             <RotateCw className="w-3.5 h-3.5" />
                             <span>إعادة المحاولة</span>
                           </button>
+                          <button
+                            type="button"
+                            onClick={() => void handleReportBrokenServers()}
+                            disabled={reportSubmitting}
+                            className={`inline-flex items-center gap-1.5 rounded-xl border px-3.5 py-2 text-xs font-extrabold transition-colors cursor-pointer ${
+                              isCurrentReportSubmitted
+                                ? 'bg-[#4CAF50]/20 border-[#4CAF50]/50 text-[#4CAF50]'
+                                : 'bg-[#D92321]/15 border-[#D92321]/45 text-[#ff9d9b] hover:bg-[#D92321] hover:text-white'
+                            }`}
+                          >
+                            {isCurrentReportSubmitted ? (
+                              <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                            ) : (
+                              <Flag className="w-3.5 h-3.5 shrink-0" />
+                            )}
+                            <span>{isCurrentReportSubmitted ? 'تم الإبلاغ' : 'إبلاغ: لا يوجد سيرفر شغال'}</span>
+                          </button>
                         </div>
                       </div>
                     )}
+                    {isFullscreen && renderCenterReportOverlay(true)}
                   </div>
                 </div>
 
@@ -2581,20 +2757,48 @@ export function PlayerModal({
                         مشغّل <strong className="text-white">{theme.brandLabel}</strong> المحمي — إذا تعذر التحميل بدّل للسيرفر التالي
                       </span>
                     </div>
-                    {serversList.length > 1 && (
+                    <div className="flex items-center gap-2 shrink-0">
                       <button
                         type="button"
-                        onClick={handleSwitchToNextServer}
-                        className="inline-flex items-center gap-1.5 rounded-md px-3 py-1 text-[11px] font-extrabold transition-opacity hover:opacity-90 cursor-pointer"
-                        style={{
-                          backgroundColor: 'var(--pt-accent)',
-                          color: 'var(--pt-accent-contrast)',
-                        }}
+                        onClick={() => void handleReportBrokenServers()}
+                        disabled={reportSubmitting}
+                        title="إبلاغ تلقائي عن عدم وجود سيرفر شغال للفيلم"
+                        aria-label="إبلاغ عن عدم وجود سيرفر شغال"
+                        className={`inline-flex items-center gap-1.5 rounded-md border px-3 py-1 text-[11px] font-extrabold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                          isCurrentReportSubmitted
+                            ? 'bg-[#4CAF50]/20 border-[#4CAF50]/45 text-[#4CAF50]'
+                            : 'bg-[#D92321]/15 border-[#D92321]/40 text-[#ff9d9b] hover:bg-[#D92321] hover:text-white'
+                        }`}
                       >
-                        <RefreshCw className="w-3 h-3" />
-                        <span>السيرفر التالي</span>
+                        {isCurrentReportSubmitted ? (
+                          <CheckCircle2 className="w-3 h-3 shrink-0" />
+                        ) : (
+                          <Flag className="w-3 h-3 shrink-0" />
+                        )}
+                        <span>
+                          {reportSubmitting
+                            ? 'جاري الإبلاغ...'
+                            : isCurrentReportSubmitted
+                              ? 'تم الإبلاغ'
+                              : 'إبلاغ: لا يوجد سيرفر شغال'}
+                        </span>
                       </button>
-                    )}
+
+                      {serversList.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={handleSwitchToNextServer}
+                          className="inline-flex items-center gap-1.5 rounded-md px-3 py-1 text-[11px] font-extrabold transition-opacity hover:opacity-90 whitespace-nowrap shrink-0 cursor-pointer"
+                          style={{
+                            backgroundColor: 'var(--pt-accent)',
+                            color: 'var(--pt-accent-contrast)',
+                          }}
+                        >
+                          <RefreshCw className="w-3 h-3" />
+                          <span>السيرفر التالي</span>
+                        </button>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
@@ -2626,18 +2830,40 @@ export function PlayerModal({
                   )}
                 </div>
 
-                <button
-                  type="button"
-                  onClick={handleSwitchToNextServer}
-                  className="inline-flex items-center gap-1.5 rounded-xl px-4 min-h-[44px] py-2 text-xs font-extrabold transition-opacity active:scale-95 shrink-0 cursor-pointer"
-                  style={{
-                    backgroundColor: 'var(--pt-accent)',
-                    color: 'var(--pt-accent-contrast)',
-                  }}
-                >
-                  <RefreshCw className="w-3.5 h-3.5" />
-                  <span>{serversList.length > 1 ? 'تغيير السيرفر' : 'إعادة التحميل'}</span>
-                </button>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => void handleReportBrokenServers()}
+                    disabled={reportSubmitting}
+                    title="إبلاغ عن عدم وجود سيرفر شغال"
+                    aria-label="إبلاغ عن عدم وجود سيرفر شغال"
+                    className={`inline-flex items-center gap-1.5 rounded-xl border px-3 min-h-[44px] py-2 text-xs font-extrabold transition-colors active:scale-95 whitespace-nowrap shrink-0 cursor-pointer ${
+                      isCurrentReportSubmitted
+                        ? 'bg-[#4CAF50]/20 border-[#4CAF50]/50 text-[#4CAF50]'
+                        : 'bg-[#D92321]/15 border-[#D92321]/40 text-[#ff9d9b] hover:bg-[#D92321] hover:text-white'
+                    }`}
+                  >
+                    {isCurrentReportSubmitted ? (
+                      <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                    ) : (
+                      <Flag className="w-3.5 h-3.5 shrink-0" />
+                    )}
+                    <span>{isCurrentReportSubmitted ? 'تم الإبلاغ' : 'إبلاغ'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleSwitchToNextServer}
+                    className="inline-flex items-center gap-1.5 rounded-xl px-3.5 min-h-[44px] py-2 text-xs font-extrabold transition-opacity active:scale-95 whitespace-nowrap shrink-0 cursor-pointer"
+                    style={{
+                      backgroundColor: 'var(--pt-accent)',
+                      color: 'var(--pt-accent-contrast)',
+                    }}
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    <span>{serversList.length > 1 ? 'تغيير السيرفر' : 'إعادة التحميل'}</span>
+                  </button>
+                </div>
               </div>
 
               {/* Desktop Series Episodes Switcher */}
@@ -2869,6 +3095,7 @@ export function PlayerModal({
           </div>
         </div>
       </div>
+      {!isFullscreen && renderCenterReportOverlay(false)}
     </div>
   );
 }

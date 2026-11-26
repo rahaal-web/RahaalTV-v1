@@ -177,6 +177,11 @@ import {
   syncUserProfileToFirestore,
 } from './lib/firebase';
 import {
+  loadPendingGuestServerReports,
+  markPendingServerReportsSynced,
+  markServerIssueReportedLocally,
+} from './lib/serverReports';
+import {
   clearAllSensitiveCaches,
   computeUserProfileSyncFingerprint,
   loadCachedUserRecentlyWatched,
@@ -1644,6 +1649,30 @@ export default function App() {
           }
         }, delayMs);
       }
+
+      const pendingReports = loadPendingGuestServerReports();
+      if (pendingReports.length > 0) {
+        window.setTimeout(async () => {
+          if (cancelled || seq !== authSequence) return;
+          const flushedKeys: string[] = [];
+          for (const entry of pendingReports.slice(0, 5)) {
+            if (cancelled || seq !== authSequence) return;
+            try {
+              await submitVisitorRequestToFirestore(user, {
+                title: entry.payload.title,
+                type: entry.payload.type,
+                notes: entry.payload.notes,
+              });
+              flushedKeys.push(entry.dedupeKey);
+            } catch {
+              break;
+            }
+          }
+          if (flushedKeys.length > 0) {
+            markPendingServerReportsSynced(flushedKeys);
+          }
+        }, 900);
+      }
     });
 
     return () => {
@@ -2079,6 +2108,30 @@ export default function App() {
     if (!firebaseUser) return;
     await submitVisitorRequestToFirestore(firebaseUser, req);
     showToast('تم إرسال طلبك وحفظه في قاعدة البيانات');
+  };
+
+  const handleReportBrokenServers = async (req: {
+    title: string;
+    type: VisitorRequest['type'];
+    notes: string;
+    dedupeKey: string;
+  }): Promise<{ synced: boolean }> => {
+    if (!firebaseUser) {
+      markServerIssueReportedLocally(req.dedupeKey, req, false);
+      return { synced: false };
+    }
+    try {
+      await submitVisitorRequestToFirestore(firebaseUser, {
+        title: req.title,
+        type: req.type,
+        notes: req.notes,
+      });
+      markServerIssueReportedLocally(req.dedupeKey, req, true);
+      return { synced: true };
+    } catch {
+      markServerIssueReportedLocally(req.dedupeKey, req, false);
+      return { synced: false };
+    }
   };
 
   const handleDeleteStarterItems = (ids: string[]) => {
@@ -2699,6 +2752,7 @@ export default function App() {
           userId={activeWatchUserId}
           isSignedIn={Boolean(firebaseUser)}
           onRecentlyWatchedUpdated={() => setRecentlyWatchedTick((t) => t + 1)}
+          onReportBrokenServers={handleReportBrokenServers}
           onNotify={showToast}
           onClose={() => closeTopOverlay()}
         />
