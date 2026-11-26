@@ -403,9 +403,9 @@ export async function extractSingleMovieBrowser(params: {
     strategy = 'Browser Raw HTML Parse';
   }
 
-  const baseMedia = enrichExternal
-    ? await scrapeFullItemInBrowser(effectiveUrl, fetchedHtml)
-    : parseHtmlToMediaWithHintsBrowser(fetchedHtml, effectiveUrl).media;
+  const baseMedia = await scrapeFullItemInBrowser(effectiveUrl, fetchedHtml, {
+    skipExternalEnrichment: !enrichExternal,
+  });
 
   const movie = buildAdvancedMovieRecordBrowser(baseMedia, effectiveUrl);
   return {
@@ -830,7 +830,7 @@ async function runBrowserJobPipeline(runtime: BrowserJobRuntime): Promise<void> 
       try {
         let movie: AdvancedImportedMovie | null = null;
 
-        if (item.preExtracted && !config.enrichExternalMetadata) {
+        if (item.preExtracted && !config.enrichExternalMetadata && item.preExtracted.servers.length > 0) {
           movie = buildAdvancedMovieRecordBrowser(item.preExtracted, item.url);
         } else {
           const matchedAdapter = config.useAdapters
@@ -853,9 +853,10 @@ async function runBrowserJobPipeline(runtime: BrowserJobRuntime): Promise<void> 
           if (!movie) {
             const fetched = await fetchViaBrowserOrCorsRelay(item.url, 12000);
             if (fetched.ok && fetched.text.length >= 80) {
-              const baseMedia = config.enrichExternalMetadata
-                ? await scrapeFullItemInBrowser(item.url, fetched.text)
-                : parseHtmlToMediaWithHintsBrowser(fetched.text, item.url).media;
+              const baseMedia = await scrapeFullItemInBrowser(fetched.finalUrl || item.url, fetched.text, {
+                skipEpisodeCrawl: true,
+                skipExternalEnrichment: !config.enrichExternalMetadata,
+              });
               movie = buildAdvancedMovieRecordBrowser(baseMedia, fetched.finalUrl || item.url);
             } else if (item.preExtracted) {
               movie = buildAdvancedMovieRecordBrowser(item.preExtracted, item.url);

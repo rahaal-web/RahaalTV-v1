@@ -619,6 +619,7 @@ function extractServerQualityFromLabel(rawLabel: string, fallbackQuality: string
 function cleanExtractedServerName(rawLabel: string, fallbackUrl: string, idx: number, preserveNames: boolean): string {
   if (!preserveNames) return `سيرفر ${idx + 1}`;
   const cleaned = cleanText(rawLabel)
+    .replace(/<[^>]*>/g, ' ')
     .replace(/^[•\-–|»›\s]+|[•\-–|«‹\s]+$/g, '')
     .replace(/^(?:سيرفر|مشاهدة|سيرفر\s*رقم)\s*\d*\s*[:\-–]?\s*/i, '')
     .replace(/\s*(?:4K\s*UHD|4K|2160p|1440p|FHD|Full\s*HD|HD|1080p|720p|480p|360p|WEB-DL|BluRay)\s*$/i, '')
@@ -759,7 +760,9 @@ export function extractServersWithAdapter(
       }
     }
     if (!label) {
-      label = cleanText($el.text()) || cleanText($el.attr('title')) || '';
+      const $clone = $el.clone();
+      $clone.find('noscript, script, style').remove();
+      label = cleanText($clone.text()) || cleanText($el.attr('title')) || '';
     }
 
     // Check configured attributes
@@ -1265,7 +1268,7 @@ function findBestWatchSubpageUrl(
 
   const candidates: { href: string; score: number }[] = [];
   const customSel = adapter.pageDetection.watchSubpageSelector.trim();
-  const baseSel = customSel ? `${customSel}, a[href]` : 'a.xtgo, a.btnplay, a[href*="play.php"], a[href*="/watch"], a[href]';
+  const baseSel = customSel ? `${customSel}, a[href]` : 'a.xtgo, a.btnplay, a.watch, a[href*="play.php"], a[href*="/watch"], a[href]';
 
   try {
     $(baseSel).each((_, el) => {
@@ -1276,7 +1279,7 @@ function findBestWatchSubpageUrl(
       const cls = cleanText($el.attr('class'));
       const txt = cleanText($el.text());
       const isExplicitWatchBtn = Boolean(
-        (customSel && $el.is(customSel)) || /\bxtgo\b|\bbtnplay\b|\bplay-btn\b/i.test(cls)
+        (customSel && $el.is(customSel)) || /\b(xtgo|btnplay|play-btn|watch)\b/i.test(cls)
       );
       if (!isExplicitWatchBtn && $el.closest(IGNORED_WATCH_SUBPAGE_PARENT_SELECTOR).length > 0) {
         return;
@@ -1284,7 +1287,7 @@ function findBestWatchSubpageUrl(
 
       const href = resolveUrl(sourceUrl, $el.attr('href'));
       if (!href || canonicalizeCompareUrl(href) === canonicalizeCompareUrl(sourceUrl)) return;
-      if (/download\.php|\/download/i.test(href) && !/play\.php|\/watch\/|\/player\//i.test(href)) return;
+      if (/download\.php|\/download/i.test(href) && !/play\.php|\/+watch(?:\/|$|\?)|\/+player(?:\/|$|\?)/i.test(href)) return;
       try {
         if (new URL(href).origin !== sourceOrigin) return;
       } catch {
@@ -1310,8 +1313,9 @@ function findBestWatchSubpageUrl(
           // ignore
         }
       }
-      if (/play\.php|\/watch\/|\/player\//i.test(href)) score += 25;
-      if (/\bxtgo\b|\bbtnplay\b|\bplay-btn\b/i.test(cls)) score += 35;
+      if (/play\.php|\/+watch(?:\/|$|\?)|\/+player(?:\/|$|\?)/i.test(href)) score += 25;
+      if (/\b(xtgo|btnplay|play-btn)\b/i.test(cls)) score += 35;
+      else if (/\bwatch\b/i.test(cls) && /watch|play/i.test(href)) score += 30;
       if (/مشاهدة|watch|play/i.test(txt)) score += 10;
 
       // Require higher bar if we have sourceIdVal and candidate didn't carry it (avoid jumping to unrelated site player links)
@@ -1387,8 +1391,9 @@ async function verifyServersList(
           return false;
         }
         if (!response.ok && response.status !== 206) {
-          // Relaxed mode treats 403/405 with non-deleted embed hosts carefully: 404/410/5xx definitely broken
-          if (verifyMode === 'relaxed_headers' && response.status === 403) {
+          const cfMitigated = (response.headers.get('cf-mitigated') || '').toLowerCase();
+          // Relaxed mode treats 403 and Cloudflare challenge 503 with non-deleted embed hosts carefully: 404/410/5xx definitely broken
+          if (verifyMode === 'relaxed_headers' && (response.status === 403 || (response.status === 503 && cfMitigated === 'challenge'))) {
             return true;
           }
           failed.push({
@@ -1683,8 +1688,8 @@ export async function analyzeSiteStructure(params: {
       seriesUrlPattern: matchedExisting?.pageDetection.seriesUrlPattern || '',
       movieUrlPattern: matchedExisting?.pageDetection.movieUrlPattern || '',
       episodeUrlPattern: /play\.php|watch\.php/i.test(finalUrl) ? 'play\\.php|watch\\.php' : '',
-      watchSubpageSelector: $('.xtgo').length > 0 ? 'a.xtgo, a[href*="play.php"]' : 'a.xtgo, a.btnplay, a[href*="play.php"], a[href*="/watch/"]',
-      watchSubpageUrlPattern: 'play\\.php\\?vid=|/watch/',
+      watchSubpageSelector: $('.xtgo').length > 0 ? 'a.xtgo, a[href*="play.php"]' : 'a.xtgo, a.btnplay, a.watch, a[href*="play.php"], a[href*="/watch"]',
+      watchSubpageUrlPattern: 'play\\.php\\?vid=|/+watch(?:/|$|\\?)',
       downloadSubpageSelector: 'a[href*="download.php"], a[href*="/download"]',
     },
     episodeRules: {

@@ -2406,16 +2406,38 @@ function extractBaselineServerQuality(label: string, fallbackQuality: string): s
   return qMatch ? qMatch[1].toUpperCase().replace(/\s+/g, ' ') : fallbackQuality;
 }
 
-function cleanBaselineServerName(rawName: string | undefined, _url: string, idx: number): string {
-  const trimmed = String(rawName || '').replace(/\s+/g, ' ').trim();
+function cleanBaselineServerName(rawName: string | undefined, fallbackUrl: string, idx: number): string {
+  const trimmed = String(rawName || '')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
   if (
     !trimmed ||
     trimmed.length > 45 ||
     /^(?:سيرفر\s*\d*|server\s*\d*|embed|مستورد|مشاهدة|watch|play)$/i.test(trimmed)
   ) {
+    try {
+      const host = new URL(fallbackUrl).hostname.replace(/^www\./, '').split('.')[0];
+      if (host && host.length >= 2) {
+        return host.charAt(0).toUpperCase() + host.slice(1);
+      }
+    } catch {
+      // Ignore invalid fallback URL
+    }
     return `سيرفر ${idx + 1}`;
   }
   return trimmed;
+}
+
+function extractCleanElementLabelServer(
+  $: cheerio.CheerioAPI,
+  $el: ReturnType<cheerio.CheerioAPI>
+): string {
+  const named = cleanText($el.find('.name, span').first().text());
+  if (named) return named;
+  const $clone = $el.clone();
+  $clone.find('noscript, script, style').remove();
+  return cleanText($clone.text()) || cleanText($el.attr('title'));
 }
 
 function extractBaselineEpisodeNumber(label: string, href: string): number | null {
@@ -2897,10 +2919,7 @@ export function parseHtmlToMediaWithHints(
     const iframeMatch = candidateUrl.match(/src=["']([^"']+)["']/i);
     if (iframeMatch) candidateUrl = iframeMatch[1];
 
-    const btnText =
-      cleanText($(el).find('.name, span').first().text()) ||
-      cleanText($(el).text()) ||
-      cleanText($(el).attr('title'));
+    const btnText = extractCleanElementLabelServer($, $(el));
 
     // Pure numeric/short ID (e.g. FaselHD `data-embed="173411"`) -> resolve via /ajax/embed, never as a URL
     if (/^[0-9a-zA-Z_-]{1,24}$/.test(candidateUrl) && !/[./:?]/.test(candidateUrl)) {
@@ -2925,7 +2944,7 @@ export function parseHtmlToMediaWithHints(
   const serverButtonLabels = $(
     '.server-btn, .WatchList li, .servers li, .watch-servers button, .servers-list button, .server-item, .btn-service'
   )
-    .map((_, el) => cleanText($(el).find('.name').first().text()) || cleanText($(el).text()))
+    .map((_, el) => extractCleanElementLabelServer($, $(el)))
     .get()
     .filter(Boolean);
 
@@ -3063,8 +3082,9 @@ export function parseHtmlToMediaWithHints(
     if (
       sameOrigin &&
       !inIgnoredWatchParent &&
-      (/play\.php|\/watch\/|\/player\/|\/embed\//i.test(href) ||
+      (/play\.php|\/+watch(?:\/|$|\?)|\/+player(?:\/|$|\?)|\/+embed(?:\/|$|\?)/i.test(href) ||
         /\b(xtgo|btnplay|watch-btn)\b/i.test(cls) ||
+        (/\bwatch\b/i.test(cls) && /watch|play/i.test(href)) ||
         (/مشاهدة|شاهد/i.test(text) && /\b(play|watch|vid=)\b/i.test(href)))
     ) {
       const candIdVal = extractBaselineEpisodeId(href);
@@ -3073,8 +3093,9 @@ export function parseHtmlToMediaWithHints(
         let score = 0;
         if (sourceIdVal && candIdVal && candIdVal === sourceIdVal) score += 50;
         if (/\b(xtgo|btnplay|watch-btn)\b/i.test(cls)) score += 35;
+        else if (/\bwatch\b/i.test(cls) && /watch|play/i.test(href)) score += 30;
         if (/play\.php/i.test(href)) score += 20;
-        if (/\/watch\/|\/player\/|\/embed\//i.test(href)) score += 12;
+        if (/\/+watch(?:\/|$|\?)|\/+player(?:\/|$|\?)|\/+embed(?:\/|$|\?)/i.test(href)) score += 18;
         if (/مشاهدة|شاهد|watch|play/i.test(text)) score += 8;
         if (!sourceIdVal && !candIdVal && /الموسم|الحلقة/i.test(text)) score -= 20;
         if (score > 0) watchCandidates.push({ url: href, score });
@@ -3425,7 +3446,7 @@ export function parseHtmlToMediaWithHints(
   const mergedInitialCast = mergeCastMembersServer(jsonLdCast, domCast, 20);
 
   const normalizedServers = Array.from(serversMap.values())
-    .slice(0, 12)
+    .slice(0, 15)
     .map((srv, idx) => ({
       ...srv,
       id: srv.id || `srv-ext-${idx + 1}`,
@@ -3463,7 +3484,7 @@ export function parseHtmlToMediaWithHints(
     trailerUrl,
     cast: mergedInitialCast,
     servers: normalizedServers,
-    downloads: Array.from(downloadsMap.values()).slice(0, 12),
+    downloads: Array.from(downloadsMap.values()).slice(0, 15),
     seasons: parsedSeasons,
   };
 
@@ -3816,11 +3837,43 @@ async function findYoutubeTrailerFallback(
   return '';
 }
 
+export function isKnownVideoEmbedUrlServer(rawUrl: string): boolean {
+  const clean = String(rawUrl || '').trim();
+  if (!/^https?:\/\//i.test(clean)) return false;
+  if (
+    /(doodstream|dood\.|ds2play|d000d|playmogo|mixdrop|mxdrop|uqload|vidmoly|streamwish|filemoon|voe\.sx|streamtape|ok\.ru|vk\.com|luluvdo|mp4upload|vidbom|vidspeed|abyss|megamax|govad|yourupload|sibnet|turboviplay|myvi|fembed|upstream|sbembed|liiivideo|videa|anafast|vidoba|filelions|earnvids|mp4plus)/i.test(
+      clean
+    )
+  ) {
+    return true;
+  }
+  try {
+    const p = new URL(clean).pathname;
+    return /^\/(?:e|embed|v|f)\/[a-z0-9_-]{5,}/i.test(p) || /\.(?:mp4|m3u8|webm)(?:\?|$)/i.test(p);
+  } catch {
+    return false;
+  }
+}
+
 async function verifyScrapedServers(
   servers: ScrapedMediaItem['servers'],
-  sourceOrigin: string
+  sourceOrigin: string,
+  options?: { skipRemoteProbe?: boolean }
 ): Promise<ScrapedMediaItem['servers']> {
   if (!servers.length) return [];
+
+  const preFiltered = servers.filter((srv) => srv.url && !isLikelyNonVideoWebsiteUrl(srv.url, sourceOrigin));
+  if (preFiltered.length === 0) return [];
+
+  if (options?.skipRemoteProbe) {
+    return preFiltered.slice(0, 15).map((srv, idx) => ({
+      ...srv,
+      id: srv.id || `srv-ext-${idx + 1}`,
+      name: cleanBaselineServerName(srv.name, srv.url, idx),
+    }));
+  }
+
+  const probeSlice = preFiltered.slice(0, 15);
 
   const checkOne = async (srv: ScrapedMediaItem['servers'][number]) => {
     const target = srv.url;
@@ -3842,30 +3895,57 @@ async function verifyScrapedServers(
       });
       const finalUrl = response.url || target;
       if (isLikelyNonVideoWebsiteUrl(finalUrl, sourceOrigin)) return false;
-      if (!response.ok && response.status !== 206) return false;
-
-      const xFrame = (response.headers.get('x-frame-options') || '').toLowerCase();
-      const csp = (response.headers.get('content-security-policy') || '').toLowerCase();
       const cfMitigated = (response.headers.get('cf-mitigated') || '').toLowerCase();
-      if (cfMitigated === 'challenge') return false;
-
       const ct = (response.headers.get('content-type') || '').toLowerCase();
-      if (ct.includes('video/') || ct.includes('mpegurl')) return true;
 
       let snippet = '';
-      if (ct.includes('text/html') || ct.includes('text/plain') || !ct) {
+      if (ct.includes('text/html') || ct.includes('text/plain') || !ct || response.status === 403) {
         snippet = (await response.text().catch(() => '')).slice(0, 28000);
+      }
+
+      const isChallengePage =
+        cfMitigated === 'challenge' ||
+        /<title>\s*(?:Just a moment|Attention Required|Cloudflare|Checking your browser)/i.test(snippet) ||
+        /challenge-platform|cf-turnstile|cf-chl/i.test(snippet);
+
+      if (!response.ok && response.status !== 206) {
+        if (
+          response.status === 403 &&
+          (isChallengePage || !/file\s*(?:not\s*found|deleted)|404\s*not\s*found/i.test(snippet)) &&
+          (isKnownVideoEmbedUrlServer(finalUrl) || isKnownVideoEmbedUrlServer(target)) &&
+          !isWebsiteHomepageHtml(finalUrl, snippet)
+        ) {
+          return true;
+        }
+        return false;
+      }
+
+      if (ct.includes('video/') || ct.includes('mpegurl')) return true;
+
+      if (snippet) {
         if (isWebsiteHomepageHtml(finalUrl, snippet)) return false;
         if (
-          /<title>\s*(?:403\s+Forbidden|Access\s+Denied|Just\s+a\s+moment|Attention\s+Required|404\s+Not\s+Found)/i.test(
-            snippet
-          ) ||
           /file\s*(?:was|has been)?\s*(?:deleted|removed)|video\s*(?:was|has been)?\s*(?:deleted|removed|not found)|file\s*not\s*found|404\s*not\s*found|no\s*longer\s*available|تم\s*حذف\s*(?:الملف|الفيديو)|الفيديو\s*غير\s*موجود|الملف\s*غير\s*موجود/i.test(
             snippet
           )
         ) {
           return false;
         }
+        if (
+          /<title>\s*(?:403\s+Forbidden|Access\s+Denied|Just\s+a\s+moment|Attention\s+Required|404\s+Not\s+Found)/i.test(
+            snippet
+          )
+        ) {
+          if (
+            (isChallengePage || response.status === 403) &&
+            (isKnownVideoEmbedUrlServer(finalUrl) || isKnownVideoEmbedUrlServer(target))
+          ) {
+            return true;
+          }
+          return false;
+        }
+        const xFrame = (response.headers.get('x-frame-options') || '').toLowerCase();
+        const csp = (response.headers.get('content-security-policy') || '').toLowerCase();
         const frameBlocked =
           xFrame.includes('deny') ||
           xFrame.includes('sameorigin') ||
@@ -3883,10 +3963,10 @@ async function verifyScrapedServers(
     }
   };
 
-  const keptFlags = await Promise.all(servers.map((srv) => checkOne(srv)));
-  return servers
+  const keptFlags = await Promise.all(probeSlice.map((srv) => checkOne(srv)));
+  return probeSlice
     .filter((_, idx) => keptFlags[idx])
-    .slice(0, 12)
+    .slice(0, 15)
     .map((srv, idx) => ({
       ...srv,
       id: srv.id || `srv-ext-${idx + 1}`,
@@ -3908,7 +3988,7 @@ function canonicalizeCompareUrl(rawUrl?: string): string {
 export async function scrapeFullItemWithSubpages(
   mainUrl: string,
   mainHtml: string,
-  options?: { skipEpisodeCrawl?: boolean }
+  options?: { skipEpisodeCrawl?: boolean; skipExternalEnrichment?: boolean }
 ): Promise<ScrapedMediaItem> {
   const { media, hints } = parseHtmlToMediaWithHints(mainHtml, mainUrl);
 
@@ -4007,15 +4087,19 @@ export async function scrapeFullItemWithSubpages(
     // ignore
   }
 
+  const skipExternal = Boolean(options?.skipExternalEnrichment || options?.skipEpisodeCrawl);
+
   // Step 4: Verify scraped servers aren't website homepages / broken while preserving real names & qualities
   // Step 5: Fallback trailer search + independent High-Res Poster (2:3) & Backdrop (16:9) enrichment + real IMDb/TMDb rating
   const [filteredServers, fallbackTrailer, resolvedImages, resolvedRating, resolvedCast] =
     await Promise.all([
-      verifyScrapedServers(media.servers, mainOrigin),
-      media.trailerUrl || options?.skipEpisodeCrawl
+      verifyScrapedServers(media.servers, mainOrigin, {
+        skipRemoteProbe: Boolean(options?.skipEpisodeCrawl && options?.skipExternalEnrichment),
+      }),
+      media.trailerUrl || skipExternal
         ? Promise.resolve(media.trailerUrl)
         : findYoutubeTrailerFallback(media.title, media.englishTitle, media.year, media.kind),
-      options?.skipEpisodeCrawl
+      skipExternal
         ? Promise.resolve(null)
         : resolveHighResImagesServer({
             title: media.title,
@@ -4027,7 +4111,7 @@ export async function scrapeFullItemWithSubpages(
             currentBackdrop: media.backdrop,
             preferOfficial: true,
           }),
-      options?.skipEpisodeCrawl || (hints.hasExplicitImdbRating && media.imdb !== 7.8)
+      skipExternal || (hints.hasExplicitImdbRating && media.imdb !== 7.8)
         ? Promise.resolve(null)
         : resolveMediaRatingServer({
             title: media.title,
@@ -4036,7 +4120,7 @@ export async function scrapeFullItemWithSubpages(
             kind: media.kind,
             imdbId: media.imdbId,
           }),
-      options?.skipEpisodeCrawl || media.cast.length >= 4
+      skipExternal || media.cast.length >= 4
         ? Promise.resolve(null)
         : resolveCastMembersServer({
             title: media.title,
@@ -4096,7 +4180,7 @@ export async function scrapeFullItemWithSubpages(
     media.image_source = resolvedImages.image_source;
     media.image_quality_status = resolvedImages.image_quality_status;
   }
-  media.downloads = media.downloads.slice(0, 12);
+  media.downloads = media.downloads.slice(0, 15);
 
   // Step 5b: If distributed multi-season page links exist (e.g. /season-2, /season-3), fetch all season pages FIRST
   if (!options?.skipEpisodeCrawl && hints.seasonPageUrls && hints.seasonPageUrls.length > 0) {

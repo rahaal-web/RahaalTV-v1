@@ -63,7 +63,7 @@ export interface ImporterEngineDeps {
   scrapeFullItemWithSubpages: (
     mainUrl: string,
     mainHtml: string,
-    options?: { skipEpisodeCrawl?: boolean }
+    options?: { skipEpisodeCrawl?: boolean; skipExternalEnrichment?: boolean }
   ) => Promise<ImporterScrapedMediaLike>;
   extractListingWithOptionalAdapter: (
     html: string,
@@ -569,6 +569,7 @@ export async function extractSingleMovieAdvanced(
     rawHtml?: string;
     useAdapters?: boolean;
     enrichExternalMetadata?: boolean;
+    skipEpisodeCrawl?: boolean;
   },
   deps: ImporterEngineDeps
 ): Promise<{ ok: true; movie: AdvancedImportedMovie; strategy: string } | { ok: false; status: number; error: string }> {
@@ -650,9 +651,10 @@ export async function extractSingleMovieAdvanced(
     strategy = 'Raw HTML Parse';
   }
 
-  const baseMedia = enrichExternal
-    ? await deps.scrapeFullItemWithSubpages(effectiveUrl, fetchedHtml)
-    : deps.parseHtmlToMediaWithHints(fetchedHtml, effectiveUrl).media;
+  const baseMedia = await deps.scrapeFullItemWithSubpages(effectiveUrl, fetchedHtml, {
+    skipEpisodeCrawl: params.skipEpisodeCrawl,
+    skipExternalEnrichment: !enrichExternal,
+  });
 
   return {
     ok: true,
@@ -1527,7 +1529,7 @@ async function runJobPipeline(runtime: ActiveJobRuntime, deps: ImporterEngineDep
       try {
         let movie: AdvancedImportedMovie | null = null;
 
-        if (item.preExtracted && !config.enrichExternalMetadata) {
+        if (item.preExtracted && !config.enrichExternalMetadata && item.preExtracted.servers.length > 0) {
           movie = buildAdvancedMovieRecord(item.preExtracted, item.url, '');
         } else {
           const singleRes = await extractSingleMovieAdvanced(
@@ -1535,6 +1537,7 @@ async function runJobPipeline(runtime: ActiveJobRuntime, deps: ImporterEngineDep
               url: item.url,
               useAdapters: config.useAdapters,
               enrichExternalMetadata: config.enrichExternalMetadata,
+              skipEpisodeCrawl: true,
             },
             deps
           );

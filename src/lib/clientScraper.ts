@@ -723,16 +723,43 @@ function extractBrowserServerQuality(label: string, fallbackQuality: string): st
   return qMatch ? qMatch[1].toUpperCase().replace(/\s+/g, ' ') : fallbackQuality;
 }
 
-function cleanBrowserServerName(rawName: string | undefined, _url: string | undefined, idx: number): string {
-  const trimmed = String(rawName || '').replace(/\s+/g, ' ').trim();
+function cleanBrowserServerName(rawName: string | undefined, fallbackUrl: string | undefined, idx: number): string {
+  const trimmed = String(rawName || '')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
   if (
     !trimmed ||
     trimmed.length > 45 ||
     /^(?:سيرفر\s*\d*|server\s*\d*|embed|مستورد|مشاهدة|watch|play)$/i.test(trimmed)
   ) {
+    if (fallbackUrl) {
+      try {
+        const host = new URL(fallbackUrl).hostname.replace(/^www\./, '').split('.')[0];
+        if (host && host.length >= 2) {
+          return host.charAt(0).toUpperCase() + host.slice(1);
+        }
+      } catch {
+        // Ignore invalid URL
+      }
+    }
     return `سيرفر ${idx + 1}`;
   }
   return trimmed;
+}
+
+function extractCleanElementLabelBrowser(el: Element): string {
+  const named = cleanText(el.querySelector('.name, span')?.textContent);
+  if (named) return named;
+  let rawText = '';
+  if (el.querySelector('noscript, script, style')) {
+    const clone = el.cloneNode(true) as Element;
+    clone.querySelectorAll('noscript, script, style').forEach((n) => n.remove());
+    rawText = cleanText(clone.textContent);
+  } else {
+    rawText = cleanText(el.textContent);
+  }
+  return rawText || cleanText(el.getAttribute('title'));
 }
 
 function extractBrowserEpisodeNumber(label: string, href: string): number | null {
@@ -1270,10 +1297,7 @@ export function parseHtmlToMediaWithHintsBrowser(
       const iframeMatch = candidateUrl.match(/src=["']([^"']+)["']/i);
       if (iframeMatch) candidateUrl = iframeMatch[1];
 
-      const btnText =
-        cleanText(el.querySelector('.name, span')?.textContent) ||
-        cleanText(el.textContent) ||
-        cleanText(el.getAttribute('title'));
+      const btnText = extractCleanElementLabelBrowser(el);
 
       if (/^[0-9a-zA-Z_-]{1,24}$/.test(candidateUrl) && !/[./:?]/.test(candidateUrl)) {
         return;
@@ -1297,7 +1321,7 @@ export function parseHtmlToMediaWithHintsBrowser(
       '.server-btn, .WatchList li, .servers li, .watch-servers button, .servers-list button, .server-item, .btn-service'
     )
   )
-    .map((el) => cleanText(el.querySelector('.name')?.textContent) || cleanText(el.textContent))
+    .map((el) => extractCleanElementLabelBrowser(el))
     .filter(Boolean);
 
   doc.querySelectorAll('script').forEach((el) => {
@@ -1403,8 +1427,9 @@ export function parseHtmlToMediaWithHintsBrowser(
     if (
       sameOrigin &&
       !inIgnoredWatchParent &&
-      (/play\.php|\/watch\/|\/player\/|\/embed\//i.test(href) ||
+      (/play\.php|\/+watch(?:\/|$|\?)|\/+player(?:\/|$|\?)|\/+embed(?:\/|$|\?)/i.test(href) ||
         /\b(xtgo|btnplay|watch-btn)\b/i.test(cls) ||
+        (/\bwatch\b/i.test(cls) && /watch|play/i.test(href)) ||
         (/مشاهدة|شاهد/i.test(text) && /\b(play|watch|vid=)\b/i.test(href)))
     ) {
       const candIdVal = extractBrowserEpisodeId(href);
@@ -1412,8 +1437,9 @@ export function parseHtmlToMediaWithHintsBrowser(
         let score = 0;
         if (sourceIdVal && candIdVal && candIdVal === sourceIdVal) score += 50;
         if (/\b(xtgo|btnplay|watch-btn)\b/i.test(cls)) score += 35;
+        else if (/\bwatch\b/i.test(cls) && /watch|play/i.test(href)) score += 30;
         if (/play\.php/i.test(href)) score += 20;
-        if (/\/watch\/|\/player\/|\/embed\//i.test(href)) score += 12;
+        if (/\/+watch(?:\/|$|\?)|\/+player(?:\/|$|\?)|\/+embed(?:\/|$|\?)/i.test(href)) score += 18;
         if (/مشاهدة|شاهد|watch|play/i.test(text)) score += 8;
         if (!sourceIdVal && !candIdVal && /الموسم|الحلقة/i.test(text)) score -= 20;
         if (score > 0) watchCandidates.push({ url: href, score });
@@ -1776,7 +1802,7 @@ export function parseHtmlToMediaWithHintsBrowser(
   const mergedCast = Array.from(mergedCastMap.values());
 
   const normalizedServers = Array.from(serversMap.values())
-    .slice(0, 12)
+    .slice(0, 15)
     .map((srv, idx) => ({
       ...srv,
       id: srv.id || `srv-ext-${idx + 1}`,
@@ -1815,7 +1841,7 @@ export function parseHtmlToMediaWithHintsBrowser(
       trailerUrl,
       cast: mergedCast,
       servers: normalizedServers,
-      downloads: Array.from(downloadsMap.values()).slice(0, 12),
+      downloads: Array.from(downloadsMap.values()).slice(0, 15),
       seasons: parsedSeasons,
     },
     hints,
@@ -2393,7 +2419,34 @@ export type ServerFilterEntryResult = {
   httpStatus: number;
   reason: string;
   directStreamUrl?: string | null;
+  isChallenge?: boolean;
 };
+
+export function isKnownVideoEmbedUrlBrowser(rawUrl: string): boolean {
+  const clean = String(rawUrl || '').trim();
+  if (!/^https?:\/\//i.test(clean)) return false;
+  if (
+    /(doodstream|dood\.|ds2play|d000d|playmogo|mixdrop|mxdrop|uqload|vidmoly|streamwish|filemoon|voe\.sx|streamtape|ok\.ru|vk\.com|luluvdo|mp4upload|vidbom|vidspeed|abyss|megamax|govad|yourupload|sibnet|turboviplay|myvi|fembed|upstream|sbembed|liiivideo|videa|anafast|vidoba|filelions|earnvids|mp4plus)/i.test(
+      clean
+    )
+  ) {
+    return true;
+  }
+  try {
+    const p = new URL(clean).pathname;
+    return /^\/(?:e|embed|v|f)\/[a-z0-9_-]{5,}/i.test(p) || /\.(?:mp4|m3u8|webm)(?:\?|$)/i.test(p);
+  } catch {
+    return false;
+  }
+}
+
+function isChallengeSnippet(snippet: string): boolean {
+  return (
+    /<title>\s*(?:Just a moment|Attention Required|Cloudflare|Checking your browser|Access\s+Denied|403\s+Forbidden)/i.test(
+      snippet
+    ) || /challenge-platform|cf-turnstile|cf-chl/i.test(snippet)
+  );
+}
 
 function evaluateFetchedServerResponse(
   rawUrl: string,
@@ -2422,12 +2475,19 @@ function evaluateFetchedServerResponse(
     };
   }
   if (status === 403 || status === 401 || status >= 500) {
+    const cfBlocked =
+      status === 403 &&
+      !isWebsiteHomepageHtmlBrowser(finalUrl, snippet) &&
+      !/file\s*(?:was|has been)?\s*(?:deleted|removed)|video\s*(?:was|has been|is)?\s*(?:deleted|removed|not found)|file\s*not\s*found|404\s*not\s*found|تم\s*حذف\s*(?:الملف|الفيديو)|الفيديو\s*غير\s*موجود/i.test(
+        snippet
+      );
     return {
       url: rawUrl,
       ok: false,
       faultType: status === 403 ? '403' : 'error',
       httpStatus: status,
       reason: status === 403 ? 'ممنوع الوصول (403)' : `خطأ من الخادم (${status})`,
+      isChallenge: cfBlocked || isChallengeSnippet(snippet),
     };
   }
   if (isWebsiteHomepageHtmlBrowser(finalUrl, snippet)) {
@@ -2447,12 +2507,14 @@ function evaluateFetchedServerResponse(
       snippet
     )
   ) {
+    const cfOnly = isChallengeSnippet(snippet) && !/404\s*not\s*found|deleted|removed|غير\s*موجود/i.test(snippet);
     return {
       url: rawUrl,
       ok: false,
-      faultType: '404',
+      faultType: cfOnly ? '403' : '404',
       httpStatus: status,
-      reason: 'الفيديو محذوف أو غير موجود داخل السيرفر',
+      reason: cfOnly ? 'حماية Cloudflare ضد السحب التلقائي' : 'الفيديو محذوف أو غير موجود داخل السيرفر',
+      isChallenge: cfOnly,
     };
   }
   if (/sandboxed\s+embed/i.test(snippet)) {
@@ -2604,7 +2666,8 @@ export async function filterServersInBrowser(urls: string[]): Promise<ServerFilt
 
 async function verifyScrapedServersInBrowser(
   servers: StreamServer[],
-  sourceOrigin: string
+  sourceOrigin: string,
+  options?: { skipRemoteProbe?: boolean }
 ): Promise<StreamServer[]> {
   const preFiltered = servers.filter((s) => {
     const u = s.url || '';
@@ -2613,12 +2676,25 @@ async function verifyScrapedServersInBrowser(
 
   if (preFiltered.length === 0) return [];
 
-  const urls = preFiltered.map((s) => s.url || '');
+  if (options?.skipRemoteProbe) {
+    return preFiltered.slice(0, 15).map((srv, idx) => ({
+      ...srv,
+      id: srv.id || `srv-ext-${idx + 1}`,
+      name: cleanBrowserServerName(srv.name, srv.url, idx),
+    }));
+  }
+
+  const probeSlice = preFiltered.slice(0, 15);
+  const urls = probeSlice.map((s) => s.url || '');
   const results = await filterServersInBrowser(urls);
 
-  return preFiltered
-    .filter((_, idx) => results[idx]?.ok !== false)
-    .slice(0, 12)
+  return probeSlice
+    .filter((srv, idx) => {
+      const r = results[idx];
+      if (!r || r.ok !== false) return true;
+      return Boolean(r.isChallenge && isKnownVideoEmbedUrlBrowser(srv.url || ''));
+    })
+    .slice(0, 15)
     .map((srv, idx) => ({
       ...srv,
       id: srv.id || `srv-ext-${idx + 1}`,
@@ -2640,7 +2716,7 @@ function canonicalizeCompareUrlBrowser(rawUrl?: string): string {
 export async function scrapeFullItemInBrowser(
   mainUrl: string,
   mainHtml: string,
-  options?: { skipEpisodeCrawl?: boolean }
+  options?: { skipEpisodeCrawl?: boolean; skipExternalEnrichment?: boolean }
 ): Promise<ScrapedPayload> {
   const { media, hints } = parseHtmlToMediaWithHintsBrowser(mainHtml, mainUrl);
 
@@ -2719,10 +2795,14 @@ export async function scrapeFullItemInBrowser(
     // ignore
   }
 
+  const skipExternal = Boolean(options?.skipExternalEnrichment || options?.skipEpisodeCrawl);
+
   const [filteredServers, fallbackTrailer, resolvedImages, resolvedRating, resolvedCast] =
     await Promise.all([
-      verifyScrapedServersInBrowser(media.servers, mainOrigin),
-      media.trailerUrl || options?.skipEpisodeCrawl
+      verifyScrapedServersInBrowser(media.servers, mainOrigin, {
+        skipRemoteProbe: Boolean(options?.skipEpisodeCrawl && options?.skipExternalEnrichment),
+      }),
+      media.trailerUrl || skipExternal
         ? Promise.resolve(media.trailerUrl)
         : findTrailerInBrowser({
             title: media.title,
@@ -2730,7 +2810,7 @@ export async function scrapeFullItemInBrowser(
             year: media.year,
             kind: media.kind,
           }),
-      options?.skipEpisodeCrawl
+      skipExternal
         ? Promise.resolve(null)
         : import('./mediaImages')
             .then(({ resolveHighResImagesClient }) =>
@@ -2746,7 +2826,7 @@ export async function scrapeFullItemInBrowser(
               })
             )
             .catch(() => null),
-      options?.skipEpisodeCrawl || (hints.hasExplicitImdbRating && media.imdb !== 7.8)
+      skipExternal || (hints.hasExplicitImdbRating && media.imdb !== 7.8)
         ? Promise.resolve(null)
         : import('./mediaRatings')
             .then(({ resolveSingleMediaRating }) =>
@@ -2759,7 +2839,7 @@ export async function scrapeFullItemInBrowser(
               })
             )
             .catch(() => null),
-      options?.skipEpisodeCrawl || media.cast.length >= 4
+      skipExternal || media.cast.length >= 4
         ? Promise.resolve(null)
         : resolveCastInBrowser({
             title: media.title,
@@ -2819,7 +2899,7 @@ export async function scrapeFullItemInBrowser(
     media.image_source = resolvedImages.image_source;
     media.image_quality_status = resolvedImages.image_quality_status;
   }
-  media.downloads = media.downloads.slice(0, 12);
+  media.downloads = media.downloads.slice(0, 15);
 
   // Follow distributed multi-season page links FIRST (/season-2, /season-3)
   if (!options?.skipEpisodeCrawl && hints.seasonPageUrls && hints.seasonPageUrls.length > 0) {

@@ -85,8 +85,8 @@ export function createDefaultScraperAdapter(
       seriesUrlPattern: '',
       movieUrlPattern: '',
       episodeUrlPattern: '',
-      watchSubpageSelector: 'a.xtgo, a.btnplay, a[href*="play.php"], a[href*="/watch/"]',
-      watchSubpageUrlPattern: 'play\\.php\\?vid=|/watch/',
+      watchSubpageSelector: 'a.xtgo, a.btnplay, a.watch, a[href*="play.php"], a[href*="/watch"], a[href$="/watch"]',
+      watchSubpageUrlPattern: 'play\\.php\\?vid=|/+watch(?:/|$|\\?)',
       downloadSubpageSelector: 'a[href*="download.php"], a[href*="/download"]',
     },
     episodeRules: {

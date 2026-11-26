@@ -25,6 +25,7 @@ import {
   findTrailerInBrowser,
   getCustomApiBaseUrl,
   isBlockedHostBrowser,
+  isKnownVideoEmbedUrlBrowser,
   isLikelyNonVideoWebsiteUrl,
   normalizeArabicDigitsBrowser,
   parseHtmlToMediaWithHintsBrowser,
@@ -220,6 +221,7 @@ function cleanExtractedServerName(
 ): string {
   if (!preserveNames) return `سيرفر ${idx + 1}`;
   const cleaned = cleanTextBrowser(rawLabel)
+    .replace(/<[^>]*>/g, ' ')
     .replace(/^[•\-–|»›\s]+|[•\-–|«‹\s]+$/g, '')
     .replace(/^(?:سيرفر|مشاهدة|سيرفر\s*رقم)\s*\d*\s*[:\-–]?\s*/i, '')
     .replace(/\s*(?:4K\s*UHD|4K|2160p|1440p|FHD|Full\s*HD|HD|1080p|720p|480p|360p|WEB-DL|BluRay)\s*$/i, '')
@@ -324,7 +326,13 @@ function extractServersWithAdapterBrowser(
       if (matchedNameEl) label = cleanTextBrowser(matchedNameEl.textContent);
     }
     if (!label) {
-      label = cleanTextBrowser(el.textContent) || cleanTextBrowser(el.getAttribute('title')) || '';
+      if (el.querySelector('noscript, script, style')) {
+        const clone = el.cloneNode(true) as Element;
+        clone.querySelectorAll('noscript, script, style').forEach((n) => n.remove());
+        label = cleanTextBrowser(clone.textContent) || cleanTextBrowser(el.getAttribute('title')) || '';
+      } else {
+        label = cleanTextBrowser(el.textContent) || cleanTextBrowser(el.getAttribute('title')) || '';
+      }
     }
 
     for (const attr of urlAttrs) {
@@ -771,7 +779,7 @@ function findBestWatchSubpageUrlBrowser(
   const customSel = adapter.pageDetection.watchSubpageSelector.trim();
   const sel = customSel
     ? `${customSel}, a[href]`
-    : 'a.xtgo, a.btnplay, a[href*="play.php"], a[href*="/watch/"], a[href]';
+    : 'a.xtgo, a.btnplay, a.watch, a[href*="play.php"], a[href*="/watch"], a[href]';
 
   const candidates: { href: string; score: number }[] = [];
   safeQueryAll(doc, sel).forEach((el) => {
@@ -781,13 +789,13 @@ function findBestWatchSubpageUrlBrowser(
     const cls = el.getAttribute('class') || '';
     const text = cleanTextBrowser(el.textContent);
     const isExplicitWatchBtn = Boolean(
-      (customSel && el.matches(customSel)) || /\bxtgo\b|\bbtnplay\b|\bplay-btn\b/i.test(cls)
+      (customSel && el.matches(customSel)) || /\b(xtgo|btnplay|play-btn|watch)\b/i.test(cls)
     );
     if (!isExplicitWatchBtn && el.closest(IGNORED_WATCH_SUBPAGE_PARENT_SELECTOR)) return;
 
     const href = resolveUrlBrowser(sourceUrl, el.getAttribute('href'));
     if (!href || canonicalizeCompareUrl(href) === canonicalizeCompareUrl(sourceUrl)) return;
-    if (/download\.php|\/download/i.test(href) && !/play\.php|\/watch\/|\/player\//i.test(href)) return;
+    if (/download\.php|\/download/i.test(href) && !/play\.php|\/+watch(?:\/|$|\?)|\/+player(?:\/|$|\?)/i.test(href)) return;
     try {
       if (new URL(href).origin !== sourceOrigin) return;
     } catch {
@@ -809,8 +817,9 @@ function findBestWatchSubpageUrlBrowser(
         // ignore
       }
     }
-    if (/\bxtgo\b|\bbtnplay\b|\bplay-btn\b/i.test(cls)) score += 35;
-    if (/play\.php|\/watch\/|\/player\//i.test(href)) score += 25;
+    if (/\b(xtgo|btnplay|play-btn)\b/i.test(cls)) score += 35;
+    else if (/\bwatch\b/i.test(cls) && /watch|play/i.test(href)) score += 30;
+    if (/play\.php|\/+watch(?:\/|$|\?)|\/+player(?:\/|$|\?)/i.test(href)) score += 25;
     if (/مشاهدة|watch|play/i.test(text)) score += 10;
 
     const minThreshold = sourceIdVal && !candIdVal && !isExplicitWatchBtn ? 60 : 25;
@@ -856,7 +865,14 @@ async function verifyServersBrowserList(
 
   for (const srv of servers) {
     const res = srv.url ? statusMap.get(srv.url) : undefined;
-    if (res && !res.ok) {
+    const isCfChallengeAllowed =
+      res &&
+      !res.ok &&
+      verifyMode === 'relaxed_headers' &&
+      res.isChallenge &&
+      srv.url &&
+      isKnownVideoEmbedUrlBrowser(srv.url);
+    if (res && !res.ok && !isCfChallengeAllowed) {
       failed.push({
         episodeNumber,
         serverName: srv.name,
@@ -1199,8 +1215,8 @@ export async function analyzeSiteStructureInBrowser(params: {
       episodeUrlPattern: /play\.php|watch\.php/i.test(finalUrl) ? 'play\\.php|watch\\.php' : '',
       watchSubpageSelector: doc.querySelector('.xtgo')
         ? 'a.xtgo, a[href*="play.php"]'
-        : 'a.xtgo, a.btnplay, a[href*="play.php"], a[href*="/watch/"]',
-      watchSubpageUrlPattern: 'play\\.php\\?vid=|/watch/',
+        : 'a.xtgo, a.btnplay, a.watch, a[href*="play.php"], a[href*="/watch"]',
+      watchSubpageUrlPattern: 'play\\.php\\?vid=|/+watch(?:/|$|\\?)',
       downloadSubpageSelector: 'a[href*="download.php"], a[href*="/download"]',
     },
     episodeRules: {

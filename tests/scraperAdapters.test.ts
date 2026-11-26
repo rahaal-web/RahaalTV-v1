@@ -774,4 +774,98 @@ test('Mandatory 3-season test (Baseline Server Scraper in server.ts): supports d
   );
 });
 
+test('CimaCub pattern: follows <a class="watch" href="...//watch">, strips <noscript>, preserves 15 servers & Cloudflare 403 embeds', async () => {
+  const mainUrl = 'https://w.cimacub.com/film-test-2026/';
+  const watchUrl = 'https://w.cimacub.com/film-test-2026//watch';
+
+  const mainHtml = `<!doctype html>
+  <html lang="ar" dir="rtl">
+  <head><title>فيلم تجريبي 2026 مترجم - سيما كلوب</title></head>
+  <body>
+    <h1>فيلم تجريبي 2026 مترجم</h1>
+    <div class="BTNSDownWatch">
+      <a class="watch" href="${watchUrl}"><span>مشاهدة وتحميل الأن</span></a>
+    </div>
+  </body></html>`;
+
+  const watchItems = [
+    ...Array.from({ length: 8 }, (_, i) =>
+      `<li data-watch="https://doodstream.com/e/doodtest000${i + 1}"><span><i class="fa fa-play"></i></span>doodstream <noscript><iframe src="" allowfullscreen></iframe></noscript></li>`
+    ),
+    ...Array.from({ length: 8 }, (_, i) =>
+      `<li data-watch="https://mixdrop.ps/e/mixdropt00${i + 1}"><span><i class="fa fa-play"></i></span>mixdrop <noscript><iframe src="" allowfullscreen></iframe></noscript></li>`
+    ),
+  ].join('\n');
+
+  const watchHtml = `<!doctype html>
+  <html lang="ar" dir="rtl">
+  <head><title>مشاهدة فيلم تجريبي 2026 مترجم</title></head>
+  <body>
+    <div class="ServersList" id="WatchList">
+      <ul id="watch">
+        ${watchItems}
+      </ul>
+    </div>
+    <div class="ServersList Download">
+      <ul>
+        <li><a href="https://doodstream.com/d/doodtest0001"><em>doodstream</em></a></li>
+        <li><a href="https://mixdrop.ps/f/mixdropt001"><em>mixdrop</em></a></li>
+      </ul>
+    </div>
+  </body></html>`;
+
+  await withMockedFetch(
+    (url) => {
+      if (url === watchUrl) {
+        return { ok: true, status: 200, body: watchHtml };
+      }
+      if (url.includes('doodstream.com/e/')) {
+        return {
+          ok: false,
+          status: 403,
+          headers: { 'Content-Type': 'text/html', 'cf-mitigated': 'challenge' },
+          body: '<html><head><title>Just a moment...</title></head><body>cf-turnstile</body></html>',
+        };
+      }
+      if (url.includes('mixdrop.ps/e/')) {
+        return {
+          ok: true,
+          status: 200,
+          headers: { 'Content-Type': 'text/html' },
+          body: '<html><body><div id="player"><video src="https://cdn.mixdrop.ps/v/test.mp4"></video></div></body></html>',
+        };
+      }
+      return { ok: false, status: 404, body: '' };
+    },
+    async () => {
+      const parsed = parseHtmlToMediaWithHints(mainHtml, mainUrl);
+      assert.equal(parsed.hints.watchSubpageUrl, watchUrl);
+
+      const item = await scrapeFullItemWithSubpages(mainUrl, mainHtml, {
+        skipEpisodeCrawl: true,
+        skipExternalEnrichment: false,
+      });
+
+      assert.equal(item.servers.length, 15, 'Should keep 15 servers across doodstream and mixdrop');
+      assert.equal(item.servers[0].name, 'doodstream');
+      assert.equal(item.servers[8].name, 'mixdrop');
+      assert.ok(item.downloads.length >= 2, 'Should extract download mirrors from //watch');
+
+      const adapter = createDefaultScraperAdapter('w.cimacub.com', mainUrl);
+      adapter.siteSettings.requestDelayMs = 0;
+      const adapterResult = await executeAdapterScrape({
+        url: mainUrl,
+        rawHtml: mainHtml,
+        adapter,
+        baselineParseFn: parseHtmlToMediaWithHints,
+      });
+
+      assert.equal(adapterResult.media.servers.length, 15);
+      assert.equal(adapterResult.media.servers[0].name, 'doodstream');
+      assert.equal(adapterResult.media.servers[8].name, 'mixdrop');
+    }
+  );
+});
+
+
 
