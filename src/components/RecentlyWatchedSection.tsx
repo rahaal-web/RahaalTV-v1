@@ -458,37 +458,6 @@ export function RecentlyWatchedSection({
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
-            {uiConfig.showArrows && (
-              <div className="hidden sm:flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => scrollStep('backward')}
-                  disabled={!canScrollBackward}
-                  aria-label="السابق في شاهدته مؤخراً"
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-[#181818] hover:bg-[#E50914] disabled:opacity-35 disabled:hover:bg-[#181818] border border-white/[0.08] text-white transition-colors cursor-pointer"
-                >
-                  {uiConfig.scrollDirection === 'rtl' ? (
-                    <ChevronRight className="w-4 h-4" />
-                  ) : (
-                    <ChevronLeft className="w-4 h-4" />
-                  )}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => scrollStep('forward')}
-                  disabled={!canScrollForward}
-                  aria-label="التالي في شاهدته مؤخراً"
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-[#181818] hover:bg-[#E50914] disabled:opacity-35 disabled:hover:bg-[#181818] border border-white/[0.08] text-white transition-colors cursor-pointer"
-                >
-                  {uiConfig.scrollDirection === 'rtl' ? (
-                    <ChevronLeft className="w-4 h-4" />
-                  ) : (
-                    <ChevronRight className="w-4 h-4" />
-                  )}
-                </button>
-              </div>
-            )}
-
             <button
               type="button"
               onClick={() => onToggleHideCompleted(!hideCompleted)}

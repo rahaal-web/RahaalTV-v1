@@ -164,7 +164,9 @@ import {
   getActiveAuth,
   getActiveDatabase,
   getUserAdminRole,
+  getUserAdminRoleFromCache,
   handleFirestoreError,
+  hydrateUserWatchlistCacheFirst,
   OperationType,
   probeDatabaseConnection,
   sanitizeRatingMediaId,
@@ -174,6 +176,20 @@ import {
   submitVisitorRequestToFirestore,
   syncUserProfileToFirestore,
 } from './lib/firebase';
+import {
+  clearAllSensitiveCaches,
+  computeUserProfileSyncFingerprint,
+  loadCachedUserRecentlyWatched,
+  loadCachedUserRequests,
+  loadCachedUserWatchlist,
+  markProfileSynced,
+  normalizeFirestoreRequestRecord,
+  purgeSensitiveCachesExcept,
+  saveCachedUserRecentlyWatched,
+  saveCachedUserRequests,
+  saveCachedUserWatchlist,
+  shouldRunDeferredProfileSync,
+} from './lib/sensitiveDataCache';
 import {
   AdminPrivilegeRole,
   AdminRoleRecord,
@@ -1439,21 +1455,42 @@ export default function App() {
     };
   }, [view, requestedWatchKey, matchedSingleMedia, dbReconnectNonce]);
 
-  // 1a. Cross-device database pointer + owner registry synchronization
+  // 1a. Cross-device database pointer + Stage-2 deferred owner registry synchronization
   useEffect(() => {
     const unsubPointer = subscribeActiveDatabasePointerFromFirestore(true);
-    const seedUid = isOwnerAdmin
-      ? defaultAuthUid || firebaseUser?.uid || undefined
-      : undefined;
-    const unsubRegistry = subscribeDatabaseRegistryFromFirestore(
-      Boolean(defaultAuthUid || isOwnerAdmin),
-      { uidForInitialSeed: seedUid }
-    );
+    const shouldHydrateRegistry = Boolean(defaultAuthUid || isOwnerAdmin);
+    if (!shouldHydrateRegistry) {
+      return () => {
+        unsubPointer();
+      };
+    }
+
+    let cancelled = false;
+    let unsubRegistry = () => {};
+    let deferTimer: number | null = null;
+    const attachRegistry = () => {
+      if (cancelled) return;
+      const seedUid = isOwnerAdmin
+        ? defaultAuthUid || firebaseUser?.uid || undefined
+        : undefined;
+      unsubRegistry = subscribeDatabaseRegistryFromFirestore(true, {
+        uidForInitialSeed: seedUid,
+      });
+    };
+
+    if (view === 'admin' || initialMediaLoaded) {
+      attachRegistry();
+    } else {
+      deferTimer = window.setTimeout(attachRegistry, 700);
+    }
+
     return () => {
+      cancelled = true;
+      if (deferTimer !== null) window.clearTimeout(deferTimer);
       unsubPointer();
       unsubRegistry();
     };
-  }, [defaultAuthUid, isOwnerAdmin, firebaseUser, dbReconnectNonce]);
+  }, [defaultAuthUid, isOwnerAdmin, firebaseUser, view, initialMediaLoaded, dbReconnectNonce]);
 
   // 1b. Automatic Transient Outage Retry Guard
   useEffect(() => {
@@ -1499,86 +1536,292 @@ export default function App() {
     };
   }, [dbConnectionStatus, dbReconnectNonce]);
 
-  // 2. Auth State Listener + Profile Sync (re-attaches if active Firebase App switches)
+  const currentViewRef = useRef(view);
+  currentViewRef.current = view;
+
+  // 2. Sensitive Auth & RBAC Multistage Hydration (Stage 0 cache -> Stage 1 live verify -> Stage 2 deferred profile write)
   useEffect(() => {
     const activeAuth = getActiveAuth();
+    let cancelled = false;
+    let authSequence = 0;
+    let deferredSyncTimer: number | null = null;
+
+    const clearDeferredSync = () => {
+      if (deferredSyncTimer !== null) {
+        window.clearTimeout(deferredSyncTimer);
+        deferredSyncTimer = null;
+      }
+    };
+
     const unsubAuth = onAuthStateChanged(activeAuth, async (user) => {
+      const seq = ++authSequence;
+      clearDeferredSync();
       setFirebaseUser(user);
-      if (user) {
-        // Real authenticated account takes precedence over Guest Mode
-        exitGuestSession();
-        setGuestSession(null);
-        const resolvedRole = await getUserAdminRole(user);
-        setAdminRole(resolvedRole);
-        if (resolvedRole !== 'owner') {
-          setUsersList([]);
-          setAdminsList([]);
-        }
-        try {
-          const cloudWatchlist = await syncUserProfileToFirestore(
-            user,
-            watchlistIds,
-            resolvedRole !== null
-          );
-          setWatchlistIds(cloudWatchlist);
-        } catch {
-          // Handled cleanly inside firebase helper
-        }
-      } else {
+
+      if (!user) {
         setAdminRole(null);
         setVisitorRequests([]);
         setUsersList([]);
         setAdminsList([]);
         setCloudRecentlyWatched([]);
         mergedGuestForUidRef.current = null;
+        clearAllSensitiveCaches();
+        setAuthLoading(false);
+        return;
       }
+
+      // Real authenticated account takes precedence over Guest Mode & isolates per-UID caches
+      exitGuestSession();
+      setGuestSession(null);
+      purgeSensitiveCachesExcept(user.uid);
+
+      // Stage 0: Instant scoped sensitive cache hydration (zero network blocking)
+      const cachedWatchlist = loadCachedUserWatchlist(user.uid);
+      if (cachedWatchlist) {
+        setWatchlistIds(cachedWatchlist);
+      }
+      const cachedRecentlyWatched = loadCachedUserRecentlyWatched(user.uid);
+      if (cachedRecentlyWatched) {
+        setCloudRecentlyWatched(cachedRecentlyWatched);
+      }
+
+      const cachedRoleResult = await getUserAdminRoleFromCache(user);
+      if (cancelled || seq !== authSequence) return;
+      if (cachedRoleResult.hit) {
+        setAdminRole(cachedRoleResult.role);
+        if (cachedRoleResult.role !== 'owner') {
+          setUsersList([]);
+          setAdminsList([]);
+        }
+      }
+      // On public routes, unblock UI immediately using Stage 0 cache while Stage 1 revalidates in background
+      if (cachedRoleResult.hit || currentViewRef.current !== 'admin') {
+        setAuthLoading(false);
+      }
+
+      // Stage 1: Authoritative RBAC verification + cache-first watchlist read (no eager writes)
+      const fallbackWatchlist = cachedWatchlist || watchlistIds;
+      const [resolvedRole, watchlistRes] = await Promise.all([
+        getUserAdminRole(user),
+        hydrateUserWatchlistCacheFirst(user, fallbackWatchlist),
+      ]);
+      if (cancelled || seq !== authSequence) return;
+
+      setAdminRole(resolvedRole);
+      if (resolvedRole !== 'owner') {
+        setUsersList([]);
+        setAdminsList([]);
+      }
+      setWatchlistIds(watchlistRes.watchlistIds);
+      saveCachedUserWatchlist(user.uid, watchlistRes.watchlistIds);
       setAuthLoading(false);
+
+      // Stage 2: Deferred & throttled profile metadata / private info write sync
+      const fingerprint = computeUserProfileSyncFingerprint({
+        uid: user.uid,
+        displayName: user.displayName,
+        photoURL: user.photoURL,
+        email: user.email,
+        isAdminUser: resolvedRole !== null,
+      });
+
+      if (!watchlistRes.docExists || shouldRunDeferredProfileSync(user.uid, fingerprint)) {
+        const delayMs = watchlistRes.docExists ? 700 : 120;
+        deferredSyncTimer = window.setTimeout(async () => {
+          if (cancelled || seq !== authSequence) return;
+          try {
+            const syncedWatchlist = await syncUserProfileToFirestore(
+              user,
+              watchlistRes.watchlistIds,
+              resolvedRole !== null
+            );
+            if (cancelled || seq !== authSequence) return;
+            setWatchlistIds(syncedWatchlist);
+            saveCachedUserWatchlist(user.uid, syncedWatchlist);
+            markProfileSynced(user.uid, fingerprint);
+          } catch {
+            // Handled cleanly inside firebase helper
+          }
+        }, delayMs);
+      }
     });
-    return () => unsubAuth();
+
+    return () => {
+      cancelled = true;
+      clearDeferredSync();
+      unsubAuth();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dbReconnectNonce]);
 
-  // 3. Authenticated Listeners (/requests, plus /users & /admins for Owner Admins only)
+  // 3a. Sensitive User Recently Watched (Stage 0 cache -> Stage 1/2 deferred live listener)
   useEffect(() => {
     if (authLoading || !firebaseUser) return;
 
+    let cancelled = false;
+    const activeDb = getActiveDatabase();
+    const rwQuery = query(
+      collection(activeDb, 'recently_watched'),
+      where('userId', '==', firebaseUser.uid)
+    );
+
+    const applyRwRecords = (list: RecentlyWatchedRecord[], fromServer: boolean) => {
+      if (cancelled) return;
+      setCloudRecentlyWatched(list);
+      saveCachedUserRecentlyWatched(firebaseUser.uid, list);
+      if (fromServer && mergedGuestForUidRef.current !== firebaseUser.uid) {
+        mergedGuestForUidRef.current = firebaseUser.uid;
+        void mergeGuestRecentlyWatchedToAccount(firebaseUser.uid, list).then((merged) => {
+          if (!cancelled && merged.length > 0) {
+            setRecentlyWatchedTick((t) => t + 1);
+          }
+        });
+      }
+    };
+
+    // Stage 0: Instant IndexedDB persistent cache read before network listener attaches
+    getDocsFromCache(rwQuery)
+      .then((cachedSnap) => {
+        if (cancelled || cachedSnap.empty) return;
+        const cachedList = cachedSnap.docs.map((d) => d.data() as RecentlyWatchedRecord);
+        applyRwRecords(cachedList, false);
+      })
+      .catch(() => {
+        // Local storage cache already hydrated Stage 0 on auth resolve
+      });
+
+    let unsubRecentlyWatched = () => {};
+    let attachTimer: number | null = null;
+
+    const attachLiveListener = () => {
+      if (cancelled) return;
+      unsubRecentlyWatched = onSnapshot(
+        rwQuery,
+        (snapshot) => {
+          const list = snapshot.docs.map((d) => d.data() as RecentlyWatchedRecord);
+          applyRwRecords(list, !snapshot.metadata.fromCache);
+        },
+        () => {
+          // Keep local history available even if recently_watched rules are pending deploy
+        }
+      );
+    };
+
+    if (initialMediaLoaded) {
+      attachLiveListener();
+    } else {
+      attachTimer = window.setTimeout(attachLiveListener, 450);
+    }
+
+    return () => {
+      cancelled = true;
+      if (attachTimer !== null) window.clearTimeout(attachTimer);
+      unsubRecentlyWatched();
+    };
+  }, [authLoading, firebaseUser, initialMediaLoaded, dbReconnectNonce]);
+
+  // 3b. High-Sensitivity Owner Collections (/users & /admins): Strictly view-gated to Admin Dashboard
+  useEffect(() => {
+    if (authLoading || !firebaseUser || !isOwnerAdmin || view !== 'admin') return;
+
+    let cancelled = false;
+    const activeDb = getActiveDatabase();
+
+    // Stage 0: Instant IndexedDB cache read on Admin Dashboard entry
+    void Promise.all([
+      getDocsFromCache(collection(activeDb, 'users')).catch(() => null),
+      getDocsFromCache(collection(activeDb, 'admins')).catch(() => null),
+    ]).then(([cachedUsers, cachedAdmins]) => {
+      if (cancelled) return;
+      if (cachedUsers && !cachedUsers.empty) {
+        setUsersList(cachedUsers.docs.map((d) => d.data() as UserProfileRecord));
+      }
+      if (cachedAdmins && !cachedAdmins.empty) {
+        setAdminsList(cachedAdmins.docs.map((d) => d.data() as AdminRoleRecord));
+      }
+    });
+
+    // Stage 2: Live admin-only listeners while viewing Admin Dashboard
+    const unsubUsers = onSnapshot(
+      collection(activeDb, 'users'),
+      (snapshot) => {
+        if (!cancelled) {
+          setUsersList(snapshot.docs.map((d) => d.data() as UserProfileRecord));
+        }
+      },
+      (error) => {
+        try {
+          handleFirestoreError(error, OperationType.LIST, 'users');
+        } catch {
+          // Ignore background listener permission errors gracefully
+        }
+      }
+    );
+
+    const unsubAdmins = onSnapshot(
+      collection(activeDb, 'admins'),
+      (snapshot) => {
+        if (!cancelled) {
+          setAdminsList(snapshot.docs.map((d) => d.data() as AdminRoleRecord));
+        }
+      },
+      (error) => {
+        try {
+          handleFirestoreError(error, OperationType.LIST, 'admins');
+        } catch {
+          // Ignore background listener permission errors gracefully
+        }
+      }
+    );
+
+    return () => {
+      cancelled = true;
+      unsubUsers();
+      unsubAdmins();
+    };
+  }, [authLoading, firebaseUser, isOwnerAdmin, view, dbReconnectNonce]);
+
+  // 3c. Sensitive Visitor Requests (/requests): On-demand hydration for Admin Dashboard or Requests Modal
+  useEffect(() => {
+    if (authLoading || !firebaseUser) return;
+    if (view !== 'admin' && footerTopic !== 'requests') return;
+
+    let cancelled = false;
     const activeDb = getActiveDatabase();
     const reqPath = 'requests';
     const reqQuery = isOwnerAdmin
       ? query(collection(activeDb, reqPath), orderBy('createdAt', 'desc'))
       : query(collection(activeDb, reqPath), where('userId', '==', firebaseUser.uid));
 
-    const unsubRequests = onSnapshot(
-      reqQuery,
-      (snapshot) => {
-        const list = snapshot.docs
-          .map((d) => {
-            const data = d.data();
-            const createdMs =
-              data.createdAt && typeof data.createdAt.toMillis === 'function'
-                ? data.createdAt.toMillis()
-                : 0;
-            return {
-              createdMs,
-              item: {
-                id: data.id || d.id,
-                userId: data.userId,
-                requesterName: data.requesterName,
-                title: data.title,
-                type: data.type,
-                notes: data.notes || '',
-                status: data.status || 'pending',
-                adminNote: data.adminNote || '',
-                createdAt:
-                  data.createdAt && typeof data.createdAt.toDate === 'function'
-                    ? data.createdAt.toDate().toISOString()
-                    : new Date().toISOString(),
-              } as VisitorRequest,
-            };
-          })
+    // Stage 0: Instant scoped cache + IndexedDB persistent cache
+    const cachedReqs = loadCachedUserRequests(firebaseUser.uid, isOwnerAdmin);
+    if (cachedReqs) {
+      setVisitorRequests(cachedReqs);
+    }
+    getDocsFromCache(reqQuery)
+      .then((cachedSnap) => {
+        if (cancelled || cachedSnap.empty) return;
+        const list = cachedSnap.docs
+          .map((d) => normalizeFirestoreRequestRecord(d.id, d.data() as Record<string, unknown>))
           .sort((a, b) => b.createdMs - a.createdMs)
           .map((entry) => entry.item);
         setVisitorRequests(list);
+      })
+      .catch(() => {
+        // Scoped cache already applied if available
+      });
+
+    // Stage 2: Live requests listener
+    const unsubRequests = onSnapshot(
+      reqQuery,
+      (snapshot) => {
+        if (cancelled) return;
+        const list = snapshot.docs
+          .map((d) => normalizeFirestoreRequestRecord(d.id, d.data() as Record<string, unknown>))
+          .sort((a, b) => b.createdMs - a.createdMs)
+          .map((entry) => entry.item);
+        setVisitorRequests(list);
+        saveCachedUserRequests(firebaseUser.uid, isOwnerAdmin, list);
       },
       (error) => {
         try {
@@ -1589,65 +1832,11 @@ export default function App() {
       }
     );
 
-    let unsubUsers = () => {};
-    let unsubAdmins = () => {};
-
-    if (isOwnerAdmin) {
-      unsubUsers = onSnapshot(
-        collection(activeDb, 'users'),
-        (snapshot) => {
-          setUsersList(snapshot.docs.map((d) => d.data() as UserProfileRecord));
-        },
-        (error) => {
-          try {
-            handleFirestoreError(error, OperationType.LIST, 'users');
-          } catch {
-            // Ignore background listener permission errors gracefully
-          }
-        }
-      );
-
-      unsubAdmins = onSnapshot(
-        collection(activeDb, 'admins'),
-        (snapshot) => {
-          setAdminsList(snapshot.docs.map((d) => d.data() as AdminRoleRecord));
-        },
-        (error) => {
-          try {
-            handleFirestoreError(error, OperationType.LIST, 'admins');
-          } catch {
-            // Ignore background listener permission errors gracefully
-          }
-        }
-      );
-    }
-
-    const unsubRecentlyWatched = onSnapshot(
-      query(collection(activeDb, 'recently_watched'), where('userId', '==', firebaseUser.uid)),
-      (snapshot) => {
-        const list = snapshot.docs.map((d) => d.data() as RecentlyWatchedRecord);
-        setCloudRecentlyWatched(list);
-        if (mergedGuestForUidRef.current !== firebaseUser.uid) {
-          mergedGuestForUidRef.current = firebaseUser.uid;
-          void mergeGuestRecentlyWatchedToAccount(firebaseUser.uid, list).then((merged) => {
-            if (merged.length > 0) {
-              setRecentlyWatchedTick((t) => t + 1);
-            }
-          });
-        }
-      },
-      () => {
-        // Keep local history available even if recently_watched rules are pending deploy
-      }
-    );
-
     return () => {
+      cancelled = true;
       unsubRequests();
-      unsubUsers();
-      unsubAdmins();
-      unsubRecentlyWatched();
     };
-  }, [authLoading, firebaseUser, isOwnerAdmin, dbReconnectNonce]);
+  }, [authLoading, firebaseUser, isOwnerAdmin, view, footerTopic, dbReconnectNonce]);
 
   const showToast = useCallback((msg: string) => {
     setToastMessage(msg);
@@ -1857,6 +2046,7 @@ export default function App() {
           : `تمت إضافة "${item.title}" إلى قائمتي بنجاح`
       );
       if (firebaseUser) {
+        saveCachedUserWatchlist(firebaseUser.uid, next);
         void saveWatchlistToFirestore(firebaseUser.uid, next);
       }
       return next;
@@ -1864,6 +2054,7 @@ export default function App() {
   };
 
   const handleLogout = async () => {
+    clearAllSensitiveCaches();
     await signOutFirebase();
     showToast('تم تسجيل الخروج بنجاح');
   };

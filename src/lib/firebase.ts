@@ -17,6 +17,7 @@ import {
   doc,
   Firestore,
   getDoc,
+  getDocFromCache,
   getDocFromServer,
   getDocs,
   increment,
@@ -435,19 +436,45 @@ export async function signOutFirebase() {
   return signOut(getActiveAuth());
 }
 
+export async function getUserAdminRoleFromCache(
+  user: User | null
+): Promise<{ role: AdminPrivilegeRole | null; hit: boolean }> {
+  if (!user) return { role: null, hit: true };
+  const email = user.email?.toLowerCase() || '';
+  if (user.emailVerified && PRIMARY_ADMIN_EMAILS.some((e) => e.toLowerCase() === email)) {
+    return { role: 'owner', hit: true };
+  }
+  try {
+    const cachedDoc = await getDocFromCache(doc(getActiveDatabase(), 'admins', user.uid));
+    if (!cachedDoc.exists()) return { role: null, hit: true };
+    const data = cachedDoc.data() as { role?: unknown };
+    return { role: data?.role === 'moderator' ? 'moderator' : 'owner', hit: true };
+  } catch {
+    return { role: null, hit: false };
+  }
+}
+
 export async function getUserAdminRole(user: User | null): Promise<AdminPrivilegeRole | null> {
   if (!user) return null;
   const email = user.email?.toLowerCase() || '';
   if (user.emailVerified && PRIMARY_ADMIN_EMAILS.some((e) => e.toLowerCase() === email)) {
     return 'owner';
   }
+  const ref = doc(getActiveDatabase(), 'admins', user.uid);
   try {
-    const adminDoc = await getDoc(doc(getActiveDatabase(), 'admins', user.uid));
+    const adminDoc = await getDocFromServer(ref);
     if (!adminDoc.exists()) return null;
     const data = adminDoc.data() as { role?: unknown };
     return data?.role === 'moderator' ? 'moderator' : 'owner';
   } catch {
-    return null;
+    try {
+      const cachedDoc = await getDoc(ref);
+      if (!cachedDoc.exists()) return null;
+      const data = cachedDoc.data() as { role?: unknown };
+      return data?.role === 'moderator' ? 'moderator' : 'owner';
+    } catch {
+      return null;
+    }
   }
 }
 
@@ -941,6 +968,37 @@ export async function deleteVisitorRequestFromFirestore(requestId: string) {
     await deleteDoc(doc(activeDb, 'requests', requestId));
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, path);
+  }
+}
+
+export async function hydrateUserWatchlistCacheFirst(
+  user: User,
+  fallbackWatchlist: string[]
+): Promise<{ watchlistIds: string[]; docExists: boolean }> {
+  const activeDb = getActiveDatabase();
+  const userRef = doc(activeDb, 'users', user.uid);
+  try {
+    const cachedSnap = await getDocFromCache(userRef);
+    if (cachedSnap.exists()) {
+      const list = Array.isArray(cachedSnap.data().watchlistIds)
+        ? (cachedSnap.data().watchlistIds as string[])
+        : [];
+      return { watchlistIds: list, docExists: true };
+    }
+  } catch {
+    // Cache miss — fall through to server/network getDoc
+  }
+  try {
+    const liveSnap = await getDoc(userRef);
+    if (!liveSnap.exists()) {
+      return { watchlistIds: fallbackWatchlist.slice(0, 100), docExists: false };
+    }
+    const list = Array.isArray(liveSnap.data().watchlistIds)
+      ? (liveSnap.data().watchlistIds as string[])
+      : [];
+    return { watchlistIds: list, docExists: true };
+  } catch {
+    return { watchlistIds: fallbackWatchlist.slice(0, 100), docExists: false };
   }
 }
 
