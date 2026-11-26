@@ -18,6 +18,7 @@ export type AdminTab =
   | 'site_scraper'
   | 'scraper_adapters'
   | 'crawl_operations'
+  | 'advanced_importer'
   | 'website_branding'
   | 'cards_themes'
   | 'image_placeholders'
@@ -244,6 +245,16 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
         keywords: ['tasks', 'jobs', 'queue', 'cancel', 'عمليات', 'مهام'],
         iconName: 'Activity',
         moderatorPermKey: 'allowCrawlOperations',
+      },
+      {
+        id: 'advanced_importer',
+        groupId: 'crawlers',
+        label: 'ADVANCED CONTENT IMPORTER PRO',
+        shortLabel: 'المستورد المتقدم PRO',
+        description: 'جلب فيلم واحد أو موقع بالكامل حتى 50,000 فيلم مع طابور مستمر، منع التكرار، ومتابعة حية',
+        keywords: ['advanced', 'importer', 'pro', '50000', 'sitemap', 'queue', 'مستورد', 'متقدم', 'استيراد'],
+        iconName: 'Rocket',
+        moderatorPermKey: 'allowSiteScraper',
       },
       {
         id: 'ai_editor',

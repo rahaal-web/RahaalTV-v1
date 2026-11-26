@@ -55,6 +55,7 @@ import {
   Play,
   Plus,
   RefreshCw,
+  Rocket,
   RotateCcw,
   Ruler,
   Search,
@@ -176,6 +177,11 @@ const AdminImagePlaceholderPanel = lazy(() =>
 const AdminCardsAndThemesPanel = lazy(() =>
   import('./admin/AdminCardsAndThemesPanel').then((m) => ({
     default: m.AdminCardsAndThemesPanel,
+  }))
+);
+const AdvancedContentImporterPanel = lazy(() =>
+  import('./admin/AdvancedContentImporterPanel').then((m) => ({
+    default: m.AdvancedContentImporterPanel,
   }))
 );
 
@@ -412,6 +418,7 @@ const ADMIN_SIDEBAR_ICON_MAP: Record<string, typeof LayoutDashboard> = {
   MessageSquare,
   MonitorPlay,
   Palette,
+  Rocket,
   Server,
   Settings,
   Shield,
@@ -5101,6 +5108,16 @@ export function AdminDashboardView({
                   requests={requests}
                   adminUid={activeActorUid}
                   adminName={activeActorName}
+                  onNotify={onNotify}
+                />
+              )}
+
+              {activeTab === 'advanced_importer' &&
+                isTabAccessible('advanced_importer', isOwner, workspacePrefs.moderatorSubPermissions) && (
+                <AdvancedContentImporterPanel
+                  user={user}
+                  catalog={catalog}
+                  customApiUrl={customApiUrl}
                   onNotify={onNotify}
                 />
               )}

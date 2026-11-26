@@ -39,6 +39,26 @@ import {
   type VerifiedAdminContext,
   verifyOwnerAdminMiddleware,
 } from './server/dbSecretVault.ts';
+import {
+  bootstrapPersistedJobsFromDisk,
+  cancelImporterJob,
+  createAndStartImporterJob,
+  deleteImporterJob,
+  extractSingleMovieAdvanced,
+  findSourceIndexDuplicate,
+  getImporterJobSummary,
+  getPaginatedJobItems,
+  type ImporterEngineDeps,
+  listImporterJobs,
+  loadSourceIndex,
+  pauseImporterJob,
+  resumeImporterJob,
+  retryFailedInImporterJob,
+  saveSourceIndexEntries,
+  streamJobExport,
+  updateJobItemsStatus,
+  verifyStaffAdminMiddleware,
+} from './server/advancedImporterEngine.ts';
 
 const PORT = 3000;
 
@@ -6425,6 +6445,185 @@ async function startServer() {
         error: err instanceof Error ? err.message : 'تعذر حفظ الصورة المضغوطة.',
       });
     }
+  });
+
+  // =========================================================================
+  // ADVANCED CONTENT IMPORTER PRO — Standalone API Routes
+  // =========================================================================
+  bootstrapPersistedJobsFromDisk();
+  const advancedImporterDeps: ImporterEngineDeps = {
+    parseHtmlToMediaWithHints,
+    scrapeFullItemWithSubpages,
+    extractListingWithOptionalAdapter,
+    resolveActiveAdapterForUrl,
+    executeAdapterScrape,
+    enrichScrapedMediaFromAdapter,
+    ajaxEmbedResolverFn: resolveAjaxEmbedsFromOrigins,
+    isBlockedHost,
+    isBlockedHostEnhanced,
+    isLikelyContentUrl,
+    upgradeKnownImageUrlServer,
+  };
+
+  app.post('/api/advanced-importer/single', verifyStaffAdminMiddleware, async (req, res) => {
+    try {
+      const { url, rawHtml, useAdapters, enrichExternalMetadata } = (req.body || {}) as {
+        url?: string;
+        rawHtml?: string;
+        useAdapters?: boolean;
+        enrichExternalMetadata?: boolean;
+      };
+      const result = await extractSingleMovieAdvanced(
+        {
+          url,
+          rawHtml,
+          useAdapters,
+          enrichExternalMetadata,
+        },
+        advancedImporterDeps
+      );
+      if (!result.ok) {
+        return res.status(result.status).json({ ok: false, error: result.error });
+      }
+      const duplicateMatch = findSourceIndexDuplicate(
+        result.movie.sourceUrl,
+        result.movie.externalId,
+        result.movie.imdbId
+      );
+      return res.json({
+        ok: true,
+        strategy: result.strategy,
+        movie: result.movie,
+        sourceDuplicate: duplicateMatch,
+      });
+    } catch (err) {
+      return res.status(500).json({
+        ok: false,
+        error: err instanceof Error ? err.message : 'تعذر استخراج بيانات الفيلم.',
+      });
+    }
+  });
+
+  app.get('/api/advanced-importer/source-index', verifyStaffAdminMiddleware, (_req, res) => {
+    return res.json({ ok: true, index: loadSourceIndex() });
+  });
+
+  app.post('/api/advanced-importer/source-index', verifyStaffAdminMiddleware, (req, res) => {
+    try {
+      const entries = (req.body as { entries?: unknown })?.entries;
+      if (!Array.isArray(entries)) {
+        return res.status(400).json({ ok: false, error: 'يجب إرسال مصفوفة entries.' });
+      }
+      const count = saveSourceIndexEntries(entries);
+      return res.json({ ok: true, saved: count });
+    } catch (err) {
+      return res.status(500).json({
+        ok: false,
+        error: err instanceof Error ? err.message : 'تعذر تحديث فهرس المصادر.',
+      });
+    }
+  });
+
+  app.get('/api/advanced-importer/jobs', verifyStaffAdminMiddleware, (_req, res) => {
+    return res.json({ ok: true, jobs: listImporterJobs() });
+  });
+
+  app.post('/api/advanced-importer/jobs', verifyStaffAdminMiddleware, async (req, res) => {
+    try {
+      const result = await createAndStartImporterJob(req.body || {}, advancedImporterDeps);
+      if (!result.ok) {
+        return res.status(result.status).json({ ok: false, error: result.error });
+      }
+      return res.status(201).json({ ok: true, job: result.job });
+    } catch (err) {
+      return res.status(500).json({
+        ok: false,
+        error: err instanceof Error ? err.message : 'تعذر إنشاء مهمة الجلب.',
+      });
+    }
+  });
+
+  app.get('/api/advanced-importer/jobs/:jobId', verifyStaffAdminMiddleware, (req, res) => {
+    const job = getImporterJobSummary(String(req.params.jobId || ''));
+    if (!job) {
+      return res.status(404).json({ ok: false, error: 'لم يتم العثور على المهمة.' });
+    }
+    return res.json({ ok: true, job });
+  });
+
+  app.post('/api/advanced-importer/jobs/:jobId/pause', verifyStaffAdminMiddleware, (req, res) => {
+    const job = pauseImporterJob(String(req.params.jobId || ''));
+    if (!job) {
+      return res.status(404).json({ ok: false, error: 'لم يتم العثور على المهمة.' });
+    }
+    return res.json({ ok: true, job });
+  });
+
+  app.post('/api/advanced-importer/jobs/:jobId/resume', verifyStaffAdminMiddleware, (req, res) => {
+    const job = resumeImporterJob(String(req.params.jobId || ''), advancedImporterDeps);
+    if (!job) {
+      return res.status(404).json({ ok: false, error: 'لم يتم العثور على المهمة.' });
+    }
+    return res.json({ ok: true, job });
+  });
+
+  app.post('/api/advanced-importer/jobs/:jobId/cancel', verifyStaffAdminMiddleware, (req, res) => {
+    const job = cancelImporterJob(String(req.params.jobId || ''));
+    if (!job) {
+      return res.status(404).json({ ok: false, error: 'لم يتم العثور على المهمة.' });
+    }
+    return res.json({ ok: true, job });
+  });
+
+  app.post('/api/advanced-importer/jobs/:jobId/retry-failed', verifyStaffAdminMiddleware, (req, res) => {
+    const seqs = Array.isArray(req.body?.seqs) ? (req.body.seqs as number[]) : undefined;
+    const out = retryFailedInImporterJob(String(req.params.jobId || ''), seqs, advancedImporterDeps);
+    if (!out.ok || !out.job) {
+      return res.status(404).json({ ok: false, error: 'لم يتم العثور على المهمة.' });
+    }
+    return res.json({ ok: true, retriedCount: out.retriedCount, job: out.job });
+  });
+
+  app.post('/api/advanced-importer/jobs/:jobId/items-status', verifyStaffAdminMiddleware, (req, res) => {
+    const updates = Array.isArray(req.body?.updates) ? req.body.updates : [];
+    const job = updateJobItemsStatus(String(req.params.jobId || ''), updates);
+    if (!job) {
+      return res.status(404).json({ ok: false, error: 'لم يتم العثور على المهمة.' });
+    }
+    return res.json({ ok: true, job });
+  });
+
+  app.get('/api/advanced-importer/jobs/:jobId/items', verifyStaffAdminMiddleware, (req, res) => {
+    const page = Number(req.query.page || '1');
+    const pageSize = Number(req.query.pageSize || '25');
+    const status = String(req.query.status || 'all') as 'all' | 'ready' | 'duplicate' | 'failed' | 'saved' | 'excluded';
+    const search = String(req.query.search || '');
+    const data = getPaginatedJobItems({
+      jobId: String(req.params.jobId || ''),
+      page,
+      pageSize,
+      status,
+      search,
+    });
+    if (!data) {
+      return res.status(404).json({ ok: false, error: 'لم يتم العثور على نتائج المهمة.' });
+    }
+    return res.json(data);
+  });
+
+  app.get('/api/advanced-importer/jobs/:jobId/export', verifyStaffAdminMiddleware, async (req, res) => {
+    const format = req.query.format === 'csv' ? 'csv' : 'json';
+    const statusFilter = String(req.query.status || 'all');
+    const ok = await streamJobExport(String(req.params.jobId || ''), format, statusFilter, res);
+    if (!ok && !res.headersSent) {
+      return res.status(404).json({ ok: false, error: 'لم يتم العثور على ملف نتائج المهمة للتصدير.' });
+    }
+    return;
+  });
+
+  app.delete('/api/advanced-importer/jobs/:jobId', verifyStaffAdminMiddleware, (req, res) => {
+    const deleted = deleteImporterJob(String(req.params.jobId || ''));
+    return res.json({ ok: true, deleted });
   });
 
   const httpServer = http.createServer(app);
