@@ -535,19 +535,27 @@ export function resolveUrlBrowser(baseUrl: string, maybeRelative: string | undef
 const resolveUrl = resolveUrlBrowser;
 
 export function decodeBase64SafeBrowser(val: string): string {
-  const trimmed = val.trim();
-  if (/^(https?:)?\/\//i.test(trimmed) || /<iframe/i.test(trimmed)) return trimmed;
-  if (/^[A-Za-z0-9+/=]{16,}$/.test(trimmed)) {
+  let current = val.trim();
+  if (/^(https?:)?\/\//i.test(current) || /<(?:iframe|video|source|embed)\b/i.test(current)) return current;
+  const orig = current;
+  for (let layer = 0; layer < 2; layer++) {
+    const normalized = current.replace(/-/g, '+').replace(/_/g, '/');
+    if (!/^[A-Za-z0-9+/=]{16,}$/.test(normalized)) break;
     try {
-      const binary = atob(trimmed);
+      const padded = normalized + '='.repeat((4 - (normalized.length % 4)) % 4);
+      const binary = atob(padded);
       const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0));
       const decoded = new TextDecoder('utf-8').decode(bytes).trim();
-      if (/https?:\/\/|<iframe/i.test(decoded)) return decoded;
+      if (!decoded || decoded === current) break;
+      current = decoded;
+      if (/https?:\/\/|<(?:iframe|video|source|embed)\b|https?%3A%2F%2F|%3Ciframe|\\x3c/i.test(current)) {
+        return current;
+      }
     } catch {
-      // Not valid base64 text
+      break;
     }
   }
-  return trimmed;
+  return orig;
 }
 
 const decodeBase64Safe = decodeBase64SafeBrowser;
@@ -577,7 +585,7 @@ function normalizeTrailerUrlBrowser(rawUrl: string | undefined | null): string {
 }
 
 const IGNORED_EMBED_HOSTS_BROWSER_REGEX =
-  /googlesyndication|doubleclick|googletagmanager|facebook\.com\/plugins|recaptcha|cloudflare|ads|histats|yandex|analytics|disqus\.com|gravatar\.com|addtoany|sharethis|twitter\.com\/widgets|instagram\.com\/embed/i;
+  /googlesyndication|doubleclick|googletagmanager|plus\.google\.com|facebook\.com\/(?:plugins|sharer|share\.php)|twitter\.com\/(?:widgets|intent|share)|x\.com\/(?:intent|share)|instagram\.com\/(?:embed|p\/)|t\.me\/share|telegram\.me\/share|whatsapp\.com|pinterest\.com|linkedin\.com\/share|reddit\.com\/submit|vk\.com\/share\.php|recaptcha|cloudflare|ads|histats|yandex|analytics|disqus\.com|gravatar\.com|addtoany|addthis|sharethis/i;
 
 export function isLikelyNonVideoWebsiteUrl(rawUrl: string, sourceOrigin?: string): boolean {
   if (!rawUrl) return true;
@@ -671,11 +679,71 @@ function isWebsiteHomepageHtmlBrowser(finalUrl: string, snippet: string): boolea
   return false;
 }
 
+interface WatchFormHintBrowser {
+  action: string;
+  method: 'GET' | 'POST';
+  params: Record<string, string>;
+}
+
+interface WpAjaxPostHintBrowser {
+  endpoint: string;
+  action: string;
+  postId: string;
+  nume?: string;
+  type?: string;
+  label?: string;
+}
+
 interface SubpageHints {
   watchSubpageUrl?: string;
+  watchSubpageCandidates?: string[];
   downloadSubpageUrl?: string;
+  ajaxEmbedIds?: { id: string; label: string }[];
+  candidateOrigins?: string[];
+  watchForms?: WatchFormHintBrowser[];
+  wpAjaxPosts?: WpAjaxPostHintBrowser[];
   seasonPageUrls?: { seasonNumber: number; label: string; url: string }[];
   hasExplicitImdbRating?: boolean;
+}
+
+function getRegistrableRootDomainBrowser(hostname: string): string {
+  const clean = String(hostname || '').trim().toLowerCase().replace(/^www\./, '');
+  const parts = clean.split('.').filter(Boolean);
+  if (parts.length <= 2) return clean;
+  const lastTwo = parts.slice(-2).join('.');
+  if (/^(co\.uk|com\.eg|com\.sa|net\.sa|org\.uk|com\.au|co\.jp)$/i.test(lastTwo) && parts.length >= 3) {
+    return parts.slice(-3).join('.');
+  }
+  return lastTwo;
+}
+
+function sameRootDomainBrowser(hostA: string, hostB: string): boolean {
+  const a = String(hostA || '').trim().toLowerCase();
+  const b = String(hostB || '').trim().toLowerCase();
+  if (!a || !b) return false;
+  if (a === b) return true;
+  return getRegistrableRootDomainBrowser(a) === getRegistrableRootDomainBrowser(b);
+}
+
+function unescapeScriptAndHtmlBrowser(raw: string): string {
+  return String(raw || '')
+    .replace(/\\\//g, '/')
+    .replace(/\\"/g, '"')
+    .replace(/\\'/g, "'")
+    .replace(/\\n|\\r|\\t/g, ' ')
+    .replace(/\\x([0-9a-fA-F]{2})/g, (_, hex) => {
+      const code = parseInt(hex, 16);
+      return Number.isFinite(code) ? String.fromCharCode(code) : '';
+    })
+    .replace(/\\u([0-9a-fA-F]{4})/g, (_, hex) => {
+      const code = parseInt(hex, 16);
+      return Number.isFinite(code) ? String.fromCharCode(code) : '';
+    })
+    .replace(/&amp;/gi, '&')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#0*39;|&#x0*27;/gi, "'")
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>');
 }
 
 function parseBrowserSeasonNumber(label: string, fallbackIdx: number): number {
@@ -876,10 +944,21 @@ export function parseHtmlToMediaWithHintsBrowser(
   let jsonLdImdbId = '';
   const jsonLdCast: CastMember[] = [];
 
+  const jsonLdVideoUrls: string[] = [];
+
   doc.querySelectorAll('script[type="application/ld+json"]').forEach((el) => {
     const nodes = extractJsonLdNodes(el.textContent || '');
     for (const obj of nodes) {
-      const typeVal = String(obj['@type'] || '');
+      const rawType = obj['@type'];
+      const typeVal = Array.isArray(rawType) ? rawType.map(String).join(' ') : String(rawType || '');
+      if (/\bVideoObject\b/i.test(typeVal)) {
+        for (const key of ['embedUrl', 'contentUrl']) {
+          const val = obj[key];
+          if (typeof val === 'string' && val.trim()) {
+            jsonLdVideoUrls.push(val.trim());
+          }
+        }
+      }
       if (typeVal === 'Movie' || typeVal === 'TVSeries') {
         jsonLdType = typeVal;
         if (obj.sameAs && !jsonLdImdbId) {
@@ -1237,8 +1316,10 @@ export function parseHtmlToMediaWithHintsBrowser(
   const serversMap = new Map<string, StreamServer>();
 
   const pushEmbedServer = (rawCandidate: string, preferredName?: string) => {
-    const src = resolveUrl(sourceUrl, rawCandidate);
+    const cleanedCandidate = String(rawCandidate || '').replace(/&amp;/gi, '&').trim();
+    const src = resolveUrl(sourceUrl, cleanedCandidate);
     if (!src) return;
+    if (/\.(jpg|jpeg|png|webp|gif|svg|ico)(\?|$)/i.test(src)) return;
     if (isYoutubeUrlBrowser(src)) {
       trySetTrailer(src);
       return;
@@ -1271,15 +1352,45 @@ export function parseHtmlToMediaWithHintsBrowser(
     });
   };
 
+  const ajaxEmbedIds: { id: string; label: string }[] = [];
+  const seenAjaxIds = new Set<string>();
+
+  const decodeMultiLayerBrowser = (val: string): string => {
+    let current = unescapeScriptAndHtmlBrowser(val.trim());
+    if (/^(https?:)?\/\//i.test(current) || /<(?:iframe|video|source|embed)\b/i.test(current)) {
+      return current;
+    }
+    if (/(?:https?%3A%2F%2F|%3Ciframe)/i.test(current)) {
+      try {
+        current = decodeURIComponent(current);
+      } catch {
+        // ignore
+      }
+      if (/^(https?:)?\/\//i.test(current) || /<(?:iframe|video|source|embed)\b/i.test(current)) {
+        return current;
+      }
+    }
+    for (let layer = 0; layer < 2; layer++) {
+      if (!/^[A-Za-z0-9+/=_-]{16,}$/.test(current)) break;
+      const decoded = decodeBase64Safe(current);
+      if (!decoded || decoded === current) break;
+      current = unescapeScriptAndHtmlBrowser(decoded);
+      if (/https?:\/\/|<(?:iframe|video|source|embed)\b/i.test(current)) {
+        return current;
+      }
+    }
+    return current;
+  };
+
   // Scan clickable server buttons FIRST so real names, order, and qualities are preserved cleanly
   doc
     .querySelectorAll(
-      '[data-embed-url], [data-embed], [data-iframe], [data-server], [data-video], [data-url], [data-watch], [data-link], [data-play], li[data-src], button[data-src], a[data-src], .WatchList li[href], .WatchList li a[href], .servers li a[href]'
+      '[data-embed-url], [data-embed], [data-iframe], [data-server], [data-video], [data-url], [data-watch], [data-link], [data-play], [data-href], [data-player], [data-frame], [data-file], [data-stream], [data-qu], [onclick], li[data-src], button[data-src], a[data-src], .WatchList li[href], .WatchList li a[href], .servers li a[href]'
     )
     .forEach((el) => {
       if (el.tagName.toLowerCase() === 'img') return;
       if (el.closest('header, nav, footer, .ads, .banner, .pm-ads-banner, .trailer, #trailer')) return;
-      const attrVal =
+      const rawAttrVal =
         el.getAttribute('data-embed-url') ||
         el.getAttribute('data-embed') ||
         el.getAttribute('data-iframe') ||
@@ -1289,31 +1400,102 @@ export function parseHtmlToMediaWithHintsBrowser(
         el.getAttribute('data-watch') ||
         el.getAttribute('data-link') ||
         el.getAttribute('data-play') ||
+        el.getAttribute('data-href') ||
+        el.getAttribute('data-player') ||
+        el.getAttribute('data-frame') ||
+        el.getAttribute('data-file') ||
+        el.getAttribute('data-stream') ||
+        el.getAttribute('data-qu') ||
         el.getAttribute('data-src') ||
         el.getAttribute('href');
+
+      const onclickVal = el.getAttribute('onclick') || '';
+      let attrVal = rawAttrVal || '';
+      if ((!attrVal || attrVal === '#' || attrVal.startsWith('javascript:')) && onclickVal) {
+        const atobInOnclick = onclickVal.match(/atob\(\s*["']([A-Za-z0-9+/=_-]{16,})["']\s*\)/i);
+        const urlInOnclick = onclickVal.match(/https?:\/\/[^"'\s<>)]+/i);
+        const fnArgInOnclick = onclickVal.match(
+          /(?:openEmbed|loadServer|changePlayer|goServer|playServer|setPlayer|watchServer|iframeSrc|player|play)\s*\(\s*["']([^"']+)["']/i
+        );
+        attrVal = atobInOnclick?.[1] || urlInOnclick?.[0] || fnArgInOnclick?.[1] || '';
+      }
       if (!attrVal) return;
 
-      let candidateUrl = decodeBase64Safe(attrVal);
+      let candidateUrl = decodeMultiLayerBrowser(attrVal);
       const iframeMatch = candidateUrl.match(/src=["']([^"']+)["']/i);
       if (iframeMatch) candidateUrl = iframeMatch[1];
 
       const btnText = extractCleanElementLabelBrowser(el);
 
       if (/^[0-9a-zA-Z_-]{1,24}$/.test(candidateUrl) && !/[./:?]/.test(candidateUrl)) {
+        if (!seenAjaxIds.has(candidateUrl)) {
+          seenAjaxIds.add(candidateUrl);
+          ajaxEmbedIds.push({ id: candidateUrl, label: btnText || `سيرفر ${ajaxEmbedIds.length + 1}` });
+        }
         return;
       }
       pushEmbedServer(candidateUrl, btnText || undefined);
     });
 
-  doc.querySelectorAll('iframe').forEach((el) => {
+  // Check <select> server dropdowns (excluding season/episode selectors)
+  doc
+    .querySelectorAll(
+      '.servers select, .WatchList select, [class*="server"] select, [id*="server"] select, [class*="watch"] select, [id*="watch"] select, select[class*="server"], select[id*="server"], select[class*="watch"], select[id*="watch"], select[name*="server"]'
+    )
+    .forEach((selEl) => {
+      const selCls = `${selEl.getAttribute('class') || ''} ${selEl.getAttribute('id') || ''}`;
+      if (/TabS|TabE|season|episode|موسم|حلقة/i.test(selCls)) return;
+      selEl.querySelectorAll('option').forEach((optEl) => {
+        const optRaw =
+          optEl.getAttribute('data-embed') ||
+          optEl.getAttribute('data-url') ||
+          optEl.getAttribute('data-src') ||
+          optEl.getAttribute('value') ||
+          '';
+        if (!optRaw) return;
+        let cand = decodeMultiLayerBrowser(optRaw);
+        const m = cand.match(/src=["']([^"']+)["']/i);
+        if (m) cand = m[1];
+        const label = cleanText(optEl.textContent);
+        if (/^[0-9a-zA-Z_-]{1,24}$/.test(cand) && !/[./:?]/.test(cand)) {
+          if (!seenAjaxIds.has(cand)) {
+            seenAjaxIds.add(cand);
+            ajaxEmbedIds.push({ id: cand, label: label || `سيرفر ${ajaxEmbedIds.length + 1}` });
+          }
+          return;
+        }
+        pushEmbedServer(cand, label || undefined);
+      });
+    });
+
+  doc.querySelectorAll('iframe, embed[src], object[data]').forEach((el) => {
     if (el.closest('header, nav, footer, .ads, .banner, .pm-ads-banner, .trailer, #trailer')) return;
     const rawSrc =
       el.getAttribute('src') ||
       el.getAttribute('data-src') ||
       el.getAttribute('data-lazy-src') ||
+      el.getAttribute('data') ||
       '';
     const titleAttr = cleanText(el.getAttribute('title'));
     pushEmbedServer(rawSrc, titleAttr || undefined);
+  });
+
+  // Check <noscript> for non-empty fallback iframes/video sources
+  doc.querySelectorAll('noscript').forEach((el) => {
+    if (el.closest('header, nav, footer, .ads, .banner, .pm-ads-banner, .trailer, #trailer')) return;
+    const inner = el.innerHTML || el.textContent || '';
+    if (!inner || !/<(?:iframe|video|source|embed)\b/i.test(inner)) return;
+    try {
+      const nDoc = parser.parseFromString(inner, 'text/html');
+      nDoc.querySelectorAll('iframe, video, source, embed').forEach((mediaEl) => {
+        const s = mediaEl.getAttribute('src') || mediaEl.getAttribute('data-src') || '';
+        if (s && s.trim()) {
+          pushEmbedServer(s, cleanText(mediaEl.getAttribute('title')) || undefined);
+        }
+      });
+    } catch {
+      // ignore
+    }
   });
 
   const serverButtonLabels = Array.from(
@@ -1328,13 +1510,16 @@ export function parseHtmlToMediaWithHintsBrowser(
     const scriptText = el.textContent || '';
     if (!scriptText || scriptText.length < 15) return;
 
-    const unescaped = scriptText
-      .replace(/\\\//g, '/')
-      .replace(/\\"/g, '"')
-      .replace(/\\'/g, "'")
-      .replace(/\\n|\\r|\\t/g, ' ');
+    let unescaped = unescapeScriptAndHtmlBrowser(scriptText);
+    if (/(?:https?%3A%2F%2F|%3Ciframe)/i.test(unescaped)) {
+      try {
+        unescaped = decodeURIComponent(unescaped);
+      } catch {
+        // ignore
+      }
+    }
 
-    const iframeSrcRegex = /<iframe[^>]+src=["'](https?:\/\/[^"'\s<>]+)["']/gi;
+    const iframeSrcRegex = /<(?:iframe|embed|source|video)[^>]+src=["'](https?:\/\/[^"'\s<>]+)["']/gi;
     let match: RegExpExecArray | null;
     let scriptServerIdx = 0;
     while ((match = iframeSrcRegex.exec(unescaped)) !== null) {
@@ -1343,10 +1528,10 @@ export function parseHtmlToMediaWithHintsBrowser(
       scriptServerIdx++;
     }
 
-    const atobRegex = /atob\(\s*["']([A-Za-z0-9+/=]{20,})["']\s*\)/gi;
+    const atobRegex = /atob\(\s*["']([A-Za-z0-9+/=_-]{16,})["']\s*\)/gi;
     let b64Match: RegExpExecArray | null;
     while ((b64Match = atobRegex.exec(scriptText)) !== null) {
-      const decoded = decodeBase64Safe(b64Match[1]);
+      const decoded = decodeMultiLayerBrowser(b64Match[1]);
       if (/<script/i.test(decoded)) continue;
       const srcInDecoded = decoded.match(/src=["'](https?:\/\/[^"'\s<>]+)["']/i)?.[1] || decoded;
       if (/^https?:\/\//i.test(srcInDecoded) && !IGNORED_EMBED_HOSTS_BROWSER_REGEX.test(srcInDecoded)) {
@@ -1355,10 +1540,10 @@ export function parseHtmlToMediaWithHintsBrowser(
     }
 
     const jsArrayVarRegex =
-      /(?:var|let|const)\s+(?:servers|embeds|players|watchLinks)\s*=\s*\[([\s\S]{5,8000}?)\]/gi;
+      /(?:var|let|const|window\.)?\s*(?:servers|embeds|players|watchLinks|watch_servers|streamLinks|videoLinks|sources|playlist|serverList)\s*=\s*[\[{]([\s\S]{5,18000}?)[\]}]/gi;
     let arrMatch: RegExpExecArray | null;
     while ((arrMatch = jsArrayVarRegex.exec(unescaped)) !== null) {
-      const urlRegex = /https?:\/\/[^\s"'<>]+/gi;
+      const urlRegex = /https?:\/\/[^\s"'<>\\`]+/gi;
       let uMatch: RegExpExecArray | null;
       let arrIdx = 0;
       while ((uMatch = urlRegex.exec(arrMatch[1])) !== null) {
@@ -1369,10 +1554,27 @@ export function parseHtmlToMediaWithHintsBrowser(
         }
       }
     }
+
+    const jsPropRegex = /(?:src|file|url|embed|embed_url|link|watch|frame)\s*:\s*["'](https?:\/\/[^"'\s<>]+)["']/gi;
+    let propMatch: RegExpExecArray | null;
+    while ((propMatch = jsPropRegex.exec(unescaped)) !== null) {
+      if (!IGNORED_EMBED_HOSTS_BROWSER_REGEX.test(propMatch[1])) {
+        pushEmbedServer(propMatch[1]);
+      }
+    }
+
+    const anyUrlRegex = /https?:\/\/[^\s"'<>\\`)]+/gi;
+    let anyMatch: RegExpExecArray | null;
+    while ((anyMatch = anyUrlRegex.exec(unescaped)) !== null) {
+      const cand = anyMatch[0].replace(/[;,]+$/, '');
+      if (isKnownVideoEmbedUrlBrowser(cand) && !IGNORED_EMBED_HOSTS_BROWSER_REGEX.test(cand)) {
+        pushEmbedServer(cand);
+      }
+    }
   });
 
   doc.querySelectorAll('video source, video').forEach((el) => {
-    const src = resolveUrl(sourceUrl, el.getAttribute('src'));
+    const src = resolveUrl(sourceUrl, el.getAttribute('src') || el.getAttribute('data-src'));
     if (!src || serversMap.has(src) || isLikelyNonVideoWebsiteUrl(src, sourceOrigin)) return;
     const seqNum = serversMap.size + 1;
     const label = cleanText(el.getAttribute('title') || el.getAttribute('data-label'));
@@ -1390,7 +1592,103 @@ export function parseHtmlToMediaWithHintsBrowser(
 
   // 7. Downloads & Subpage Hints
   const downloadsMap = new Map<string, DownloadMirror>();
-  const hints: SubpageHints = { hasExplicitImdbRating };
+
+  const candidateOriginsSet = new Set<string>();
+  const addOriginCand = (maybeUrl: string | undefined | null) => {
+    if (!maybeUrl) return;
+    try {
+      const u = new URL(maybeUrl.trim());
+      if (['http:', 'https:'].includes(u.protocol) && u.hostname !== 'example.com' && !isBlockedHost(u.hostname)) {
+        candidateOriginsSet.add(u.origin);
+      }
+    } catch {
+      // ignore
+    }
+  };
+  addOriginCand(doc.querySelector('link[rel="canonical"]')?.getAttribute('href'));
+  addOriginCand(doc.querySelector('meta[property="og:url"]')?.getAttribute('content'));
+  if (sourceOrigin && !sourceOrigin.includes('example.com')) candidateOriginsSet.add(sourceOrigin);
+
+  const wpAjaxPosts: WpAjaxPostHintBrowser[] = [];
+  const seenWpAjax = new Set<string>();
+  if (sourceOrigin) {
+    doc.querySelectorAll('[data-post]').forEach((el) => {
+      const postId = cleanText(el.getAttribute('data-post'));
+      if (!postId) return;
+      const nume = cleanText(el.getAttribute('data-nume'));
+      const type = cleanText(el.getAttribute('data-type'));
+      const action = cleanText(el.getAttribute('data-action')) || 'doo_player_ajax';
+      if (!nume && !type && !el.getAttribute('data-action') && !el.classList.contains('dooplay_player_option')) return;
+      const label = extractCleanElementLabelBrowser(el);
+      const key = `${action}:${postId}:${nume}:${type}`;
+      if (seenWpAjax.has(key)) return;
+      seenWpAjax.add(key);
+      wpAjaxPosts.push({
+        endpoint: `${sourceOrigin}/wp-admin/admin-ajax.php`,
+        action,
+        postId,
+        nume: nume || undefined,
+        type: type || undefined,
+        label: label || undefined,
+      });
+    });
+
+    const ajaxtMatch = allScriptsText.match(/AjaxtURL\s*=\s*["']([^"']+)["']/i);
+    const bodyPostMatch = (doc.body?.className || '').match(/\bpostid-(\d+)\b/i);
+    const postIdFromPage =
+      bodyPostMatch?.[1] ||
+      cleanText(
+        doc.querySelector('[data-post], [data-id]')?.getAttribute('data-post') ||
+          doc.querySelector('[data-id]')?.getAttribute('data-id')
+      );
+    if (ajaxtMatch?.[1] && postIdFromPage) {
+      const baseAjaxt = resolveUrl(sourceUrl, ajaxtMatch[1]).replace(/\/+$/, '');
+      if (baseAjaxt) {
+        const key = `twatch:${baseAjaxt}:${postIdFromPage}`;
+        if (!seenWpAjax.has(key)) {
+          seenWpAjax.add(key);
+          wpAjaxPosts.push({
+            endpoint: `${baseAjaxt}/Single/TWatch.php`,
+            action: 'twatch',
+            postId: postIdFromPage,
+          });
+        }
+      }
+    }
+  }
+
+  const watchForms: WatchFormHintBrowser[] = [];
+  doc.querySelectorAll('form').forEach((formEl) => {
+    const rawAction = formEl.getAttribute('action') || '';
+    const actionUrl = resolveUrl(sourceUrl, rawAction || sourceUrl);
+    const btnText = Array.from(formEl.querySelectorAll('button, input[type="submit"]'))
+      .map((b) => b.textContent || '')
+      .join(' ');
+    const formClsId = cleanText(`${formEl.getAttribute('id') || ''} ${formEl.getAttribute('class') || ''} ${btnText}`);
+    if (!actionUrl || /search|login|register|comment|newsletter|بحث/i.test(formClsId)) return;
+    if (!/watch|play|embed|player|مشاهدة|سيرفر|تحميل/i.test(`${actionUrl} ${formClsId}`)) return;
+    const method = (formEl.getAttribute('method') || 'GET').trim().toUpperCase() === 'POST' ? 'POST' : 'GET';
+    const params: Record<string, string> = {};
+    formEl.querySelectorAll('input[name]').forEach((inp) => {
+      const name = inp.getAttribute('name');
+      if (!name) return;
+      const type = (inp.getAttribute('type') || '').toLowerCase();
+      if (type === 'submit' || type === 'button') {
+        if (!params[name] && inp.getAttribute('value')) params[name] = inp.getAttribute('value') || '';
+        return;
+      }
+      params[name] = inp.getAttribute('value') || '';
+    });
+    watchForms.push({ action: actionUrl, method, params });
+  });
+
+  const hints: SubpageHints = {
+    ajaxEmbedIds,
+    candidateOrigins: Array.from(candidateOriginsSet),
+    watchForms: watchForms.slice(0, 4),
+    wpAjaxPosts: wpAjaxPosts.slice(0, 15),
+    hasExplicitImdbRating,
+  };
 
   const ignoredDownloadHosts =
     /facebook\.com|twitter\.com|x\.com|t\.me|telegram|whatsapp|instagram|youtube\.com|tiktok\.com|pinterest|linkedin|plus\.google\.com|google\.com\/search|sharer\.php|\/share\?/i;
@@ -1400,6 +1698,43 @@ export function parseHtmlToMediaWithHintsBrowser(
   const watchCandidates: { url: string; score: number }[] = [];
   const sourceIdVal = extractBrowserEpisodeId(sourceUrl);
   const canonicalSourceUrl = canonicalizeCompareUrlBrowser(sourceUrl);
+  let sourceHost = '';
+  try {
+    if (sourceUrl) sourceHost = new URL(sourceUrl).hostname;
+  } catch {
+    // ignore
+  }
+
+  for (const jvUrl of jsonLdVideoUrls) {
+    const resolvedJv = resolveUrl(sourceUrl, jvUrl);
+    if (!resolvedJv) continue;
+    try {
+      const ju = new URL(resolvedJv);
+      if (sameRootDomainBrowser(sourceHost, ju.hostname) && !/\.(mp4|m3u8|webm)(\?|$)/i.test(ju.pathname)) {
+        watchCandidates.push({ url: resolvedJv, score: 42 });
+      } else {
+        pushEmbedServer(resolvedJv);
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  const metaRefresh = doc.querySelector('meta[http-equiv="refresh"]')?.getAttribute('content') || '';
+  const metaRefreshMatch = metaRefresh.match(/url\s*=\s*([^;\s"']+)/i);
+  if (metaRefreshMatch?.[1]) {
+    const refreshUrl = resolveUrl(sourceUrl, metaRefreshMatch[1]);
+    if (refreshUrl && canonicalizeCompareUrlBrowser(refreshUrl) !== canonicalSourceUrl) {
+      try {
+        const ru = new URL(refreshUrl);
+        if (sameRootDomainBrowser(sourceHost, ru.hostname)) {
+          watchCandidates.push({ url: refreshUrl, score: 45 });
+        }
+      } catch {
+        // ignore
+      }
+    }
+  }
 
   doc.querySelectorAll('a[href]').forEach((el, idx) => {
     const rawHref = el.getAttribute('href');
@@ -1408,38 +1743,39 @@ export function parseHtmlToMediaWithHintsBrowser(
     const cls = cleanText(el.getAttribute('class'));
     if (!href || canonicalizeCompareUrlBrowser(href) === canonicalSourceUrl) return;
 
-    let hrefOrigin = '';
+    let hrefHost = '';
     try {
-      hrefOrigin = new URL(href).origin;
+      hrefHost = new URL(href).hostname;
     } catch {
       return;
     }
 
-    const sameOrigin = Boolean(sourceOrigin && hrefOrigin === sourceOrigin);
+    const sameDomain = Boolean(sourceHost && sameRootDomainBrowser(sourceHost, hrefHost));
 
     const inIgnoredWatchParent =
       Boolean(
         el.closest(
           'header, nav, footer, .navbar, .ads, .banner, .pm-ads-banner, .ad-box, .sidebar, .widget, .related, .recommended, .comments, .tabcontent, .SeasonsEpisodes, .SeasonsList, .episodes-list, .episodes, [id^="Season"]'
         )
-      ) && !/\b(xtgo|btnplay|watch-btn)\b/i.test(cls);
+      ) && !/\b(xtgo|btnplay|watch-btn|watch)\b/i.test(cls);
 
     if (
-      sameOrigin &&
+      sameDomain &&
       !inIgnoredWatchParent &&
-      (/play\.php|\/+watch(?:\/|$|\?)|\/+player(?:\/|$|\?)|\/+embed(?:\/|$|\?)/i.test(href) ||
+      (/play\.php|embed\.php|\/+watch(?:\/|$|\?)|\/+player(?:\/|$|\?)|\/+embed(?:[-/]|$|\?)/i.test(href) ||
         /\b(xtgo|btnplay|watch-btn)\b/i.test(cls) ||
-        (/\bwatch\b/i.test(cls) && /watch|play/i.test(href)) ||
-        (/مشاهدة|شاهد/i.test(text) && /\b(play|watch|vid=)\b/i.test(href)))
+        (/\bwatch\b/i.test(cls) && /watch|play|embed/i.test(href)) ||
+        (/مشاهدة|شاهد/i.test(text) && /\b(play|watch|embed|vid=)\b/i.test(href)))
     ) {
       const candIdVal = extractBrowserEpisodeId(href);
       if (!(sourceIdVal && candIdVal && candIdVal !== sourceIdVal)) {
         let score = 0;
         if (sourceIdVal && candIdVal && candIdVal === sourceIdVal) score += 50;
         if (/\b(xtgo|btnplay|watch-btn)\b/i.test(cls)) score += 35;
-        else if (/\bwatch\b/i.test(cls) && /watch|play/i.test(href)) score += 30;
-        if (/play\.php/i.test(href)) score += 20;
-        if (/\/+watch(?:\/|$|\?)|\/+player(?:\/|$|\?)|\/+embed(?:\/|$|\?)/i.test(href)) score += 18;
+        else if (/\bwatch\b/i.test(cls) && /watch|play|embed/i.test(href)) score += 30;
+        if (/play\.php/i.test(href)) score += 22;
+        if (/embed\.php/i.test(href)) score += 18;
+        if (/\/+watch(?:\/|$|\?)|\/+player(?:\/|$|\?)|\/+embed(?:[-/]|$|\?)/i.test(href)) score += 18;
         if (/مشاهدة|شاهد|watch|play/i.test(text)) score += 8;
         if (!sourceIdVal && !candIdVal && /الموسم|الحلقة/i.test(text)) score -= 20;
         if (score > 0) watchCandidates.push({ url: href, score });
@@ -1447,7 +1783,7 @@ export function parseHtmlToMediaWithHintsBrowser(
     }
 
     if (
-      sameOrigin &&
+      sameDomain &&
       !hints.downloadSubpageUrl &&
       !el.closest('.pm-ads-banner, .ads, .banner') &&
       (/download\.php|\/downloads?\//i.test(href) ||
@@ -1467,7 +1803,7 @@ export function parseHtmlToMediaWithHintsBrowser(
       /op=download/i.test(href);
 
     const looksLikeExternalMirror =
-      !sameOrigin &&
+      !sameDomain &&
       !ignoredDownloadHosts.test(href) &&
       (knownMirrorRegex.test(href) ||
         isFileOrMirrorPath ||
@@ -1476,12 +1812,12 @@ export function parseHtmlToMediaWithHintsBrowser(
         ));
 
     const looksLikeDirectButton =
-      !sameOrigin && !ignoredDownloadHosts.test(href) && /تحميل|download|سيرفر/i.test(text);
+      !sameDomain && !ignoredDownloadHosts.test(href) && /تحميل|download|سيرفر/i.test(text);
 
     if (
       !looksLikeExternalMirror &&
       !looksLikeDirectButton &&
-      !(sameOrigin && /\.(mp4|mkv|avi|zip)(\?|$)/i.test(href))
+      !(sameDomain && /\.(mp4|mkv|avi|zip)(\?|$)/i.test(href))
     ) {
       return;
     }
@@ -1507,17 +1843,41 @@ export function parseHtmlToMediaWithHintsBrowser(
     });
   });
 
-  if (watchCandidates.length > 0) {
-    watchCandidates.sort((a, b) => b.score - a.score);
-    hints.watchSubpageUrl = watchCandidates[0].url;
+  if (allScriptsText) {
+    const jsWatchMatches = allScriptsText.match(
+      /["'](https?:\/\/[^"'\s<>]+\/(?:watch|play|player|play\.php\?[^"'\s<>]+|embed\.php\?[^"'\s<>]+))["']/gi
+    );
+    for (const rawM of jsWatchMatches || []) {
+      const cleanM = rawM.slice(1, -1);
+      if (canonicalizeCompareUrlBrowser(cleanM) === canonicalSourceUrl) continue;
+      try {
+        const u = new URL(cleanM);
+        if (sameRootDomainBrowser(sourceHost, u.hostname)) {
+          watchCandidates.push({ url: cleanM, score: 16 });
+        }
+      } catch {
+        // ignore
+      }
+    }
   }
 
-  if (!hints.watchSubpageUrl && allScriptsText) {
-    const jsWatchMatch = allScriptsText.match(
-      /["'](https?:\/\/[^"'\s<>]+\/+(?:watch|play|player)\/?)["']/i
-    );
-    if (jsWatchMatch?.[1]) hints.watchSubpageUrl = jsWatchMatch[1];
+  if (watchCandidates.length > 0) {
+    watchCandidates.sort((a, b) => b.score - a.score);
+    const dedupWatch: string[] = [];
+    const seenWatch = new Set<string>([canonicalSourceUrl]);
+    for (const wc of watchCandidates) {
+      const c = canonicalizeCompareUrlBrowser(wc.url);
+      if (!c || seenWatch.has(c)) continue;
+      seenWatch.add(c);
+      dedupWatch.push(wc.url);
+      if (dedupWatch.length >= 4) break;
+    }
+    if (dedupWatch.length > 0) {
+      hints.watchSubpageCandidates = dedupWatch;
+      hints.watchSubpageUrl = dedupWatch[0];
+    }
   }
+
   if (!hints.downloadSubpageUrl && allScriptsText) {
     const jsDlMatch = allScriptsText.match(/["'](https?:\/\/[^"'\s<>]+\/+download\/?)["']/i);
     if (jsDlMatch?.[1]) hints.downloadSubpageUrl = jsDlMatch[1];
@@ -1802,7 +2162,7 @@ export function parseHtmlToMediaWithHintsBrowser(
   const mergedCast = Array.from(mergedCastMap.values());
 
   const normalizedServers = Array.from(serversMap.values())
-    .slice(0, 15)
+    .slice(0, 30)
     .map((srv, idx) => ({
       ...srv,
       id: srv.id || `srv-ext-${idx + 1}`,
@@ -1858,9 +2218,11 @@ export function isLikelyContentUrl(candidateUrl: string, allowedOrigins: string[
       p === '/' ||
       p === '' ||
       /\.(jpg|jpeg|png|gif|webp|svg|css|js|ico|xml|pdf|zip|mp4|mkv)$/i.test(p) ||
-      /^\/(movies|series|shows|mix|one|recent|trends|discovery|actors|tv-channels|collections|requests|modal)\/?$/i.test(
+      /^\/(movies|series|shows|mix|one|recent|trends|discovery|actors|tv-channels|collections|requests|modal|watch|embed)\/?$/i.test(
         p
       ) ||
+      /\/(?:watch|embed)\/?$/i.test(p) ||
+      /\/embed\.php$/i.test(p) ||
       /\/(index|rss|feed|tag|tags|label|category|categories|genre|search|author|page|login|register|admin|wp-admin|wp-content|comments|contact|about|privacy|terms|play|download|actor|collection|modal)(\.php)?(\/|$)/i.test(
         p
       ) ||
@@ -1998,11 +2360,11 @@ export function extractListingLinksAndPaginationBrowser(html: string, pageUrl: s
   return { siteTitle, cards: Array.from(cards.values()), nextUrls: [...prioritizedNext, ...otherNext] };
 }
 
-async function fetchWithTimeout(url: string, timeoutMs = 10000): Promise<Response> {
+async function fetchWithTimeout(url: string, timeoutMs = 10000, init?: RequestInit): Promise<Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    return await fetch(url, { signal: controller.signal });
+    return await fetch(url, { ...init, signal: controller.signal });
   } finally {
     clearTimeout(timer);
   }
@@ -2426,7 +2788,7 @@ export function isKnownVideoEmbedUrlBrowser(rawUrl: string): boolean {
   const clean = String(rawUrl || '').trim();
   if (!/^https?:\/\//i.test(clean)) return false;
   if (
-    /(doodstream|dood\.|ds2play|d000d|playmogo|mixdrop|mxdrop|uqload|vidmoly|streamwish|filemoon|voe\.sx|streamtape|ok\.ru|vk\.com|luluvdo|mp4upload|vidbom|vidspeed|abyss|megamax|govad|yourupload|sibnet|turboviplay|myvi|fembed|upstream|sbembed|liiivideo|videa|anafast|vidoba|filelions|earnvids|mp4plus)/i.test(
+    /(doodstream|dood\.|myvidplay|ds2play|d000d|playmogo|mixdrop|mxdrop|uqload|vidmoly|streamwish|hlswish|wishembed|filemoon|moonplayer|voe\.sx|streamtape|ok\.ru|vk\.com|vkvideo\.ru|luluvdo|lulustream|lulu\.st|mp4upload|vidbom|vidspeed|vidspeeds|abyss|megamax|govad|yourupload|sibnet|turboviplay|myvi|fembed|upstream|sbembed|liiivideo|videa|anafast|vidoba|filelions|earnvids|mp4plus|vidshare|streamhg|dhcplay|vinovo|goodstream|vidoza|wolfstream|streamlare|dropload|sendvid|rumble|dailymotion|vimeo|rutube|mail\.ru|vidhide|guccihide|minochinos|bysetayico)/i.test(
       clean
     )
   ) {
@@ -2434,7 +2796,11 @@ export function isKnownVideoEmbedUrlBrowser(rawUrl: string): boolean {
   }
   try {
     const p = new URL(clean).pathname;
-    return /^\/(?:e|embed|v|f)\/[a-z0-9_-]{5,}/i.test(p) || /\.(?:mp4|m3u8|webm)(?:\?|$)/i.test(p);
+    return (
+      /^\/(?:e|embed|v|f|d|player|watch)\/[a-z0-9_-]{4,}/i.test(p) ||
+      /\/embed-[a-z0-9_-]{4,}/i.test(p) ||
+      /\.(?:mp4|m3u8|webm)(?:\?|$)/i.test(p)
+    );
   } catch {
     return false;
   }
@@ -2474,20 +2840,23 @@ function evaluateFetchedServerResponse(
       reason: 'الملف غير موجود (404)',
     };
   }
-  if (status === 403 || status === 401 || status >= 500) {
+  const deletedText =
+    /file\s*(?:was|has been)?\s*(?:deleted|removed)|video\s*(?:was|has been|is)?\s*(?:deleted|removed|not found|unavailable|blocked)|file\s*(?:not\s*found|does\s*not\s*exist)|404\s*not\s*found|no\s*longer\s*available|no\s*video\s*found|this\s*video\s*does\s*not\s*exist|embed\s*(?:is\s*)?(?:disabled|unavailable)|account\s*(?:has been\s*)?suspended|تم\s*حذف\s*(?:الملف|الفيديو)|الفيديو\s*غير\s*موجود|الملف\s*غير\s*موجود/i.test(
+      snippet
+    );
+
+  if (status === 403 || status === 401 || status === 429 || status >= 500) {
     const cfBlocked =
-      status === 403 &&
+      (status === 403 || status === 503 || status === 429) &&
       !isWebsiteHomepageHtmlBrowser(finalUrl, snippet) &&
-      !/file\s*(?:was|has been)?\s*(?:deleted|removed)|video\s*(?:was|has been|is)?\s*(?:deleted|removed|not found)|file\s*not\s*found|404\s*not\s*found|تم\s*حذف\s*(?:الملف|الفيديو)|الفيديو\s*غير\s*موجود/i.test(
-        snippet
-      );
+      !deletedText;
     return {
       url: rawUrl,
       ok: false,
       faultType: status === 403 ? '403' : 'error',
       httpStatus: status,
       reason: status === 403 ? 'ممنوع الوصول (403)' : `خطأ من الخادم (${status})`,
-      isChallenge: cfBlocked || isChallengeSnippet(snippet),
+      isChallenge: cfBlocked || (isChallengeSnippet(snippet) && !deletedText),
     };
   }
   if (isWebsiteHomepageHtmlBrowser(finalUrl, snippet)) {
@@ -2503,9 +2872,7 @@ function evaluateFetchedServerResponse(
     /<title>\s*(?:403\s+Forbidden|Access\s+Denied|Just\s+a\s+moment|Attention\s+Required|404\s+Not\s+Found)/i.test(
       snippet
     ) ||
-    /file\s*(?:was|has been)?\s*(?:deleted|removed)|video\s*(?:was|has been|is)?\s*(?:deleted|removed|not found|unavailable|blocked)|file\s*(?:not\s*found|does\s*not\s*exist)|404\s*not\s*found|no\s*longer\s*available|no\s*video\s*found|this\s*video\s*does\s*not\s*exist|embed\s*(?:is\s*)?(?:disabled|unavailable)|account\s*(?:has been\s*)?suspended|تم\s*حذف\s*(?:الملف|الفيديو)|الفيديو\s*غير\s*موجود|الملف\s*غير\s*موجود/i.test(
-      snippet
-    )
+    deletedText
   ) {
     const cfOnly = isChallengeSnippet(snippet) && !/404\s*not\s*found|deleted|removed|غير\s*موجود/i.test(snippet);
     return {
@@ -2527,18 +2894,20 @@ function evaluateFetchedServerResponse(
     };
   }
   const directMp4 = snippet.match(/https?:\/\/[^\s"'<>]+\.(?:mp4|m3u8)(?:\?[^\s"'<>]*)?/i)?.[0] || null;
-  const frameBlocked =
-    xFrame.toLowerCase().includes('deny') ||
-    xFrame.toLowerCase().includes('sameorigin') ||
-    /frame-ancestors\s+[^;]*'none'|frame-ancestors\s+'self'/i.test(csp);
-  if (frameBlocked && !directMp4) {
-    return {
-      url: rawUrl,
-      ok: false,
-      faultType: 'frame_blocked',
-      httpStatus: status,
-      reason: 'السيرفر يمنع التضمين داخل إطار (X-Frame-Options)',
-    };
+  if (!isChallengeSnippet(snippet)) {
+    const frameBlocked =
+      xFrame.toLowerCase().includes('deny') ||
+      xFrame.toLowerCase().includes('sameorigin') ||
+      /frame-ancestors\s+[^;]*'none'|frame-ancestors\s+'self'/i.test(csp);
+    if (frameBlocked && !directMp4) {
+      return {
+        url: rawUrl,
+        ok: false,
+        faultType: 'frame_blocked',
+        httpStatus: status,
+        reason: 'السيرفر يمنع التضمين داخل إطار (X-Frame-Options)',
+      };
+    }
   }
 
   return {
@@ -2677,14 +3046,14 @@ async function verifyScrapedServersInBrowser(
   if (preFiltered.length === 0) return [];
 
   if (options?.skipRemoteProbe) {
-    return preFiltered.slice(0, 15).map((srv, idx) => ({
+    return preFiltered.slice(0, 30).map((srv, idx) => ({
       ...srv,
       id: srv.id || `srv-ext-${idx + 1}`,
       name: cleanBrowserServerName(srv.name, srv.url, idx),
     }));
   }
 
-  const probeSlice = preFiltered.slice(0, 15);
+  const probeSlice = preFiltered.slice(0, 30);
   const urls = probeSlice.map((s) => s.url || '');
   const results = await filterServersInBrowser(urls);
 
@@ -2692,9 +3061,12 @@ async function verifyScrapedServersInBrowser(
     .filter((srv, idx) => {
       const r = results[idx];
       if (!r || r.ok !== false) return true;
-      return Boolean(r.isChallenge && isKnownVideoEmbedUrlBrowser(srv.url || ''));
+      const isKnown = isKnownVideoEmbedUrlBrowser(srv.url || '');
+      if (r.isChallenge && isKnown) return true;
+      if (r.httpStatus === 0 && r.faultType === 'error' && isKnown) return true;
+      return false;
     })
-    .slice(0, 15)
+    .slice(0, 30)
     .map((srv, idx) => ({
       ...srv,
       id: srv.id || `srv-ext-${idx + 1}`,
@@ -2720,41 +3092,68 @@ export async function scrapeFullItemInBrowser(
 ): Promise<ScrapedPayload> {
   const { media, hints } = parseHtmlToMediaWithHintsBrowser(mainHtml, mainUrl);
 
-  let watchUrl = hints.watchSubpageUrl;
   let downloadUrl = hints.downloadSubpageUrl;
+  const collectedWatchForms: WatchFormHintBrowser[] = [...(hints.watchForms || [])];
+  const collectedWpAjaxPosts: WpAjaxPostHintBrowser[] = [...(hints.wpAjaxPosts || [])];
 
-  if (watchUrl && canonicalizeCompareUrlBrowser(watchUrl) !== canonicalizeCompareUrlBrowser(mainUrl)) {
+  // Step 1: Multi-hop watch/player subpage traversal (up to 3 hops, up to 4 candidates)
+  const visitedWatchUrls = new Set<string>([canonicalizeCompareUrlBrowser(mainUrl)]);
+  const watchQueue: Array<{ url: string; depth: number }> = [];
+  for (const candUrl of hints.watchSubpageCandidates || (hints.watchSubpageUrl ? [hints.watchSubpageUrl] : [])) {
+    const canon = canonicalizeCompareUrlBrowser(candUrl);
+    if (canon && !visitedWatchUrls.has(canon)) {
+      watchQueue.push({ url: candUrl, depth: 1 });
+    }
+  }
+  const primaryWatchUrl = watchQueue[0]?.url || '';
+
+  while (watchQueue.length > 0 && visitedWatchUrls.size < 8) {
+    const current = watchQueue.shift()!;
+    const canonCurrent = canonicalizeCompareUrlBrowser(current.url);
+    if (!canonCurrent || visitedWatchUrls.has(canonCurrent) || current.depth > 3) continue;
+    visitedWatchUrls.add(canonCurrent);
+
     try {
-      const u = new URL(watchUrl);
-      if (!isBlockedHost(u.hostname)) {
-        const watchRes = await fetchViaBrowserOrCorsRelay(watchUrl, 8000);
-        if (watchRes.ok && watchRes.text.length > 100) {
-          const watchParsed = parseHtmlToMediaWithHintsBrowser(watchRes.text, watchUrl);
-          if (!media.trailerUrl && watchParsed.media.trailerUrl) {
-            media.trailerUrl = watchParsed.media.trailerUrl;
+      const u = new URL(current.url);
+      if (isBlockedHost(u.hostname)) continue;
+      const watchRes = await fetchViaBrowserOrCorsRelay(current.url, 8000);
+      if (!watchRes.ok || watchRes.text.length < 40) continue;
+
+      const watchParsed = parseHtmlToMediaWithHintsBrowser(watchRes.text, current.url);
+      if (!media.trailerUrl && watchParsed.media.trailerUrl) {
+        media.trailerUrl = watchParsed.media.trailerUrl;
+      }
+      if (watchParsed.media.servers.length > 0) {
+        const merged = [...media.servers];
+        const seen = new Set(merged.map((s) => s.url));
+        for (const srv of watchParsed.media.servers) {
+          if (srv.url && !seen.has(srv.url)) {
+            merged.push(srv);
+            seen.add(srv.url);
           }
-          if (watchParsed.media.servers.length > 0) {
-            const merged = [...watchParsed.media.servers];
-            const seen = new Set(merged.map((s) => s.url));
-            for (const srv of media.servers) {
-              if (srv.url && !seen.has(srv.url)) {
-                merged.push(srv);
-                seen.add(srv.url);
-              }
-            }
-            media.servers = merged;
+        }
+        media.servers = merged;
+      }
+      if (watchParsed.media.downloads.length > 0) {
+        const seenDl = new Set(media.downloads.map((d) => d.url));
+        for (const dl of watchParsed.media.downloads) {
+          if (dl.url && !seenDl.has(dl.url)) {
+            media.downloads.push(dl);
+            seenDl.add(dl.url);
           }
-          if (watchParsed.media.downloads.length > 0) {
-            const seenDl = new Set(media.downloads.map((d) => d.url));
-            for (const dl of watchParsed.media.downloads) {
-              if (dl.url && !seenDl.has(dl.url)) {
-                media.downloads.push(dl);
-                seenDl.add(dl.url);
-              }
-            }
-          }
-          if (!downloadUrl && watchParsed.hints.downloadSubpageUrl) {
-            downloadUrl = watchParsed.hints.downloadSubpageUrl;
+        }
+      }
+      if (!downloadUrl && watchParsed.hints.downloadSubpageUrl) {
+        downloadUrl = watchParsed.hints.downloadSubpageUrl;
+      }
+      if (watchParsed.hints.watchForms?.length) collectedWatchForms.push(...watchParsed.hints.watchForms);
+      if (watchParsed.hints.wpAjaxPosts?.length) collectedWpAjaxPosts.push(...watchParsed.hints.wpAjaxPosts);
+
+      if (current.depth < 3 && watchParsed.media.servers.length === 0) {
+        for (const nextCand of watchParsed.hints.watchSubpageCandidates || []) {
+          const canonNext = canonicalizeCompareUrlBrowser(nextCand);
+          if (canonNext && !visitedWatchUrls.has(canonNext)) {
+            watchQueue.push({ url: nextCand, depth: current.depth + 1 });
           }
         }
       }
@@ -2763,7 +3162,7 @@ export async function scrapeFullItemInBrowser(
     }
   }
 
-  if (downloadUrl && downloadUrl !== mainUrl && downloadUrl !== watchUrl) {
+  if (downloadUrl && downloadUrl !== mainUrl && downloadUrl !== primaryWatchUrl) {
     try {
       const u = new URL(downloadUrl);
       if (!isBlockedHost(u.hostname)) {
@@ -2795,12 +3194,98 @@ export async function scrapeFullItemInBrowser(
     // ignore
   }
 
+  // Step 2b: GET watch forms (via browser/CORS relay) or POST watch forms (when direct/CORS allowed)
+  if (collectedWatchForms.length > 0 && media.servers.length < 15) {
+    for (const wf of collectedWatchForms.slice(0, 3)) {
+      try {
+        const fu = new URL(wf.action);
+        if (isBlockedHost(fu.hostname)) continue;
+        const qs = new URLSearchParams(wf.params);
+        let formText = '';
+        let targetFetchUrl = wf.action;
+        if (wf.method === 'GET') {
+          qs.forEach((v, k) => fu.searchParams.set(k, v));
+          targetFetchUrl = fu.toString();
+          const res = await fetchViaBrowserOrCorsRelay(targetFetchUrl, 7500);
+          if (res.ok) formText = res.text;
+        } else {
+          const res = await fetchWithTimeout(wf.action, 7000, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
+            body: qs.toString(),
+          });
+          if (res.ok) formText = await res.text();
+        }
+        if (formText.length > 40) {
+          const fParsed = parseHtmlToMediaWithHintsBrowser(formText, targetFetchUrl);
+          const seen = new Set(media.servers.map((s) => s.url));
+          for (const srv of fParsed.media.servers) {
+            if (srv.url && !seen.has(srv.url) && !isLikelyNonVideoWebsiteUrl(srv.url, mainOrigin)) {
+              media.servers.push(srv);
+              seen.add(srv.url);
+            }
+          }
+          if (media.servers.length >= 25) break;
+        }
+      } catch {
+        // non-fatal in browser (CORS may block POST)
+      }
+    }
+  }
+
+  // Step 2c: Attempt WordPress AJAX / TWatch.php when direct/CORS allows it
+  if (collectedWpAjaxPosts.length > 0 && media.servers.length < 20) {
+    const seen = new Set(media.servers.map((s) => s.url));
+    for (const item of collectedWpAjaxPosts.slice(0, 10)) {
+      try {
+        const u = new URL(item.endpoint);
+        if (isBlockedHost(u.hostname)) continue;
+        const bodyParams = new URLSearchParams();
+        if (item.action === 'twatch') {
+          bodyParams.set('post_id', item.postId);
+          bodyParams.set('id', item.postId);
+        } else {
+          bodyParams.set('action', item.action);
+          bodyParams.set('post', item.postId);
+          if (item.nume) bodyParams.set('nume', item.nume);
+          if (item.type) bodyParams.set('type', item.type);
+        }
+        const res = await fetchWithTimeout(item.endpoint, 6000, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
+          body: bodyParams.toString(),
+        });
+        if (!res.ok) continue;
+        const txt = await res.text();
+        if (!txt || txt.length < 10) continue;
+        let candHtml = txt;
+        try {
+          const j = JSON.parse(txt) as Record<string, unknown>;
+          if (typeof j?.embed_url === 'string') candHtml = `<iframe src="${j.embed_url}"></iframe>`;
+          else if (typeof j?.url === 'string') candHtml = `<iframe src="${j.url}"></iframe>`;
+          else if (typeof j?.html === 'string') candHtml = j.html;
+        } catch {
+          // html text
+        }
+        const parsed = parseHtmlToMediaWithHintsBrowser(candHtml, mainUrl || item.endpoint);
+        for (const srv of parsed.media.servers) {
+          if (srv.url && !seen.has(srv.url) && !isLikelyNonVideoWebsiteUrl(srv.url, mainOrigin)) {
+            media.servers.push(srv);
+            seen.add(srv.url);
+          }
+        }
+      } catch {
+        // non-fatal
+      }
+    }
+  }
+
   const skipExternal = Boolean(options?.skipExternalEnrichment || options?.skipEpisodeCrawl);
 
   const [filteredServers, fallbackTrailer, resolvedImages, resolvedRating, resolvedCast] =
     await Promise.all([
       verifyScrapedServersInBrowser(media.servers, mainOrigin, {
-        skipRemoteProbe: Boolean(options?.skipEpisodeCrawl && options?.skipExternalEnrichment),
+        skipRemoteProbe: false,
       }),
       media.trailerUrl || skipExternal
         ? Promise.resolve(media.trailerUrl)
@@ -2990,7 +3475,7 @@ export async function scrapeFullItemInBrowser(
                   id: `ep-s${seasonNumber}-e${ep.number}-srv-${sIdx + 1}`,
                   name: cleanBrowserServerName(s.name, s.url, sIdx),
                 }));
-              if (watchUrl) ep.watchSubpageUrl = watchUrl;
+              if (primaryWatchUrl) ep.watchSubpageUrl = primaryWatchUrl;
               ep.watchUrl = ep.servers[0]?.url || '';
               return;
             }

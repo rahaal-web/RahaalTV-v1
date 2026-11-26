@@ -96,6 +96,7 @@ export interface ImporterJobStats {
   failed: number;
   duplicates: number;
   excluded: number;
+  removedNoServers?: number;
   activeElapsedMs: number;
   itemsPerMinute: number;
   etaSeconds: number | null;

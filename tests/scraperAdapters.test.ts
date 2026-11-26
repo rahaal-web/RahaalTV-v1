@@ -846,7 +846,7 @@ test('CimaCub pattern: follows <a class="watch" href="...//watch">, strips <nosc
         skipExternalEnrichment: false,
       });
 
-      assert.equal(item.servers.length, 15, 'Should keep 15 servers across doodstream and mixdrop');
+      assert.equal(item.servers.length, 16, 'Should keep all 16 servers across doodstream and mixdrop');
       assert.equal(item.servers[0].name, 'doodstream');
       assert.equal(item.servers[8].name, 'mixdrop');
       assert.ok(item.downloads.length >= 2, 'Should extract download mirrors from //watch');
@@ -860,7 +860,7 @@ test('CimaCub pattern: follows <a class="watch" href="...//watch">, strips <nosc
         baselineParseFn: parseHtmlToMediaWithHints,
       });
 
-      assert.equal(adapterResult.media.servers.length, 15);
+      assert.equal(adapterResult.media.servers.length, 16);
       assert.equal(adapterResult.media.servers[0].name, 'doodstream');
       assert.equal(adapterResult.media.servers[8].name, 'mixdrop');
     }

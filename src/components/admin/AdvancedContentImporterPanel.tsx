@@ -195,6 +195,8 @@ export function AdvancedContentImporterPanel({
       return;
     }
     setSingleLoading(true);
+    setSingleMovie(null);
+    setSingleStrategy('');
     try {
       const res = await extractSingleMovieApi({
         user,
@@ -1758,11 +1760,18 @@ export function AdvancedContentImporterPanel({
 
               {/* Animated Progress Bar */}
               <div className="space-y-1.5">
-                <div className="flex items-center justify-between text-xs">
+                <div className="flex items-center justify-between text-xs gap-2 flex-wrap">
                   <span className="text-[#b7c9ef] font-bold">نسبة الإنجاز الإجمالية</span>
-                  <span className="font-black text-white tabular-nums">
-                    {activeJob.stats.progressPercent.toFixed(1)}%
-                  </span>
+                  <div className="flex items-center gap-3">
+                    {(activeJob.stats.removedNoServers ?? 0) > 0 && (
+                      <span className="text-[11px] font-bold text-amber-300 tabular-nums">
+                        محذوفة (بدون سيرفرات): {(activeJob.stats.removedNoServers ?? 0).toLocaleString('en-US')}
+                      </span>
+                    )}
+                    <span className="font-black text-white tabular-nums">
+                      {activeJob.stats.progressPercent.toFixed(1)}%
+                    </span>
+                  </div>
                 </div>
                 <div className="w-full h-3 rounded-full bg-[#1a242e] overflow-hidden border border-white/10">
                   <div

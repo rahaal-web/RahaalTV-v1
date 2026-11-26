@@ -103,6 +103,41 @@ function extractExternalIdFromUrl(sourceUrl: string): string {
   return '';
 }
 
+export function hasExtractedWatchServersBrowser(
+  movie: Pick<AdvancedImportedMovie, 'servers' | 'seasons'> | null | undefined
+): boolean {
+  if (!movie) return false;
+  const directValid =
+    Array.isArray(movie.servers) &&
+    movie.servers.some((s) => Boolean(cleanStr(s?.url) || cleanStr(s?.embedCode)));
+  if (directValid) return true;
+  if (Array.isArray(movie.seasons)) {
+    return movie.seasons.some(
+      (sec) =>
+        Array.isArray(sec.episodes) &&
+        sec.episodes.some(
+          (ep) =>
+            Boolean(cleanStr(ep?.watchUrl)) ||
+            (Array.isArray(ep?.servers) &&
+              ep.servers.some((s) => Boolean(cleanStr(s?.url) || cleanStr(s?.embedCode))))
+        )
+    );
+  }
+  return false;
+}
+
+export function isSpecificSectionOrCategoryUrlBrowser(rawUrl: string): boolean {
+  try {
+    const u = new URL(rawUrl);
+    const pathAndQuery = decodeURIComponent(`${u.pathname}${u.search}`).toLowerCase();
+    return /(?:category|genre|section|tag|archive|taxonomy|collection|\/movies(?:\/|$)|\/films(?:\/|$)|\/series(?:\/|$)|[?&](?:cat|category|genre|tag|type|section)=|افلام|أفلام|مسلسلات|تصنيف|قسم)/i.test(
+      pathAndQuery
+    );
+  } catch {
+    return false;
+  }
+}
+
 function buildAdvancedMovieRecordBrowser(
   baseMedia: ScrapedPayload,
   sourceUrl: string
@@ -165,16 +200,19 @@ function buildAdvancedMovieRecordBrowser(
     trailerUrl: cleanStr(baseMedia.trailerUrl),
     directors,
     cast: cast.slice(0, 25),
-    servers: (baseMedia.servers || []).slice(0, 15).map((s, idx) => ({
-      id: s.id || `srv-${idx + 1}`,
-      name: cleanStr(s.name) || `سيرفر ${idx + 1}`,
-      mode: s.mode || (s.embedCode ? 'embed' : 'url'),
-      url: cleanStr(s.url),
-      embedCode: cleanStr(s.embedCode),
-      quality: cleanStr(s.quality) || cleanStr(baseMedia.quality) || 'HD',
-      speed: cleanStr(s.speed) || 'سريع',
-      tag: cleanStr(s.tag) || 'HD',
-    })),
+    servers: (baseMedia.servers || [])
+      .filter((s) => Boolean(cleanStr(s?.url) || cleanStr(s?.embedCode)))
+      .slice(0, 30)
+      .map((s, idx) => ({
+        id: s.id || `srv-${idx + 1}`,
+        name: cleanStr(s.name) || `سيرفر ${idx + 1}`,
+        mode: s.mode || (s.embedCode ? 'embed' : 'url'),
+        url: cleanStr(s.url),
+        embedCode: cleanStr(s.embedCode),
+        quality: cleanStr(s.quality) || cleanStr(baseMedia.quality) || 'HD',
+        speed: cleanStr(s.speed) || 'سريع',
+        tag: cleanStr(s.tag) || 'HD',
+      })),
     downloads: (baseMedia.downloads || []).slice(0, 15).map((d, idx) => ({
       id: d.id || `dl-${idx + 1}`,
       host: cleanStr(d.host) || `سيرفر تحميل ${idx + 1}`,
@@ -357,15 +395,17 @@ export async function extractSingleMovieBrowser(params: {
           adpRes.extracted,
           effectiveUrl || adpRes.extracted.sourceUrl || 'https://imported.local/movie'
         );
-        return {
-          movie,
-          strategy: `Adapter (Browser/Worker): ${matchedAdapter.name} (v${matchedAdapter.version})`,
-          sourceDuplicate: findSourceIndexDuplicateBrowser(
-            movie.sourceUrl,
-            movie.externalId,
-            movie.imdbId
-          ),
-        };
+        if (hasExtractedWatchServersBrowser(movie)) {
+          return {
+            movie,
+            strategy: `Adapter (Browser/Worker): ${matchedAdapter.name} (v${matchedAdapter.version})`,
+            sourceDuplicate: findSourceIndexDuplicateBrowser(
+              movie.sourceUrl,
+              movie.externalId,
+              movie.imdbId
+            ),
+          };
+        }
       }
     } catch {
       // fall through to generic browser scraper
@@ -408,6 +448,11 @@ export async function extractSingleMovieBrowser(params: {
   });
 
   const movie = buildAdvancedMovieRecordBrowser(baseMedia, effectiveUrl);
+  if (!hasExtractedWatchServersBrowser(movie)) {
+    throw new Error(
+      `تم حذف الفيلم "${movie.title}" من القائمة لعدم العثور على أي سيرفرات مشاهدة صالحة.`
+    );
+  }
   return {
     movie,
     strategy,
@@ -554,6 +599,7 @@ function recomputeBrowserJobStats(runtime: BrowserJobRuntime) {
   s.duplicates = duplicates;
   s.saved = saved;
   s.excluded = excluded;
+  s.removedNoServers = Math.max(0, Number(s.removedNoServers) || 0);
   s.processed = runtime.records.length;
   s.queued = Math.max(0, runtime.queue.length);
 
@@ -590,7 +636,7 @@ function enqueueBrowserUrl(
   rawUrl: string,
   meta?: { hintTitle?: string; hintPoster?: string; preExtracted?: ScrapedPayload }
 ): boolean {
-  if (runtime.seenCanonicalUrls.size >= runtime.summary.config.maxItems) return false;
+  if (runtime.summary.stats.discovered >= runtime.summary.config.maxItems) return false;
   const canon = canonicalizeSourceUrl(rawUrl);
   if (!canon || runtime.seenCanonicalUrls.has(canon)) return false;
 
@@ -602,7 +648,10 @@ function enqueueBrowserUrl(
     ...(meta?.hintPoster ? { hintPoster: meta.hintPoster } : {}),
     ...(meta?.preExtracted ? { preExtracted: meta.preExtracted } : {}),
   });
-  runtime.summary.stats.discovered = runtime.seenCanonicalUrls.size;
+  runtime.summary.stats.discovered = Math.max(
+    0,
+    runtime.seenCanonicalUrls.size - (runtime.summary.stats.removedNoServers || 0)
+  );
   runtime.summary.stats.queued = runtime.queue.length;
   return true;
 }
@@ -622,7 +671,7 @@ async function discoverUrlsInBrowser(runtime: BrowserJobRuntime): Promise<void> 
     while (
       pageQueue.length > 0 &&
       visitedPages.size < maxPagesBudget &&
-      runtime.seenCanonicalUrls.size < maxItems &&
+      runtime.summary.stats.discovered < maxItems &&
       runtime.summary.status === 'discovering'
     ) {
       const pageUrl = pageQueue.shift()!;
@@ -706,9 +755,11 @@ async function discoverUrlsInBrowser(runtime: BrowserJobRuntime): Promise<void> 
     return;
   }
 
-  // 'auto': If sectionUrls are specified, crawl them via HTML + Pagination FIRST!
-  if (hasSectionUrls) {
-    runtime.summary.discoveryStrategy = 'Browser Auto (Sections HTML + Pagination)';
+  // 'auto': If sectionUrls or a specific category URL are specified, crawl them via HTML + Pagination FIRST!
+  if (hasSectionUrls || isSpecificSectionOrCategoryUrlBrowser(config.sourceUrl)) {
+    runtime.summary.discoveryStrategy = hasSectionUrls
+      ? 'Browser Auto (Sections HTML + Pagination)'
+      : 'Browser Auto (Category HTML + Pagination)';
     const fromSections = await runHtmlCrawl(
       startUrls,
       Math.min(200, Math.max(10, Math.ceil(maxItems / 12)))
@@ -739,8 +790,11 @@ async function discoverUrlsInBrowser(runtime: BrowserJobRuntime): Promise<void> 
     runtime.summary.discoveryStrategy = 'Browser Auto (HTML + Pagination)';
   }
 
-  if (runtime.seenCanonicalUrls.size < maxItems) {
-    const wp = await tryWordPressApiBrowser(origin, Math.min(maxItems - runtime.seenCanonicalUrls.size, 50));
+  if (runtime.summary.stats.discovered < maxItems) {
+    const wp = await tryWordPressApiBrowser(
+      origin,
+      Math.min(maxItems - runtime.summary.stats.discovered, 50)
+    );
     if (wp && wp.items.length > 0) {
       runtime.summary.discoveryStrategy = 'Browser Auto (WordPress API + HTML)';
       for (const it of wp.items) {
@@ -753,7 +807,7 @@ async function discoverUrlsInBrowser(runtime: BrowserJobRuntime): Promise<void> 
     }
   }
 
-  if (runtime.seenCanonicalUrls.size === 0) {
+  if (runtime.summary.stats.discovered === 0) {
     const smUrls = await trySitemapDiscoveryBrowser(origin, maxItems);
     if (smUrls.length > 0) {
       runtime.summary.discoveryStrategy = 'Browser Auto (XML Sitemap)';
@@ -825,13 +879,35 @@ async function runBrowserJobPipeline(runtime: BrowserJobRuntime): Promise<void> 
       runtime.recordsBySeq.set(rec.seq, rec);
     };
 
+    const pruneBrowserItemWithoutServers = (item: BrowserQueuedItem, titleHint: string) => {
+      runtime.summary.stats.removedNoServers = (runtime.summary.stats.removedNoServers || 0) + 1;
+      if (runtime.recordsBySeq.has(item.seq)) {
+        runtime.recordsBySeq.delete(item.seq);
+        runtime.records = runtime.records.filter((r) => r.seq !== item.seq);
+      }
+      runtime.summary.stats.discovered = Math.max(
+        runtime.records.length + runtime.queue.length,
+        runtime.seenCanonicalUrls.size - (runtime.summary.stats.removedNoServers || 0)
+      );
+      recomputeBrowserJobStats(runtime);
+      appendBrowserLog(
+        runtime,
+        'warn',
+        `تم حذف "${titleHint}" من القائمة لعدم العثور على سيرفرات مشاهدة.`,
+        item.url
+      );
+    };
+
     const processOne = async (item: BrowserQueuedItem) => {
       if (runtime.summary.status !== 'running') return;
       try {
         let movie: AdvancedImportedMovie | null = null;
+        const preBuilt = item.preExtracted
+          ? buildAdvancedMovieRecordBrowser(item.preExtracted, item.url)
+          : null;
 
-        if (item.preExtracted && !config.enrichExternalMetadata && item.preExtracted.servers.length > 0) {
-          movie = buildAdvancedMovieRecordBrowser(item.preExtracted, item.url);
+        if (preBuilt && !config.enrichExternalMetadata && hasExtractedWatchServersBrowser(preBuilt)) {
+          movie = preBuilt;
         } else {
           const matchedAdapter = config.useAdapters
             ? matchAdapterForUrl(item.url, adapters)
@@ -843,7 +919,10 @@ async function runBrowserJobPipeline(runtime: BrowserJobRuntime): Promise<void> 
                 adapter: matchedAdapter,
               });
               if (adpRes.ok && adpRes.extracted) {
-                movie = buildAdvancedMovieRecordBrowser(adpRes.extracted, item.url);
+                const candidate = buildAdvancedMovieRecordBrowser(adpRes.extracted, item.url);
+                if (hasExtractedWatchServersBrowser(candidate)) {
+                  movie = candidate;
+                }
               }
             } catch {
               // fall back to generic scrape
@@ -858,8 +937,8 @@ async function runBrowserJobPipeline(runtime: BrowserJobRuntime): Promise<void> 
                 skipExternalEnrichment: !config.enrichExternalMetadata,
               });
               movie = buildAdvancedMovieRecordBrowser(baseMedia, fetched.finalUrl || item.url);
-            } else if (item.preExtracted) {
-              movie = buildAdvancedMovieRecordBrowser(item.preExtracted, item.url);
+            } else if (preBuilt && hasExtractedWatchServersBrowser(preBuilt)) {
+              movie = preBuilt;
             } else {
               recordResult({
                 seq: item.seq,
@@ -878,6 +957,11 @@ async function runBrowserJobPipeline(runtime: BrowserJobRuntime): Promise<void> 
               return;
             }
           }
+        }
+
+        if (!hasExtractedWatchServersBrowser(movie)) {
+          pruneBrowserItemWithoutServers(item, movie?.title || item.hintTitle || item.url);
+          return;
         }
 
         if (item.hintPoster && !movie.poster) {
@@ -1048,6 +1132,7 @@ export async function startBulkImporterJobBrowser(
       failed: 0,
       duplicates: 0,
       excluded: 0,
+      removedNoServers: 0,
       activeElapsedMs: 0,
       itemsPerMinute: 0,
       etaSeconds: null,

@@ -34,7 +34,7 @@ const FETCH_HEADERS = {
 };
 
 const IGNORED_AD_OR_SOCIAL_HOSTS =
-  /(facebook\.com|twitter\.com|x\.com|t\.me|telegram\.me|instagram\.com|pinterest\.com|linkedin\.com|whatsapp\.com|tiktok\.com|googlesyndication\.com|doubleclick\.net|googletagmanager\.com|google-analytics\.com|adservice\.google|yandex\.ru|histats\.com|addthis\.com|sharethis\.com|disqus\.com|cloudflareinsights\.com|popads\.net|propellerads|adsterra|juicyads|exoclick|chaturbate)/i;
+  /(plus\.google\.com|facebook\.com|twitter\.com|x\.com|t\.me|telegram\.me|instagram\.com|pinterest\.com|linkedin\.com|whatsapp\.com|tiktok\.com|reddit\.com|googlesyndication\.com|doubleclick\.net|googletagmanager\.com|google-analytics\.com|adservice\.google|yandex\.ru|histats\.com|addthis\.com|addtoany\.com|sharethis\.com|disqus\.com|cloudflareinsights\.com|popads\.net|propellerads|adsterra|juicyads|exoclick|chaturbate)/i;
 
 const IGNORED_PAGE_CONTAINER_SELECTOR =
   'header, nav, footer, .navbar, .ads, .banner, .pm-ads-banner, .ad-box, .trailer, #trailer';
@@ -265,18 +265,75 @@ function isLikelyNonVideoWebsiteUrl(rawUrl: string, sourceOrigin?: string): bool
   }
 }
 
+function isKnownVideoEmbedUrlAdapter(rawUrl: string): boolean {
+  const clean = String(rawUrl || '').trim();
+  if (!/^https?:\/\//i.test(clean)) return false;
+  if (
+    /(doodstream|dood\.|myvidplay|ds2play|d000d|playmogo|mixdrop|mxdrop|uqload|vidmoly|streamwish|hlswish|wishembed|filemoon|moonplayer|voe\.sx|streamtape|ok\.ru|vk\.com|vkvideo\.ru|luluvdo|lulustream|lulu\.st|mp4upload|vidbom|vidspeed|vidspeeds|abyss|megamax|govad|yourupload|sibnet|turboviplay|myvi|fembed|upstream|sbembed|liiivideo|videa|anafast|vidoba|filelions|earnvids|mp4plus|vidshare|streamhg|dhcplay|vinovo|goodstream|vidoza|wolfstream|streamlare|dropload|sendvid|rumble|dailymotion|vimeo|rutube|mail\.ru|vidhide|guccihide|minochinos|bysetayico)/i.test(
+      clean
+    )
+  ) {
+    return true;
+  }
+  try {
+    const p = new URL(clean).pathname;
+    return (
+      /^\/(?:e|embed|v|f|d|player|watch)\/[a-z0-9_-]{4,}/i.test(p) ||
+      /\/embed-[a-z0-9_-]{4,}/i.test(p) ||
+      /\.(?:mp4|m3u8|webm)(?:\?|$)/i.test(p)
+    );
+  } catch {
+    return false;
+  }
+}
+
+function unescapeAdapterScriptText(raw: string): string {
+  return String(raw || '')
+    .replace(/\\\//g, '/')
+    .replace(/\\"/g, '"')
+    .replace(/\\'/g, "'")
+    .replace(/\\n|\\r|\\t/g, ' ')
+    .replace(/\\x([0-9a-fA-F]{2})/g, (_, hex) => {
+      const code = parseInt(hex, 16);
+      return Number.isFinite(code) ? String.fromCharCode(code) : '';
+    })
+    .replace(/\\u([0-9a-fA-F]{4})/g, (_, hex) => {
+      const code = parseInt(hex, 16);
+      return Number.isFinite(code) ? String.fromCharCode(code) : '';
+    })
+    .replace(/&amp;/gi, '&')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#0*39;|&#x0*27;/gi, "'");
+}
+
 function decodeMaybeBase64(val: string): string {
-  const trimmed = String(val || '').trim();
-  if (/^(https?:)?\/\//i.test(trimmed) || /<iframe/i.test(trimmed)) return trimmed;
-  if (/^[A-Za-z0-9+/=]{16,}$/.test(trimmed)) {
+  let current = unescapeAdapterScriptText(String(val || '').trim());
+  if (/^(https?:)?\/\//i.test(current) || /<(?:iframe|video|source|embed)\b/i.test(current)) {
+    return current;
+  }
+  if (/(?:https?%3A%2F%2F|%3Ciframe)/i.test(current)) {
     try {
-      const decoded = Buffer.from(trimmed, 'base64').toString('utf-8').trim();
-      if (/https?:\/\/|<iframe/i.test(decoded)) return decoded;
+      current = decodeURIComponent(current);
     } catch {
-      // Ignore
+      // ignore
+    }
+    if (/^(https?:)?\/\//i.test(current) || /<(?:iframe|video|source|embed)\b/i.test(current)) {
+      return current;
     }
   }
-  return trimmed;
+  for (let layer = 0; layer < 2; layer++) {
+    if (!/^[A-Za-z0-9+/=_-]{16,}$/.test(current)) break;
+    try {
+      const norm = current.replace(/-/g, '+').replace(/_/g, '/');
+      const decoded = Buffer.from(norm, 'base64').toString('utf-8').trim();
+      if (!decoded) break;
+      current = unescapeAdapterScriptText(decoded);
+      if (/https?:\/\/|<(?:iframe|video|source|embed)\b/i.test(current)) return current;
+    } catch {
+      break;
+    }
+  }
+  return current;
 }
 
 // ----------------- Protection / Fetch -----------------
@@ -697,8 +754,9 @@ export function extractServersWithAdapter(
       return;
     }
 
-    const resolved = resolveUrl(sourceUrl, candidate);
+    const resolved = resolveUrl(sourceUrl, candidate.replace(/&amp;/gi, '&'));
     if (!resolved) return;
+    if (/\.(jpg|jpeg|png|webp|gif|svg|ico)(\?|$)/i.test(resolved)) return;
     if (isYoutubeUrl(resolved)) return;
     if (seenUrls.has(resolved) || isLikelyNonVideoWebsiteUrl(resolved, sourceOrigin)) return;
 
@@ -720,36 +778,77 @@ export function extractServersWithAdapter(
 
   // 1. Primary adapter itemSelector (tabs, WatchList, buttons, select options, etc.)
   const itemSelector = adapter.serverRules.itemSelector.trim();
-  const urlAttrs =
-    adapter.serverRules.urlAttributes.length > 0
-      ? adapter.serverRules.urlAttributes
-      : [
-          'data-embed-url',
-          'data-embed',
-          'data-iframe',
-          'data-server',
-          'data-video',
-          'data-url',
-          'data-watch',
-          'data-link',
-          'data-play',
-          'data-src',
-          'value',
-          'href',
-        ];
+  const urlAttrs = Array.from(
+    new Set([
+      ...(adapter.serverRules.urlAttributes || []),
+      'data-embed-url',
+      'data-embed',
+      'data-iframe',
+      'data-server',
+      'data-video',
+      'data-url',
+      'data-watch',
+      'data-link',
+      'data-play',
+      'data-href',
+      'data-player',
+      'data-frame',
+      'data-file',
+      'data-stream',
+      'data-qu',
+      'data-src',
+      'value',
+      'href',
+    ])
+  );
   const nameSel = adapter.serverRules.nameSelector.trim();
+
+  const inspectSelectElement = (
+    selEl: Parameters<cheerio.CheerioAPI>[0],
+    onlyExplicitEmbedOrKnownHost = false
+  ) => {
+    const $sel = $(selEl);
+    if ($sel.closest(IGNORED_PAGE_CONTAINER_SELECTOR).length > 0) return;
+    const clsId = cleanText(`${$sel.attr('class') || ''} ${$sel.attr('id') || ''} ${$sel.attr('name') || ''}`);
+    if (/TabS|TabE|season|episode|موسم|حلقة|sort|filter|lang|country/i.test(clsId)) return;
+    $sel.find('option').each((__, optEl) => {
+      const $opt = $(optEl);
+      const explicitAttr =
+        $opt.attr('data-embed') ||
+        $opt.attr('data-url') ||
+        $opt.attr('data-src') ||
+        $opt.attr('data-player') ||
+        $opt.attr('data-watch') ||
+        '';
+      const val = explicitAttr || $opt.attr('value') || '';
+      if (!val || !val.trim()) return;
+      if (onlyExplicitEmbedOrKnownHost && !explicitAttr) {
+        const trimmed = val.trim();
+        if (
+          !/^(?:https?:)?\/\//i.test(trimmed) ||
+          (!isKnownVideoEmbedUrlAdapter(trimmed) && !/\.(mp4|m3u8|webm)(\?|$)|\/(?:embed|player|watch|e\/|v\/)/i.test(trimmed))
+        ) {
+          return;
+        }
+      }
+      pushServer(val, cleanText($opt.text()));
+    });
+  };
 
   const inspectElementForServer = (el: Parameters<cheerio.CheerioAPI>[0]) => {
     const $el = $(el);
-    if (
-      typeof el === 'object' &&
-      el !== null &&
-      'tagName' in el &&
-      String((el as { tagName?: string }).tagName || '').toLowerCase() === 'img'
-    ) {
+    const tagName =
+      typeof el === 'object' && el !== null && 'tagName' in el
+        ? String((el as { tagName?: string }).tagName || '').toLowerCase()
+        : '';
+    if (tagName === 'img') {
       return;
     }
     if ($el.closest(IGNORED_PAGE_CONTAINER_SELECTOR).length > 0) return;
+    if (tagName === 'select') {
+      inspectSelectElement(el, false);
+      return;
+    }
 
     let label = '';
     if (nameSel) {
@@ -796,9 +895,21 @@ export function extractServersWithAdapter(
           // ignore bad regex
         }
       }
+      const atobInOnclick = onclickAttr.match(/atob\(\s*['"]([A-Za-z0-9+/=_-]{16,})['"]\s*\)/i);
+      if (atobInOnclick?.[1]) {
+        pushServer(atobInOnclick[1], label);
+        return;
+      }
       const genericUrlMatch = onclickAttr.match(/['"]((?:https?:)?\/\/[^'"]+)['"]/i);
       if (genericUrlMatch?.[1]) {
         pushServer(genericUrlMatch[1], label);
+        return;
+      }
+      const fnArgMatch = onclickAttr.match(
+        /(?:openEmbed|loadServer|changePlayer|goServer|playServer|setPlayer|watchServer|iframeSrc|player|play)\s*\(\s*['"]([^'"]+)['"]/i
+      );
+      if (fnArgMatch?.[1]) {
+        pushServer(fnArgMatch[1], label);
       }
     }
   };
@@ -813,27 +924,46 @@ export function extractServersWithAdapter(
 
   // 2. Fallback attribute scan across common interactive server tags (catches data-embed-url etc.)
   $(
-    '[data-embed-url], [data-embed], [data-iframe], [data-server], [data-video], [data-url], [data-watch], [data-link], [data-play], .WatchList li, li[data-src], button[data-src], a[data-src]'
+    '[data-embed-url], [data-embed], [data-iframe], [data-server], [data-video], [data-url], [data-watch], [data-link], [data-play], [data-href], [data-player], [data-frame], [data-file], [data-stream], [data-qu], [onclick], .WatchList li, li[data-src], button[data-src], a[data-src]'
   ).each((_, el) => inspectElementForServer(el));
 
-  // 3. Extract active/embedded iframes (with label matching if tab buttons match count or active class)
+  // 2b. <select> dropdown servers (excluding season/episode selects)
+  $(
+    '.servers select, .WatchList select, [class*="server"] select, [id*="server"] select, [class*="watch"] select, [id*="watch"] select, select[class*="server"], select[id*="server"], select[class*="watch"], select[id*="watch"], select[name*="server"]'
+  ).each((_, selEl) => inspectSelectElement(selEl, false));
+
+  $('select').each((_, selEl) => inspectSelectElement(selEl, true));
+
+  // 3. Extract active/embedded iframes, embeds, and objects
   const activeTabLabel = cleanText(
     $('.WatchList li.active, .servers li.active, .nav-tabs li.active, [role="tab"][aria-selected="true"]')
       .first()
       .text()
   );
-  $('iframe').each((_, el) => {
+  $('iframe, embed[src], object[data]').each((_, el) => {
     const $el = $(el);
     if ($el.closest(IGNORED_PAGE_CONTAINER_SELECTOR).length > 0) return;
-    const rawSrc = $el.attr('src') || $el.attr('data-src') || $el.attr('data-lazy-src') || '';
+    const rawSrc = $el.attr('src') || $el.attr('data-src') || $el.attr('data-lazy-src') || $el.attr('data') || '';
     if (!rawSrc) return;
     const titleAttr = cleanText($el.attr('title')) || activeTabLabel;
     pushServer(rawSrc, titleAttr);
   });
 
+  // 3b. Non-empty <noscript> embeds
+  $('noscript').each((_, el) => {
+    if ($(el).closest(IGNORED_PAGE_CONTAINER_SELECTOR).length > 0) return;
+    const inner = $(el).html() || $(el).text() || '';
+    if (!inner || !/<(?:iframe|video|source|embed)\b/i.test(inner)) return;
+    const $inner = cheerio.load(inner);
+    $inner('iframe, video, source, embed').each((__, mediaEl) => {
+      const s = $inner(mediaEl).attr('src') || $inner(mediaEl).attr('data-src') || '';
+      if (s && s.trim()) pushServer(s, cleanText($inner(mediaEl).attr('title')) || activeTabLabel);
+    });
+  });
+
   // 4. Direct <video> / <source> tags
   $('video source, video').each((_, el) => {
-    const src = $(el).attr('src');
+    const src = $(el).attr('src') || $(el).attr('data-src');
     if (src) pushServer(src, 'سيرفر مباشر');
   });
 
@@ -845,11 +975,14 @@ export function extractServersWithAdapter(
   });
 
   for (const rawScript of scriptTexts) {
-    const unescaped = rawScript
-      .replace(/\\\//g, '/')
-      .replace(/\\"/g, '"')
-      .replace(/\\'/g, "'")
-      .replace(/\\n|\\r|\\t/g, ' ');
+    let unescaped = unescapeAdapterScriptText(rawScript);
+    if (/(?:https?%3A%2F%2F|%3Ciframe)/i.test(unescaped)) {
+      try {
+        unescaped = decodeURIComponent(unescaped);
+      } catch {
+        // ignore
+      }
+    }
 
     if (adapter.serverRules.scriptUrlRegex) {
       try {
@@ -863,13 +996,13 @@ export function extractServersWithAdapter(
       }
     }
 
-    const iframeRegex = /<iframe[^>]+src=["'](https?:\/\/[^"'\s<>]+)["']/gi;
+    const iframeRegex = /<(?:iframe|embed|source|video)[^>]+src=["'](https?:\/\/[^"'\s<>]+)["']/gi;
     let m: RegExpExecArray | null;
     while ((m = iframeRegex.exec(unescaped)) !== null) {
       pushServer(m[1]);
     }
 
-    const atobRegex = /atob\(\s*["']([A-Za-z0-9+/=]{20,})["']\s*\)/gi;
+    const atobRegex = /atob\(\s*["']([A-Za-z0-9+/=_-]{16,})["']\s*\)/gi;
     let bm: RegExpExecArray | null;
     while ((bm = atobRegex.exec(rawScript)) !== null) {
       const dec = decodeMaybeBase64(bm[1]);
@@ -880,10 +1013,11 @@ export function extractServersWithAdapter(
       }
     }
 
-    const jsArrayVarRegex = /(?:var|let|const)\s+(?:servers|embeds|players|watchLinks)\s*=\s*\[([\s\S]{5,8000}?)\]/gi;
+    const jsArrayVarRegex =
+      /(?:var|let|const|window\.)?\s*(?:servers|embeds|players|watchLinks|watch_servers|streamLinks|videoLinks|sources|playlist|serverList)\s*=\s*[\[{]([\s\S]{5,18000}?)[\]}]/gi;
     let am: RegExpExecArray | null;
     while ((am = jsArrayVarRegex.exec(unescaped)) !== null) {
-      const urlRe = /https?:\/\/[^\s"'<>]+/gi;
+      const urlRe = /https?:\/\/[^\s"'<>\\`]+/gi;
       let um: RegExpExecArray | null;
       while ((um = urlRe.exec(am[1])) !== null) {
         if (!IGNORED_AD_OR_SOCIAL_HOSTS.test(um[0])) {
@@ -891,10 +1025,25 @@ export function extractServersWithAdapter(
         }
       }
     }
+
+    const jsPropRe = /(?:src|file|url|embed|embed_url|link|watch|frame)\s*:\s*["'](https?:\/\/[^"'\s<>]+)["']/gi;
+    let pm: RegExpExecArray | null;
+    while ((pm = jsPropRe.exec(unescaped)) !== null) {
+      if (!IGNORED_AD_OR_SOCIAL_HOSTS.test(pm[1])) pushServer(pm[1]);
+    }
+
+    const anyUrlRe = /https?:\/\/[^\s"'<>\\`)]+/gi;
+    let anym: RegExpExecArray | null;
+    while ((anym = anyUrlRe.exec(unescaped)) !== null) {
+      const cand = anym[0].replace(/[;,]+$/, '');
+      if (isKnownVideoEmbedUrlAdapter(cand) && !IGNORED_AD_OR_SOCIAL_HOSTS.test(cand)) {
+        pushServer(cand);
+      }
+    }
   }
 
   return {
-    servers: servers.slice(0, adapter.serverRules.maxServersPerEpisode || 15),
+    servers: servers.slice(0, adapter.serverRules.maxServersPerEpisode || 30),
     ajaxIds: ajaxIds.slice(0, 20),
   };
 }
@@ -1392,8 +1541,22 @@ async function verifyServersList(
         }
         if (!response.ok && response.status !== 206) {
           const cfMitigated = (response.headers.get('cf-mitigated') || '').toLowerCase();
-          // Relaxed mode treats 403 and Cloudflare challenge 503 with non-deleted embed hosts carefully: 404/410/5xx definitely broken
-          if (verifyMode === 'relaxed_headers' && (response.status === 403 || (response.status === 503 && cfMitigated === 'challenge'))) {
+          const errSnippet = (await response.text().catch(() => '')).slice(0, 16000);
+          const deletedErr =
+            /file\s*(?:was|has been)?\s*(?:deleted|removed)|video\s*(?:was|has been)?\s*(?:deleted|removed|not found)|file\s*not\s*found|404\s*not\s*found/i.test(
+              errSnippet
+            );
+          const isCfChallenge =
+            cfMitigated === 'challenge' ||
+            /<title>\s*(?:Just a moment|Attention Required|Cloudflare|Checking your browser)/i.test(errSnippet) ||
+            /challenge-platform|cf-turnstile|cf-chl/i.test(errSnippet);
+
+          if (
+            (response.status === 403 || response.status === 503 || response.status === 429) &&
+            !deletedErr &&
+            (isCfChallenge || response.status === 403) &&
+            (verifyMode === 'relaxed_headers' || isKnownVideoEmbedUrlAdapter(finalUrl) || isKnownVideoEmbedUrlAdapter(target))
+          ) {
             return true;
           }
           failed.push({
@@ -1424,7 +1587,10 @@ async function verifyServersList(
             });
             return false;
           }
-          if (verifyMode === 'strict') {
+          const isCfChallenge = /<title>\s*(?:Just a moment|Attention Required|Cloudflare)|challenge-platform|cf-turnstile/i.test(
+            snippet
+          );
+          if (verifyMode === 'strict' && !isCfChallenge) {
             const xFrame = (response.headers.get('x-frame-options') || '').toLowerCase();
             const csp = (response.headers.get('content-security-policy') || '').toLowerCase();
             const frameBlocked =
@@ -1445,6 +1611,9 @@ async function verifyServersList(
         }
         return true;
       } catch (err) {
+        if (isKnownVideoEmbedUrlAdapter(target) && !isLikelyNonVideoWebsiteUrl(target, sourceOrigin)) {
+          return true;
+        }
         failed.push({
           episodeNumber,
           serverName: srv.name,
@@ -2201,25 +2370,38 @@ export async function executeAdapterScrape(params: {
   const rawRootServers = [...rootSrvExtract.servers];
   const ajaxIds = [...rootSrvExtract.ajaxIds];
 
-  // 2. Follow watch subpage ONLY if ID-compatible (e.g. watch.php?vid=X -> play.php?vid=X)
-  const watchSubpageUrl = adapter.navigationRules.followWatchSubpage
-    ? findBestWatchSubpageUrl($, effectiveUrl, adapter) || ''
+  // 2. Follow watch subpage(s) up to 3 hops ONLY if ID-compatible (e.g. watch.php?vid=X -> play.php?vid=X)
+  const visitedWatchSubpages = new Set<string>([canonicalizeCompareUrl(effectiveUrl)]);
+  const watchQueue: Array<{ url: string; depth: number }> = [];
+  const firstWatch = adapter.navigationRules.followWatchSubpage
+    ? findBestWatchSubpageUrl($, effectiveUrl, adapter) || baseline.hints.watchSubpageUrl || ''
     : '';
+  if (firstWatch && canonicalizeCompareUrl(firstWatch) !== canonicalizeCompareUrl(effectiveUrl)) {
+    watchQueue.push({ url: firstWatch, depth: 1 });
+  }
+  const fetchedWatchHtmls: Array<{ url: string; html: string }> = [];
+
   let visibleServersHint = Math.max(
     rawRootServers.length,
     ajaxIds.length,
     $('iframe').filter((_, el) => $(el).closest(IGNORED_PAGE_CONTAINER_SELECTOR).length === 0).length
   );
 
-  if (watchSubpageUrl && canonicalizeCompareUrl(watchSubpageUrl) !== canonicalizeCompareUrl(effectiveUrl)) {
-    const watchRes = await safeFetchRemoteText(watchSubpageUrl, {
+  while (watchQueue.length > 0 && visitedWatchSubpages.size < 5) {
+    const nextWatch = watchQueue.shift()!;
+    const canonNext = canonicalizeCompareUrl(nextWatch.url);
+    if (!canonNext || visitedWatchSubpages.has(canonNext) || nextWatch.depth > 3) continue;
+    visitedWatchSubpages.add(canonNext);
+
+    const watchRes = await safeFetchRemoteText(nextWatch.url, {
       timeoutMs: 9000,
       referer: adapter.siteSettings.refererMode === 'none' ? undefined : effectiveUrl,
       delayMs: adapter.siteSettings.requestDelayMs,
     });
-    if (watchRes.ok && watchRes.text.length > 100) {
+    if (watchRes.ok && watchRes.text.length >= 40) {
+      fetchedWatchHtmls.push({ url: nextWatch.url, html: watchRes.text });
       const $w = cheerio.load(watchRes.text);
-      const wExtract = extractServersWithAdapter($w, watchSubpageUrl, adapter, media.quality);
+      const wExtract = extractServersWithAdapter($w, nextWatch.url, adapter, media.quality);
       const seen = new Set(rawRootServers.map((s) => s.url));
       for (const s of wExtract.servers) {
         if (!seen.has(s.url)) {
@@ -2231,9 +2413,34 @@ export async function executeAdapterScrape(params: {
         if (!ajaxIds.some((x) => x.id === a.id)) ajaxIds.push(a);
       }
       visibleServersHint = Math.max(visibleServersHint, wExtract.servers.length + wExtract.ajaxIds.length);
-      if (media.downloads.length === 0) {
-        const wBase = baselineParseFn(watchRes.text, watchSubpageUrl);
-        if (wBase.media.downloads.length > 0) media.downloads = wBase.media.downloads;
+      const wBase = baselineParseFn(watchRes.text, nextWatch.url);
+      if (wExtract.servers.length === 0 && wBase.media.servers.length > 0) {
+        for (const s of wBase.media.servers) {
+          if (!seen.has(s.url)) {
+            rawRootServers.push(s);
+            seen.add(s.url);
+          }
+        }
+      }
+      if (media.downloads.length === 0 && wBase.media.downloads.length > 0) {
+        media.downloads = wBase.media.downloads;
+      }
+      if (nextWatch.depth < 3 && rawRootServers.length === 0) {
+        const deeperWatch = findBestWatchSubpageUrl($w, nextWatch.url, adapter) || wBase.hints.watchSubpageUrl || '';
+        if (deeperWatch && !visitedWatchSubpages.has(canonicalizeCompareUrl(deeperWatch))) {
+          watchQueue.push({ url: deeperWatch, depth: nextWatch.depth + 1 });
+        }
+      }
+    }
+  }
+
+  // Fallback to baseline root servers if adapter selectors missed all servers on the main page
+  if (rawRootServers.length === 0 && baseline.media.servers.length > 0) {
+    const seen = new Set<string>();
+    for (const bs of baseline.media.servers) {
+      if (bs.url && !seen.has(bs.url)) {
+        rawRootServers.push(bs);
+        seen.add(bs.url);
       }
     }
   }
@@ -2447,12 +2654,12 @@ export async function executeAdapterScrape(params: {
                 ...s,
                 id: `ep-s${seasonNumber}-e${ep.number}-srv-${sIdx + 1}`,
               }));
-              ep.watchSubpageUrl = watchSubpageUrl || undefined;
+              ep.watchSubpageUrl = firstWatch || undefined;
               ep.watchUrl = ep.servers[0]?.url || '';
               provenanceMap.set(epKey, {
                 expectedSourceUrl: originalEpUrl,
-                fetchedUrls: [effectiveUrl, ...(watchSubpageUrl ? [watchSubpageUrl] : [])],
-                watchSubpageUrl: watchSubpageUrl || undefined,
+                fetchedUrls: [effectiveUrl, ...(firstWatch ? [firstWatch] : [])],
+                watchSubpageUrl: firstWatch || undefined,
               });
               return;
             }

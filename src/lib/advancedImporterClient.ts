@@ -267,7 +267,7 @@ export function mapImportedMovieToMediaItem(
     cast: castList.slice(0, 25),
     seasons: movie.seasons || [],
     franchiseIds: options?.existingItem?.franchiseIds || [],
-    servers: (movie.servers || []).slice(0, 15),
+    servers: (movie.servers || []).slice(0, 30),
     downloads: (movie.downloads || []).slice(0, 15),
   };
 }

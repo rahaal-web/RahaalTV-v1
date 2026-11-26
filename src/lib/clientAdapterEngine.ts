@@ -33,7 +33,7 @@ import {
 } from './clientScraper';
 
 const IGNORED_AD_OR_SOCIAL_HOSTS =
-  /(facebook\.com|twitter\.com|x\.com|t\.me|telegram\.me|instagram\.com|pinterest\.com|linkedin\.com|whatsapp\.com|tiktok\.com|googlesyndication\.com|doubleclick\.net|googletagmanager\.com|google-analytics\.com|adservice\.google|yandex\.ru|histats\.com|addthis\.com|sharethis\.com|disqus\.com|cloudflareinsights\.com|popads\.net|propellerads|adsterra|juicyads|exoclick|chaturbate)/i;
+  /(plus\.google\.com|facebook\.com|twitter\.com|x\.com|t\.me|telegram\.me|instagram\.com|pinterest\.com|linkedin\.com|whatsapp\.com|tiktok\.com|reddit\.com|googlesyndication\.com|doubleclick\.net|googletagmanager\.com|google-analytics\.com|adservice\.google|yandex\.ru|histats\.com|addthis\.com|addtoany\.com|sharethis\.com|disqus\.com|cloudflareinsights\.com|popads\.net|propellerads|adsterra|juicyads|exoclick|chaturbate)/i;
 
 const IGNORED_PAGE_CONTAINER_SELECTOR =
   'header, nav, footer, .navbar, .ads, .banner, .pm-ads-banner, .ad-box, .trailer, #trailer';
@@ -269,19 +269,59 @@ function extractServersWithAdapterBrowser(
   const seenAjaxIds = new Set<string>();
   const preserveNames = adapter.serverRules.preserveServerNames;
 
+  const unescapeBrowserAdapterScript = (raw: string): string =>
+    String(raw || '')
+      .replace(/\\\//g, '/')
+      .replace(/\\"/g, '"')
+      .replace(/\\'/g, "'")
+      .replace(/\\n|\\r|\\t/g, ' ')
+      .replace(/\\x([0-9a-fA-F]{2})/g, (_, hex) => {
+        const code = parseInt(hex, 16);
+        return Number.isFinite(code) ? String.fromCharCode(code) : '';
+      })
+      .replace(/\\u([0-9a-fA-F]{4})/g, (_, hex) => {
+        const code = parseInt(hex, 16);
+        return Number.isFinite(code) ? String.fromCharCode(code) : '';
+      })
+      .replace(/&amp;/gi, '&')
+      .replace(/&quot;/gi, '"')
+      .replace(/&#0*39;|&#x0*27;/gi, "'");
+
+  const decodeMultiLayer = (val: string): string => {
+    let cur = unescapeBrowserAdapterScript(String(val || '').trim());
+    if (/^(https?:)?\/\//i.test(cur) || /<(?:iframe|video|source|embed)\b/i.test(cur)) return cur;
+    if (/(?:https?%3A%2F%2F|%3Ciframe)/i.test(cur)) {
+      try {
+        cur = decodeURIComponent(cur);
+      } catch {
+        // ignore
+      }
+      if (/^(https?:)?\/\//i.test(cur) || /<(?:iframe|video|source|embed)\b/i.test(cur)) return cur;
+    }
+    for (let layer = 0; layer < 2; layer++) {
+      if (!/^[A-Za-z0-9+/=_-]{16,}$/.test(cur)) break;
+      const dec = decodeBase64SafeBrowser(cur);
+      if (!dec || dec === cur) break;
+      cur = unescapeBrowserAdapterScript(dec);
+      if (/https?:\/\/|<(?:iframe|video|source|embed)\b/i.test(cur)) return cur;
+    }
+    return cur;
+  };
+
   const pushServer = (rawUrlOrCode: string, preferredLabel?: string) => {
-    let candidate = decodeBase64SafeBrowser(rawUrlOrCode);
+    let candidate = decodeMultiLayer(rawUrlOrCode);
     const iframeMatch = candidate.match(/<iframe[^>]+src=["']([^"']+)["']/i);
     if (iframeMatch?.[1]) candidate = iframeMatch[1].trim();
-    const resolved = resolveUrlBrowser(sourceUrl, candidate);
+    const resolved = resolveUrlBrowser(sourceUrl, candidate.replace(/&amp;/gi, '&'));
     if (!resolved) return;
+    if (/\.(jpg|jpeg|png|webp|gif|svg|ico)(\?|$)/i.test(resolved)) return;
     if (isYoutubeUrl(resolved)) return;
     if (isInvalidServerCandidateUrl(resolved, sourceOrigin)) return;
     if (seenUrls.has(resolved)) return;
 
     seenUrls.add(resolved);
     const idx = servers.length;
-    if (idx >= (adapter.serverRules.maxServersPerEpisode || 20)) return;
+    if (idx >= (adapter.serverRules.maxServersPerEpisode || 30)) return;
     const isDirectStream = /\.(mp4|m3u8|webm|ogg)(\?|$)/i.test(resolved);
     const serverQuality = extractServerQualityFromLabelBrowser(preferredLabel || '', defaultQuality || '1080p');
     const name = cleanExtractedServerName(preferredLabel || '', resolved, idx, preserveNames);
@@ -297,28 +337,66 @@ function extractServersWithAdapterBrowser(
     });
   };
 
-  const urlAttrs =
-    adapter.serverRules.urlAttributes.length > 0
-      ? adapter.serverRules.urlAttributes
-      : [
-          'data-embed-url',
-          'data-embed',
-          'data-iframe',
-          'data-server',
-          'data-video',
-          'data-url',
-          'data-watch',
-          'data-link',
-          'data-play',
-          'data-src',
-          'value',
-          'href',
-        ];
+  const urlAttrs = Array.from(
+    new Set([
+      ...(adapter.serverRules.urlAttributes || []),
+      'data-embed-url',
+      'data-embed',
+      'data-iframe',
+      'data-server',
+      'data-video',
+      'data-url',
+      'data-watch',
+      'data-link',
+      'data-play',
+      'data-href',
+      'data-player',
+      'data-frame',
+      'data-file',
+      'data-stream',
+      'data-qu',
+      'data-src',
+      'value',
+      'href',
+    ])
+  );
   const nameSel = adapter.serverRules.nameSelector.trim();
 
+  const inspectSelectElement = (selEl: Element, onlyExplicitEmbedOrKnownHost = false) => {
+    if (selEl.closest(IGNORED_PAGE_CONTAINER_SELECTOR)) return;
+    const clsId = `${selEl.getAttribute('class') || ''} ${selEl.getAttribute('id') || ''} ${selEl.getAttribute('name') || ''}`;
+    if (/TabS|TabE|season|episode|موسم|حلقة|sort|filter|lang|country/i.test(clsId)) return;
+    selEl.querySelectorAll('option').forEach((optEl) => {
+      const explicitAttr =
+        optEl.getAttribute('data-embed') ||
+        optEl.getAttribute('data-url') ||
+        optEl.getAttribute('data-src') ||
+        optEl.getAttribute('data-player') ||
+        optEl.getAttribute('data-watch') ||
+        '';
+      const val = explicitAttr || optEl.getAttribute('value') || '';
+      if (!val || !val.trim()) return;
+      if (onlyExplicitEmbedOrKnownHost && !explicitAttr) {
+        const trimmed = val.trim();
+        if (
+          !/^(?:https?:)?\/\//i.test(trimmed) ||
+          (!isKnownVideoEmbedUrlBrowser(trimmed) && !/\.(mp4|m3u8|webm)(\?|$)|\/(?:embed|player|watch|e\/|v\/)/i.test(trimmed))
+        ) {
+          return;
+        }
+      }
+      pushServer(val, cleanTextBrowser(optEl.textContent));
+    });
+  };
+
   const inspectElementForServer = (el: Element) => {
-    if (el.tagName.toLowerCase() === 'img') return;
+    const tag = el.tagName.toLowerCase();
+    if (tag === 'img') return;
     if (el.closest(IGNORED_PAGE_CONTAINER_SELECTOR)) return;
+    if (tag === 'select') {
+      inspectSelectElement(el, false);
+      return;
+    }
 
     let label = '';
     if (nameSel) {
@@ -370,9 +448,21 @@ function extractServersWithAdapterBrowser(
           // ignore bad regex
         }
       }
+      const atobInOnclick = onclickAttr.match(/atob\(\s*['"]([A-Za-z0-9+/=_-]{16,})['"]\s*\)/i);
+      if (atobInOnclick?.[1]) {
+        pushServer(atobInOnclick[1], label);
+        return;
+      }
       const genericUrlMatch = onclickAttr.match(/['"]((?:https?:)?\/\/[^'"]+)['"]/i);
       if (genericUrlMatch?.[1]) {
         pushServer(genericUrlMatch[1], label);
+        return;
+      }
+      const fnArgMatch = onclickAttr.match(
+        /(?:openEmbed|loadServer|changePlayer|goServer|playServer|setPlayer|watchServer|iframeSrc|player|play)\s*\(\s*['"]([^'"]+)['"]/i
+      );
+      if (fnArgMatch?.[1]) {
+        pushServer(fnArgMatch[1], label);
       }
     }
   };
@@ -383,8 +473,16 @@ function extractServersWithAdapterBrowser(
 
   safeQueryAll(
     doc,
-    '[data-embed-url], [data-embed], [data-iframe], [data-server], [data-video], [data-url], [data-watch], [data-link], [data-play], .WatchList li, li[data-src], button[data-src], a[data-src]'
+    '[data-embed-url], [data-embed], [data-iframe], [data-server], [data-video], [data-url], [data-watch], [data-link], [data-play], [data-href], [data-player], [data-frame], [data-file], [data-stream], [data-qu], [onclick], .WatchList li, li[data-src], button[data-src], a[data-src]'
   ).forEach(inspectElementForServer);
+
+  doc
+    .querySelectorAll(
+      '.servers select, .WatchList select, [class*="server"] select, [id*="server"] select, [class*="watch"] select, [id*="watch"] select, select[class*="server"], select[id*="server"], select[class*="watch"], select[id*="watch"], select[name*="server"]'
+    )
+    .forEach((selEl) => inspectSelectElement(selEl, false));
+
+  doc.querySelectorAll('select').forEach((selEl) => inspectSelectElement(selEl, true));
 
   const activeTabLabel = cleanTextBrowser(
     doc.querySelector(
@@ -392,28 +490,46 @@ function extractServersWithAdapterBrowser(
     )?.textContent
   );
 
-  doc.querySelectorAll('iframe').forEach((el) => {
+  doc.querySelectorAll('iframe, embed[src], object[data]').forEach((el) => {
     if (el.closest(IGNORED_PAGE_CONTAINER_SELECTOR)) return;
     const rawSrc =
-      el.getAttribute('src') || el.getAttribute('data-src') || el.getAttribute('data-lazy-src') || '';
+      el.getAttribute('src') || el.getAttribute('data-src') || el.getAttribute('data-lazy-src') || el.getAttribute('data') || '';
     if (!rawSrc) return;
     const titleAttr = cleanTextBrowser(el.getAttribute('title')) || activeTabLabel;
     pushServer(rawSrc, titleAttr);
   });
 
+  doc.querySelectorAll('noscript').forEach((el) => {
+    if (el.closest(IGNORED_PAGE_CONTAINER_SELECTOR)) return;
+    const inner = el.innerHTML || el.textContent || '';
+    if (!inner || !/<(?:iframe|video|source|embed)\b/i.test(inner)) return;
+    try {
+      const nDoc = new DOMParser().parseFromString(inner, 'text/html');
+      nDoc.querySelectorAll('iframe, video, source, embed').forEach((mediaEl) => {
+        const s = mediaEl.getAttribute('src') || mediaEl.getAttribute('data-src') || '';
+        if (s && s.trim()) pushServer(s, cleanTextBrowser(mediaEl.getAttribute('title')) || activeTabLabel);
+      });
+    } catch {
+      // ignore
+    }
+  });
+
   doc.querySelectorAll('video source, video').forEach((el) => {
-    const src = el.getAttribute('src');
+    const src = el.getAttribute('src') || el.getAttribute('data-src');
     if (src) pushServer(src, 'سيرفر مباشر');
   });
 
   doc.querySelectorAll('script').forEach((el) => {
     const rawScript = el.textContent || '';
     if (!rawScript || rawScript.length < 15) return;
-    const unescaped = rawScript
-      .replace(/\\\//g, '/')
-      .replace(/\\"/g, '"')
-      .replace(/\\'/g, "'")
-      .replace(/\\n|\\r|\\t/g, ' ');
+    let unescaped = unescapeBrowserAdapterScript(rawScript);
+    if (/(?:https?%3A%2F%2F|%3Ciframe)/i.test(unescaped)) {
+      try {
+        unescaped = decodeURIComponent(unescaped);
+      } catch {
+        // ignore
+      }
+    }
 
     if (adapter.serverRules.scriptUrlRegex) {
       try {
@@ -427,26 +543,41 @@ function extractServersWithAdapterBrowser(
       }
     }
 
-    const iframeRegex = /<iframe[^>]+src=["']((?:https?:)?\/\/[^"'\s<>]+)["']/gi;
+    const iframeRegex = /<(?:iframe|embed|source|video)[^>]+src=["']((?:https?:)?\/\/[^"'\s<>]+)["']/gi;
     let m: RegExpExecArray | null;
     while ((m = iframeRegex.exec(unescaped)) !== null) {
       pushServer(m[1]);
     }
 
-    const b64Regex = /atob\(\s*["']([A-Za-z0-9+/=]{20,})["']\s*\)/gi;
+    const b64Regex = /atob\(\s*["']([A-Za-z0-9+/=_-]{16,})["']\s*\)/gi;
     let bm: RegExpExecArray | null;
     while ((bm = b64Regex.exec(rawScript)) !== null) {
-      const dec = decodeBase64SafeBrowser(bm[1]);
+      const dec = decodeMultiLayer(bm[1]);
       if (!/<script/i.test(dec)) pushServer(dec);
     }
 
     const arrRegex =
-      /(?:var|let|const|window\.)?\s*(?:servers|embeds|players|watchLinks|sources)\s*[:=]\s*\[([\s\S]{5,12000}?)\]/gi;
+      /(?:var|let|const|window\.)?\s*(?:servers|embeds|players|watchLinks|watch_servers|streamLinks|videoLinks|sources|playlist|serverList)\s*[:=]\s*[\[{]([\s\S]{5,18000}?)[\]}]/gi;
     let am: RegExpExecArray | null;
     while ((am = arrRegex.exec(unescaped)) !== null) {
-      const urlsInArr = am[1].match(/https?:\/\/[^\s"'<>]+/gi) || [];
+      const urlsInArr = am[1].match(/https?:\/\/[^\s"'<>\\`]+/gi) || [];
       for (const u of urlsInArr) {
         if (!IGNORED_AD_OR_SOCIAL_HOSTS.test(u)) pushServer(u);
+      }
+    }
+
+    const propRegex = /(?:src|file|url|embed|embed_url|link|watch|frame)\s*:\s*["'](https?:\/\/[^"'\s<>]+)["']/gi;
+    let pm: RegExpExecArray | null;
+    while ((pm = propRegex.exec(unescaped)) !== null) {
+      if (!IGNORED_AD_OR_SOCIAL_HOSTS.test(pm[1])) pushServer(pm[1]);
+    }
+
+    const anyUrlRe = /https?:\/\/[^\s"'<>\\`)]+/gi;
+    let anym: RegExpExecArray | null;
+    while ((anym = anyUrlRe.exec(unescaped)) !== null) {
+      const cand = anym[0].replace(/[;,]+$/, '');
+      if (isKnownVideoEmbedUrlBrowser(cand) && !IGNORED_AD_OR_SOCIAL_HOSTS.test(cand)) {
+        pushServer(cand);
       }
     }
   });
@@ -865,14 +996,14 @@ async function verifyServersBrowserList(
 
   for (const srv of servers) {
     const res = srv.url ? statusMap.get(srv.url) : undefined;
-    const isCfChallengeAllowed =
+    const isKnown = Boolean(srv.url && isKnownVideoEmbedUrlBrowser(srv.url));
+    const isCfOrTimeoutAllowed =
       res &&
       !res.ok &&
-      verifyMode === 'relaxed_headers' &&
-      res.isChallenge &&
-      srv.url &&
-      isKnownVideoEmbedUrlBrowser(srv.url);
-    if (res && !res.ok && !isCfChallengeAllowed) {
+      isKnown &&
+      ((res.isChallenge && (verifyMode === 'relaxed_headers' || res.faultType === '403' || res.httpStatus === 503 || res.httpStatus === 429)) ||
+        (res.httpStatus === 0 && res.faultType === 'error'));
+    if (res && !res.ok && !isCfOrTimeoutAllowed) {
       failed.push({
         episodeNumber,
         serverName: srv.name,
@@ -1691,19 +1822,29 @@ export async function executeAdapterScrapeInBrowser(params: {
     ).length
   );
 
-  // 2. Follow watch subpage (strictly ID-matched: watch.php?vid=X -> play.php?vid=X)
-  const watchSubpageUrl = adapter.navigationRules.followWatchSubpage
-    ? findBestWatchSubpageUrlBrowser(doc, effectiveUrl, adapter) || ''
+  // 2. Follow watch subpage(s) up to 3 hops (strictly ID-matched: watch.php?vid=X -> play.php?vid=X)
+  const visitedWatchUrls = new Set<string>([canonicalizeCompareUrl(effectiveUrl)]);
+  const watchQueue: Array<{ url: string; depth: number }> = [];
+  const firstWatch = adapter.navigationRules.followWatchSubpage
+    ? findBestWatchSubpageUrlBrowser(doc, effectiveUrl, adapter) || baseline.hints.watchSubpageUrl || ''
     : '';
+  if (firstWatch && canonicalizeCompareUrl(firstWatch) !== canonicalizeCompareUrl(effectiveUrl)) {
+    watchQueue.push({ url: firstWatch, depth: 1 });
+  }
 
-  if (watchSubpageUrl && canonicalizeCompareUrl(watchSubpageUrl) !== canonicalizeCompareUrl(effectiveUrl)) {
+  while (watchQueue.length > 0 && visitedWatchUrls.size < 5) {
+    const nextWatch = watchQueue.shift()!;
+    const canonNext = canonicalizeCompareUrl(nextWatch.url);
+    if (!canonNext || visitedWatchUrls.has(canonNext) || nextWatch.depth > 3) continue;
+    visitedWatchUrls.add(canonNext);
+
     if (adapter.siteSettings.requestDelayMs > 0) {
       await sleepMs(Math.min(600, adapter.siteSettings.requestDelayMs));
     }
-    const watchRes = await fetchViaBrowserOrCorsRelay(watchSubpageUrl, 10000);
-    if (watchRes.ok && watchRes.text.length > 100) {
+    const watchRes = await fetchViaBrowserOrCorsRelay(nextWatch.url, 10000);
+    if (watchRes.ok && watchRes.text.length >= 40) {
       const wDoc = new DOMParser().parseFromString(watchRes.text, 'text/html');
-      const wExtract = extractServersWithAdapterBrowser(wDoc, watchSubpageUrl, adapter, media.quality);
+      const wExtract = extractServersWithAdapterBrowser(wDoc, nextWatch.url, adapter, media.quality);
       const seen = new Set(rawRootServers.map((s) => s.url));
       for (const s of wExtract.servers) {
         if (!seen.has(s.url)) {
@@ -1712,9 +1853,34 @@ export async function executeAdapterScrapeInBrowser(params: {
         }
       }
       visibleServersHint = Math.max(visibleServersHint, wExtract.servers.length);
-      if (media.downloads.length === 0) {
-        const wBase = parseHtmlToMediaWithHintsBrowser(watchRes.text, watchSubpageUrl);
-        if (wBase.media.downloads.length > 0) media.downloads = wBase.media.downloads;
+      const wBase = parseHtmlToMediaWithHintsBrowser(watchRes.text, nextWatch.url);
+      if (wExtract.servers.length === 0 && wBase.media.servers.length > 0) {
+        for (const s of wBase.media.servers) {
+          if (s.url && !seen.has(s.url)) {
+            rawRootServers.push(s);
+            seen.add(s.url);
+          }
+        }
+      }
+      if (media.downloads.length === 0 && wBase.media.downloads.length > 0) {
+        media.downloads = wBase.media.downloads;
+      }
+      if (nextWatch.depth < 3 && rawRootServers.length === 0) {
+        const deeperWatch =
+          findBestWatchSubpageUrlBrowser(wDoc, nextWatch.url, adapter) || wBase.hints.watchSubpageUrl || '';
+        if (deeperWatch && !visitedWatchUrls.has(canonicalizeCompareUrl(deeperWatch))) {
+          watchQueue.push({ url: deeperWatch, depth: nextWatch.depth + 1 });
+        }
+      }
+    }
+  }
+
+  if (rawRootServers.length === 0 && baseline.media.servers.length > 0) {
+    const seen = new Set<string>();
+    for (const bs of baseline.media.servers) {
+      if (bs.url && !seen.has(bs.url)) {
+        rawRootServers.push(bs);
+        seen.add(bs.url);
       }
     }
   }
@@ -1912,12 +2078,12 @@ export async function executeAdapterScrapeInBrowser(params: {
                 ...s,
                 id: `ep-s${seasonNumber}-e${ep.number}-srv-${sIdx + 1}`,
               }));
-              ep.watchSubpageUrl = watchSubpageUrl || undefined;
+              ep.watchSubpageUrl = firstWatch || undefined;
               ep.watchUrl = ep.servers[0]?.url || '';
               provenanceMap.set(epKey, {
                 expectedSourceUrl: originalEpUrl,
-                fetchedUrls: [effectiveUrl, ...(watchSubpageUrl ? [watchSubpageUrl] : [])],
-                watchSubpageUrl: watchSubpageUrl || undefined,
+                fetchedUrls: [effectiveUrl, ...(firstWatch ? [firstWatch] : [])],
+                watchSubpageUrl: firstWatch || undefined,
               });
               return;
             }

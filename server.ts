@@ -2252,7 +2252,7 @@ function normalizeTrailerUrlServer(rawUrl: string | undefined | null): string {
 }
 
 const IGNORED_EMBED_HOSTS_REGEX =
-  /googlesyndication|doubleclick|googletagmanager|facebook\.com\/plugins|recaptcha|cloudflare|ads|histats|yandex|analytics|disqus\.com|gravatar\.com|addtoany|sharethis|twitter\.com\/widgets|instagram\.com\/embed/i;
+  /googlesyndication|doubleclick|googletagmanager|plus\.google\.com|facebook\.com\/(?:plugins|sharer|share\.php)|twitter\.com\/(?:widgets|intent|share)|x\.com\/(?:intent|share)|instagram\.com\/(?:embed|p\/)|t\.me\/share|telegram\.me\/share|whatsapp\.com|pinterest\.com|linkedin\.com\/share|reddit\.com\/submit|vk\.com\/share\.php|recaptcha|cloudflare|ads|histats|yandex|analytics|disqus\.com|gravatar\.com|addtoany|addthis|sharethis/i;
 
 function normalizeArabicDigits(text: string): string {
   return text.replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)));
@@ -2352,13 +2352,71 @@ function isWebsiteHomepageHtml(finalUrl: string, snippet: string): boolean {
   return false;
 }
 
+interface WatchFormHint {
+  action: string;
+  method: 'GET' | 'POST';
+  params: Record<string, string>;
+}
+
+interface WpAjaxPostHint {
+  endpoint: string;
+  action: string;
+  postId: string;
+  nume?: string;
+  type?: string;
+  label?: string;
+}
+
 interface SubpageHints {
   watchSubpageUrl?: string;
+  watchSubpageCandidates?: string[];
   downloadSubpageUrl?: string;
   ajaxEmbedIds: { id: string; label: string }[];
   candidateOrigins: string[];
+  watchForms?: WatchFormHint[];
+  wpAjaxPosts?: WpAjaxPostHint[];
   seasonPageUrls?: { seasonNumber: number; label: string; url: string }[];
   hasExplicitImdbRating?: boolean;
+}
+
+function getRegistrableRootDomainServer(hostname: string): string {
+  const clean = String(hostname || '').trim().toLowerCase().replace(/^www\./, '');
+  const parts = clean.split('.').filter(Boolean);
+  if (parts.length <= 2) return clean;
+  const lastTwo = parts.slice(-2).join('.');
+  if (/^(co\.uk|com\.eg|com\.sa|net\.sa|org\.uk|com\.au|co\.jp)$/i.test(lastTwo) && parts.length >= 3) {
+    return parts.slice(-3).join('.');
+  }
+  return lastTwo;
+}
+
+function sameRootDomainServer(hostA: string, hostB: string): boolean {
+  const a = String(hostA || '').trim().toLowerCase();
+  const b = String(hostB || '').trim().toLowerCase();
+  if (!a || !b) return false;
+  if (a === b) return true;
+  return getRegistrableRootDomainServer(a) === getRegistrableRootDomainServer(b);
+}
+
+function unescapeScriptAndHtmlServer(raw: string): string {
+  return String(raw || '')
+    .replace(/\\\//g, '/')
+    .replace(/\\"/g, '"')
+    .replace(/\\'/g, "'")
+    .replace(/\\n|\\r|\\t/g, ' ')
+    .replace(/\\x([0-9a-fA-F]{2})/g, (_, hex) => {
+      const code = parseInt(hex, 16);
+      return Number.isFinite(code) ? String.fromCharCode(code) : '';
+    })
+    .replace(/\\u([0-9a-fA-F]{4})/g, (_, hex) => {
+      const code = parseInt(hex, 16);
+      return Number.isFinite(code) ? String.fromCharCode(code) : '';
+    })
+    .replace(/&amp;/gi, '&')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#0*39;|&#x0*27;/gi, "'")
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>');
 }
 
 function parseBaselineSeasonNumber(label: string, fallbackIdx: number): number {
@@ -2475,10 +2533,21 @@ export function parseHtmlToMediaWithHints(
   let jsonLdImdbId = '';
   const jsonLdCast: ServerCastMember[] = [];
 
+  const jsonLdVideoUrls: string[] = [];
+
   $('script[type="application/ld+json"]').each((_, el) => {
     const nodes = extractJsonLdNodes($(el).text());
     for (const obj of nodes) {
-      const typeVal = String(obj['@type'] || '');
+      const rawType = obj['@type'];
+      const typeVal = Array.isArray(rawType) ? rawType.map(String).join(' ') : String(rawType || '');
+      if (/\bVideoObject\b/i.test(typeVal)) {
+        for (const key of ['embedUrl', 'contentUrl']) {
+          const val = obj[key];
+          if (typeof val === 'string' && val.trim()) {
+            jsonLdVideoUrls.push(val.trim());
+          }
+        }
+      }
       if (typeVal === 'Movie' || typeVal === 'TVSeries') {
         jsonLdType = typeVal;
         if (obj.sameAs && !jsonLdImdbId) {
@@ -2841,8 +2910,10 @@ export function parseHtmlToMediaWithHints(
   >();
 
   const pushEmbedServer = (rawCandidate: string, preferredName?: string) => {
-    const src = resolveUrl(sourceUrl, rawCandidate);
+    const cleanedCandidate = String(rawCandidate || '').replace(/&amp;/gi, '&').trim();
+    const src = resolveUrl(sourceUrl, cleanedCandidate);
     if (!src) return;
+    if (/\.(jpg|jpeg|png|webp|gif|svg|ico)(\?|$)/i.test(src)) return;
 
     // Route YouTube embeds/links to trailerUrl instead of Watch Servers
     if (isYoutubeUrl(src)) {
@@ -2882,26 +2953,45 @@ export function parseHtmlToMediaWithHints(
   const seenAjaxIds = new Set<string>();
 
   const decodeMaybeBase64Embed = (val: string): string => {
-    const trimmed = val.trim();
-    if (/^(https?:)?\/\//i.test(trimmed) || /<iframe/i.test(trimmed)) return trimmed;
-    if (/^[A-Za-z0-9+/=]{16,}$/.test(trimmed)) {
+    let current = unescapeScriptAndHtmlServer(val.trim());
+    if (/^(https?:)?\/\//i.test(current) || /<(?:iframe|video|source|embed)\b/i.test(current)) {
+      return current;
+    }
+    if (/(?:https?%3A%2F%2F|%3Ciframe)/i.test(current)) {
       try {
-        const decoded = Buffer.from(trimmed, 'base64').toString('utf-8').trim();
-        if (/https?:\/\/|<iframe/i.test(decoded)) return decoded;
+        current = decodeURIComponent(current);
       } catch {
-        // Not valid base64 text
+        // ignore malformed URI sequence
+      }
+      if (/^(https?:)?\/\//i.test(current) || /<(?:iframe|video|source|embed)\b/i.test(current)) {
+        return current;
       }
     }
-    return trimmed;
+    for (let layer = 0; layer < 2; layer++) {
+      if (!/^[A-Za-z0-9+/=_-]{16,}$/.test(current)) break;
+      try {
+        const normalizedB64 = current.replace(/-/g, '+').replace(/_/g, '/');
+        const decoded = Buffer.from(normalizedB64, 'base64').toString('utf-8').trim();
+        if (!decoded) break;
+        current = unescapeScriptAndHtmlServer(decoded);
+        if (/https?:\/\/|<(?:iframe|video|source|embed)\b/i.test(current)) {
+          return current;
+        }
+      } catch {
+        break;
+      }
+    }
+    return current;
   };
 
   // Check clickable server buttons FIRST so real names, order, and qualities are preserved cleanly
   $(
-    '[data-embed-url], [data-embed], [data-iframe], [data-server], [data-video], [data-url], [data-watch], [data-link], [data-play], li[data-src], button[data-src], a[data-src], .WatchList li[href], .WatchList li a[href], .servers li a[href]'
+    '[data-embed-url], [data-embed], [data-iframe], [data-server], [data-video], [data-url], [data-watch], [data-link], [data-play], [data-href], [data-player], [data-frame], [data-file], [data-stream], [data-qu], [onclick], li[data-src], button[data-src], a[data-src], .WatchList li[href], .WatchList li a[href], .servers li a[href]'
   ).each((_, el) => {
-    if (el.tagName?.toLowerCase() === 'img') return;
+    const tagName = el.tagName?.toLowerCase() || '';
+    if (tagName === 'img') return;
     if ($(el).closest('header, nav, footer, .ads, .banner, .pm-ads-banner, .trailer, #trailer').length > 0) return;
-    const attrVal =
+    const rawAttrVal =
       $(el).attr('data-embed-url') ||
       $(el).attr('data-embed') ||
       $(el).attr('data-iframe') ||
@@ -2911,8 +3001,27 @@ export function parseHtmlToMediaWithHints(
       $(el).attr('data-watch') ||
       $(el).attr('data-link') ||
       $(el).attr('data-play') ||
+      $(el).attr('data-href') ||
+      $(el).attr('data-player') ||
+      $(el).attr('data-frame') ||
+      $(el).attr('data-file') ||
+      $(el).attr('data-stream') ||
+      $(el).attr('data-qu') ||
       $(el).attr('data-src') ||
       $(el).attr('href');
+
+    const onclickVal = $(el).attr('onclick') || '';
+    let attrVal = rawAttrVal || '';
+
+    if ((!attrVal || attrVal === '#' || attrVal.startsWith('javascript:')) && onclickVal) {
+      const atobInOnclick = onclickVal.match(/atob\(\s*["']([A-Za-z0-9+/=_-]{16,})["']\s*\)/i);
+      const urlInOnclick = onclickVal.match(/https?:\/\/[^"'\s<>)]+/i);
+      const fnArgInOnclick = onclickVal.match(
+        /(?:openEmbed|loadServer|changePlayer|goServer|playServer|setPlayer|watchServer|iframeSrc|player|play)\s*\(\s*["']([^"']+)["']/i
+      );
+      attrVal = atobInOnclick?.[1] || urlInOnclick?.[0] || fnArgInOnclick?.[1] || '';
+    }
+
     if (!attrVal) return;
 
     let candidateUrl = decodeMaybeBase64Embed(attrVal);
@@ -2933,14 +3042,66 @@ export function parseHtmlToMediaWithHints(
     pushEmbedServer(candidateUrl, btnText || undefined);
   });
 
-  $('iframe').each((_, el) => {
+  // Check <select> server dropdowns (skipping season/episode selectors)
+  $(
+    '.servers select, .WatchList select, [class*="server"] select, [id*="server"] select, [class*="watch"] select, [id*="watch"] select, select[class*="server"], select[id*="server"], select[class*="watch"], select[id*="watch"], select[name*="server"]'
+  ).each(
+    (_, selEl) => {
+      const selCls = cleanText($(selEl).attr('class') + ' ' + $(selEl).attr('id'));
+      if (/TabS|TabE|season|episode|موسم|حلقة/i.test(selCls)) return;
+      $(selEl)
+        .find('option')
+        .each((__, optEl) => {
+          const optRaw =
+            $(optEl).attr('data-embed') ||
+            $(optEl).attr('data-url') ||
+            $(optEl).attr('data-src') ||
+            $(optEl).attr('value') ||
+            '';
+          if (!optRaw) return;
+          let cand = decodeMaybeBase64Embed(optRaw);
+          const m = cand.match(/src=["']([^"']+)["']/i);
+          if (m) cand = m[1];
+          const label = cleanText($(optEl).text());
+          if (/^[0-9a-zA-Z_-]{1,24}$/.test(cand) && !/[./:?]/.test(cand)) {
+            if (!seenAjaxIds.has(cand)) {
+              seenAjaxIds.add(cand);
+              ajaxEmbedIds.push({ id: cand, label: label || `سيرفر ${ajaxEmbedIds.length + 1}` });
+            }
+            return;
+          }
+          pushEmbedServer(cand, label || undefined);
+        });
+    }
+  );
+
+  $('iframe, embed[src], object[data]').each((_, el) => {
     if ($(el).closest('header, nav, footer, .ads, .banner, .pm-ads-banner, .trailer, #trailer').length > 0) return;
-    const rawSrc = $(el).attr('src') || $(el).attr('data-src') || $(el).attr('data-lazy-src') || '';
+    const rawSrc =
+      $(el).attr('src') ||
+      $(el).attr('data-src') ||
+      $(el).attr('data-lazy-src') ||
+      $(el).attr('data') ||
+      '';
     const titleAttr = cleanText($(el).attr('title'));
     pushEmbedServer(rawSrc, titleAttr || undefined);
   });
 
-  // Inline <script> extraction (handles JS arrays, escaped HTML, and atob() base64 embeds)
+  // Check <noscript> for non-empty fallback iframes or video sources
+  $('noscript').each((_, el) => {
+    if ($(el).closest('header, nav, footer, .ads, .banner, .pm-ads-banner, .trailer, #trailer').length > 0) return;
+    const inner = $(el).html() || $(el).text() || '';
+    if (!inner || !/<(?:iframe|video|source|embed)\b/i.test(inner)) return;
+    const $inner = cheerio.load(inner);
+    $inner('iframe, video, source, embed').each((__, mediaEl) => {
+      const s = $inner(mediaEl).attr('src') || $inner(mediaEl).attr('data-src') || '';
+      if (s && s.trim()) {
+        pushEmbedServer(s, cleanText($inner(mediaEl).attr('title')) || undefined);
+      }
+    });
+  });
+
+  // Inline <script> extraction (handles JS arrays/objects, escaped/hex HTML, URL-encoded & atob() base64 embeds)
   const serverButtonLabels = $(
     '.server-btn, .WatchList li, .servers li, .watch-servers button, .servers-list button, .server-item, .btn-service'
   )
@@ -2952,15 +3113,17 @@ export function parseHtmlToMediaWithHints(
     const scriptText = $(el).html() || '';
     if (!scriptText || scriptText.length < 15) return;
 
-    // Unescape JSON/PHP-escaped HTML inside script blocks
-    const unescaped = scriptText
-      .replace(/\\\//g, '/')
-      .replace(/\\"/g, '"')
-      .replace(/\\'/g, "'")
-      .replace(/\\n|\\r|\\t/g, ' ');
+    let unescaped = unescapeScriptAndHtmlServer(scriptText);
+    if (/(?:https?%3A%2F%2F|%3Ciframe)/i.test(unescaped)) {
+      try {
+        unescaped = decodeURIComponent(unescaped);
+      } catch {
+        // Keep partially unescaped text if URI decode fails
+      }
+    }
 
-    // Find all iframe src URLs inside script
-    const iframeSrcRegex = /<iframe[^>]+src=["'](https?:\/\/[^"'\s<>]+)["']/gi;
+    // Find all iframe/embed/source/video src URLs inside script
+    const iframeSrcRegex = /<(?:iframe|embed|source|video)[^>]+src=["'](https?:\/\/[^"'\s<>]+)["']/gi;
     let match: RegExpExecArray | null;
     let scriptServerIdx = 0;
     while ((match = iframeSrcRegex.exec(unescaped)) !== null) {
@@ -2969,8 +3132,8 @@ export function parseHtmlToMediaWithHints(
       scriptServerIdx++;
     }
 
-    // Decode atob("...") base64 snippets that hold an iframe or embed URL (skipping ad trackers)
-    const atobRegex = /atob\(\s*["']([A-Za-z0-9+/=]{20,})["']\s*\)/gi;
+    // Decode atob("...") base64 snippets that hold an iframe or embed URL (up to 2 layers)
+    const atobRegex = /atob\(\s*["']([A-Za-z0-9+/=_-]{16,})["']\s*\)/gi;
     let b64Match: RegExpExecArray | null;
     while ((b64Match = atobRegex.exec(scriptText)) !== null) {
       const decoded = decodeMaybeBase64Embed(b64Match[1]);
@@ -2981,11 +3144,12 @@ export function parseHtmlToMediaWithHints(
       }
     }
 
-    // Also inspect JS server arrays holding bare embed URLs
-    const jsArrayVarRegex = /(?:var|let|const)\s+(?:servers|embeds|players|watchLinks)\s*=\s*\[([\s\S]{5,8000}?)\]/gi;
+    // Inspect JS server arrays & object literals holding embed URLs or iframe HTML
+    const jsArrayVarRegex =
+      /(?:var|let|const|window\.)?\s*(?:servers|embeds|players|watchLinks|watch_servers|streamLinks|videoLinks|sources|playlist|serverList)\s*=\s*[\[{]([\s\S]{5,18000}?)[\]}]/gi;
     let arrMatch: RegExpExecArray | null;
     while ((arrMatch = jsArrayVarRegex.exec(unescaped)) !== null) {
-      const urlRegex = /https?:\/\/[^\s"'<>]+/gi;
+      const urlRegex = /https?:\/\/[^\s"'<>\\`]+/gi;
       let uMatch: RegExpExecArray | null;
       let arrIdx = 0;
       while ((uMatch = urlRegex.exec(arrMatch[1])) !== null) {
@@ -2996,10 +3160,29 @@ export function parseHtmlToMediaWithHints(
         }
       }
     }
+
+    // Inspect JS object properties like { file: "...", embed_url: "...", src: "..." }
+    const jsPropRegex = /(?:src|file|url|embed|embed_url|link|watch|frame)\s*:\s*["'](https?:\/\/[^"'\s<>]+)["']/gi;
+    let propMatch: RegExpExecArray | null;
+    while ((propMatch = jsPropRegex.exec(unescaped)) !== null) {
+      if (!IGNORED_EMBED_HOSTS_REGEX.test(propMatch[1])) {
+        pushEmbedServer(propMatch[1]);
+      }
+    }
+
+    // Scan bare URLs anywhere in inline script ONLY if clearly a known video embed/stream host
+    const anyUrlRegex = /https?:\/\/[^\s"'<>\\`)]+/gi;
+    let anyMatch: RegExpExecArray | null;
+    while ((anyMatch = anyUrlRegex.exec(unescaped)) !== null) {
+      const cand = anyMatch[0].replace(/[;,]+$/, '');
+      if (isKnownVideoEmbedUrlServer(cand) && !IGNORED_EMBED_HOSTS_REGEX.test(cand)) {
+        pushEmbedServer(cand);
+      }
+    }
   });
 
   $('video source, video').each((_, el) => {
-    const src = resolveUrl(sourceUrl, $(el).attr('src'));
+    const src = resolveUrl(sourceUrl, $(el).attr('src') || $(el).attr('data-src'));
     if (!src || serversMap.has(src) || isLikelyNonVideoWebsiteUrl(src, sourceOrigin)) return;
     const seqNum = serversMap.size + 1;
     const label = cleanText($(el).attr('title') || $(el).attr('data-label'));
@@ -3015,7 +3198,7 @@ export function parseHtmlToMediaWithHints(
     });
   });
 
-  // 7. Download Links & Subpage Hints (play.php / download.php)
+  // 7. Download Links & Subpage Hints (play.php / download.php / watch / forms / WP-AJAX)
   const downloadsMap = new Map<
     string,
     { id: string; host: string; quality: string; size: string; format: string; url: string }
@@ -3042,9 +3225,84 @@ export function parseHtmlToMediaWithHints(
     candidateOriginsSet.add(sourceOrigin);
   }
 
+  // Detect WordPress / theme AJAX watch triggers (dooplay, AjaxtURL / TWatch.php)
+  const wpAjaxPosts: WpAjaxPostHint[] = [];
+  const seenWpAjax = new Set<string>();
+  if (sourceOrigin) {
+    $('[data-post]').each((_, el) => {
+      const postId = cleanText($(el).attr('data-post'));
+      if (!postId) return;
+      const nume = cleanText($(el).attr('data-nume'));
+      const type = cleanText($(el).attr('data-type'));
+      const action = cleanText($(el).attr('data-action')) || 'doo_player_ajax';
+      if (!nume && !type && !$(el).attr('data-action') && !$(el).hasClass('dooplay_player_option')) return;
+      const label = extractCleanElementLabelServer($, $(el));
+      const key = `${action}:${postId}:${nume}:${type}`;
+      if (seenWpAjax.has(key)) return;
+      seenWpAjax.add(key);
+      wpAjaxPosts.push({
+        endpoint: `${sourceOrigin}/wp-admin/admin-ajax.php`,
+        action,
+        postId,
+        nume: nume || undefined,
+        type: type || undefined,
+        label: label || undefined,
+      });
+    });
+
+    const ajaxtMatch = allScriptsText.match(/AjaxtURL\s*=\s*["']([^"']+)["']/i);
+    const bodyPostMatch = ($('body').attr('class') || '').match(/\bpostid-(\d+)\b/i);
+    const postIdFromPage =
+      bodyPostMatch?.[1] ||
+      cleanText($('[data-post], [data-id]').first().attr('data-post') || $('[data-id]').first().attr('data-id'));
+    if (ajaxtMatch?.[1] && postIdFromPage) {
+      const baseAjaxt = resolveUrl(sourceUrl, ajaxtMatch[1]).replace(/\/+$/, '');
+      if (baseAjaxt) {
+        const key = `twatch:${baseAjaxt}:${postIdFromPage}`;
+        if (!seenWpAjax.has(key)) {
+          seenWpAjax.add(key);
+          wpAjaxPosts.push({
+            endpoint: `${baseAjaxt}/Single/TWatch.php`,
+            action: 'twatch',
+            postId: postIdFromPage,
+          });
+        }
+      }
+    }
+  }
+
+  // Detect watch/player HTML forms (POST/GET)
+  const watchForms: WatchFormHint[] = [];
+  $('form').each((_, formEl) => {
+    const rawAction = $(formEl).attr('action') || '';
+    const actionUrl = resolveUrl(sourceUrl, rawAction || sourceUrl);
+    const formClsId = cleanText(
+      `${$(formEl).attr('id') || ''} ${$(formEl).attr('class') || ''} ${$(formEl).find('button, input[type="submit"]').text()}`
+    );
+    if (!actionUrl || /search|login|register|comment|newsletter|بحث/i.test(formClsId)) return;
+    if (!/watch|play|embed|player|مشاهدة|سيرفر|تحميل/i.test(`${actionUrl} ${formClsId}`)) return;
+    const method = String($(formEl).attr('method') || 'GET').trim().toUpperCase() === 'POST' ? 'POST' : 'GET';
+    const params: Record<string, string> = {};
+    $(formEl)
+      .find('input[name]')
+      .each((__, inp) => {
+        const name = $(inp).attr('name');
+        if (!name) return;
+        const type = ($(inp).attr('type') || '').toLowerCase();
+        if (type === 'submit' || type === 'button') {
+          if (!params[name] && $(inp).attr('value')) params[name] = $(inp).attr('value') || '';
+          return;
+        }
+        params[name] = $(inp).attr('value') || '';
+      });
+    watchForms.push({ action: actionUrl, method, params });
+  });
+
   const hints: SubpageHints = {
     ajaxEmbedIds,
     candidateOrigins: Array.from(candidateOriginsSet),
+    watchForms: watchForms.slice(0, 4),
+    wpAjaxPosts: wpAjaxPosts.slice(0, 15),
     hasExplicitImdbRating,
   };
   const ignoredDownloadHosts =
@@ -3055,6 +3313,43 @@ export function parseHtmlToMediaWithHints(
   const watchCandidates: { url: string; score: number }[] = [];
   const sourceIdVal = extractBaselineEpisodeId(sourceUrl);
   const canonicalSourceUrl = canonicalizeCompareUrl(sourceUrl);
+  let sourceHost = '';
+  try {
+    if (sourceUrl) sourceHost = new URL(sourceUrl).hostname;
+  } catch {
+    // ignore
+  }
+
+  for (const jvUrl of jsonLdVideoUrls) {
+    const resolvedJv = resolveUrl(sourceUrl, jvUrl);
+    if (!resolvedJv) continue;
+    try {
+      const ju = new URL(resolvedJv);
+      if (sameRootDomainServer(sourceHost, ju.hostname) && !/\.(mp4|m3u8|webm)(\?|$)/i.test(ju.pathname)) {
+        watchCandidates.push({ url: resolvedJv, score: 42 });
+      } else {
+        pushEmbedServer(resolvedJv);
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  const metaRefresh = $('meta[http-equiv="refresh"]').attr('content') || '';
+  const metaRefreshMatch = metaRefresh.match(/url\s*=\s*([^;\s"']+)/i);
+  if (metaRefreshMatch?.[1]) {
+    const refreshUrl = resolveUrl(sourceUrl, metaRefreshMatch[1]);
+    if (refreshUrl && canonicalizeCompareUrl(refreshUrl) !== canonicalSourceUrl) {
+      try {
+        const ru = new URL(refreshUrl);
+        if (sameRootDomainServer(sourceHost, ru.hostname)) {
+          watchCandidates.push({ url: refreshUrl, score: 45 });
+        }
+      } catch {
+        // ignore
+      }
+    }
+  }
 
   $('a[href]').each((idx, el) => {
     const rawHref = $(el).attr('href');
@@ -3063,29 +3358,29 @@ export function parseHtmlToMediaWithHints(
     const cls = cleanText($(el).attr('class'));
     if (!href || canonicalizeCompareUrl(href) === canonicalSourceUrl) return;
 
-    let hrefOrigin = '';
+    let hrefHost = '';
     try {
-      hrefOrigin = new URL(href).origin;
+      hrefHost = new URL(href).hostname;
     } catch {
       return;
     }
 
-    const sameOrigin = Boolean(sourceOrigin && hrefOrigin === sourceOrigin);
+    const sameDomain = Boolean(sourceHost && sameRootDomainServer(sourceHost, hrefHost));
 
-    // Detect 1-hop watch/player subpage (e.g. watch.php?vid=ID -> play.php?vid=ID, <a class="xtgo">)
+    // Detect multi-hop watch/player subpage (e.g. watch.php?vid=ID -> play.php?vid=ID, <a class="xtgo">, <a class="watch">)
     // Exclude ads/episode-lists/sidebars so Season 1 list links on an episode page never hijack watchSubpageUrl!
     const inIgnoredWatchParent =
       $(el).closest(
         'header, nav, footer, .navbar, .ads, .banner, .pm-ads-banner, .ad-box, .sidebar, .widget, .related, .recommended, .comments, .tabcontent, .SeasonsEpisodes, .SeasonsList, .episodes-list, .episodes, [id^="Season"]'
-      ).length > 0 && !/\b(xtgo|btnplay|watch-btn)\b/i.test(cls);
+      ).length > 0 && !/\b(xtgo|btnplay|watch-btn|watch)\b/i.test(cls);
 
     if (
-      sameOrigin &&
+      sameDomain &&
       !inIgnoredWatchParent &&
-      (/play\.php|\/+watch(?:\/|$|\?)|\/+player(?:\/|$|\?)|\/+embed(?:\/|$|\?)/i.test(href) ||
+      (/play\.php|embed\.php|\/+watch(?:\/|$|\?)|\/+player(?:\/|$|\?)|\/+embed(?:[-/]|$|\?)/i.test(href) ||
         /\b(xtgo|btnplay|watch-btn)\b/i.test(cls) ||
-        (/\bwatch\b/i.test(cls) && /watch|play/i.test(href)) ||
-        (/مشاهدة|شاهد/i.test(text) && /\b(play|watch|vid=)\b/i.test(href)))
+        (/\bwatch\b/i.test(cls) && /watch|play|embed/i.test(href)) ||
+        (/مشاهدة|شاهد/i.test(text) && /\b(play|watch|embed|vid=)\b/i.test(href)))
     ) {
       const candIdVal = extractBaselineEpisodeId(href);
       // Never follow a subpage whose episode ID conflicts with the current page's ID
@@ -3093,9 +3388,10 @@ export function parseHtmlToMediaWithHints(
         let score = 0;
         if (sourceIdVal && candIdVal && candIdVal === sourceIdVal) score += 50;
         if (/\b(xtgo|btnplay|watch-btn)\b/i.test(cls)) score += 35;
-        else if (/\bwatch\b/i.test(cls) && /watch|play/i.test(href)) score += 30;
-        if (/play\.php/i.test(href)) score += 20;
-        if (/\/+watch(?:\/|$|\?)|\/+player(?:\/|$|\?)|\/+embed(?:\/|$|\?)/i.test(href)) score += 18;
+        else if (/\bwatch\b/i.test(cls) && /watch|play|embed/i.test(href)) score += 30;
+        if (/play\.php/i.test(href)) score += 22;
+        if (/embed\.php/i.test(href)) score += 18;
+        if (/\/+watch(?:\/|$|\?)|\/+player(?:\/|$|\?)|\/+embed(?:[-/]|$|\?)/i.test(href)) score += 18;
         if (/مشاهدة|شاهد|watch|play/i.test(text)) score += 8;
         if (!sourceIdVal && !candIdVal && /الموسم|الحلقة/i.test(text)) score -= 20;
         if (score > 0) watchCandidates.push({ url: href, score });
@@ -3104,7 +3400,7 @@ export function parseHtmlToMediaWithHints(
 
     // Detect 1-hop download subpage (e.g. PHP Melody `download.php?vid=...`)
     if (
-      sameOrigin &&
+      sameDomain &&
       !hints.downloadSubpageUrl &&
       $(el).closest('.pm-ads-banner, .ads, .banner').length === 0 &&
       (/download\.php|\/downloads?\//i.test(href) ||
@@ -3124,18 +3420,18 @@ export function parseHtmlToMediaWithHints(
       /op=download/i.test(href);
 
     const looksLikeExternalMirror =
-      !sameOrigin &&
+      !sameDomain &&
       !ignoredDownloadHosts.test(href) &&
       (knownMirrorRegex.test(href) ||
         isFileOrMirrorPath ||
         Boolean(options?.isDownloadPage && $(el).closest('header, nav, footer, .navbar, .menu').length === 0));
 
     const looksLikeDirectButton =
-      !sameOrigin &&
+      !sameDomain &&
       !ignoredDownloadHosts.test(href) &&
       /تحميل|download|سيرفر/i.test(text);
 
-    if (!looksLikeExternalMirror && !looksLikeDirectButton && !(sameOrigin && /\.(mp4|mkv|avi|zip)(\?|$)/i.test(href))) {
+    if (!looksLikeExternalMirror && !looksLikeDirectButton && !(sameDomain && /\.(mp4|mkv|avi|zip)(\?|$)/i.test(href))) {
       return;
     }
 
@@ -3157,17 +3453,41 @@ export function parseHtmlToMediaWithHints(
     });
   });
 
-  if (watchCandidates.length > 0) {
-    watchCandidates.sort((a, b) => b.score - a.score);
-    hints.watchSubpageUrl = watchCandidates[0].url;
+  if (allScriptsText) {
+    const jsWatchMatches = allScriptsText.match(
+      /["'](https?:\/\/[^"'\s<>]+\/(?:watch|play|player|play\.php\?[^"'\s<>]+|embed\.php\?[^"'\s<>]+))["']/gi
+    );
+    for (const rawM of jsWatchMatches || []) {
+      const cleanM = rawM.slice(1, -1);
+      if (canonicalizeCompareUrl(cleanM) === canonicalSourceUrl) continue;
+      try {
+        const u = new URL(cleanM);
+        if (sameRootDomainServer(sourceHost, u.hostname)) {
+          watchCandidates.push({ url: cleanM, score: 16 });
+        }
+      } catch {
+        // ignore
+      }
+    }
   }
 
-  if (!hints.watchSubpageUrl && allScriptsText) {
-    const jsWatchMatch = allScriptsText.match(
-      /["'](https?:\/\/[^"'\s<>]+\/+(?:watch|play|player)\/?)["']/i
-    );
-    if (jsWatchMatch?.[1]) hints.watchSubpageUrl = jsWatchMatch[1];
+  if (watchCandidates.length > 0) {
+    watchCandidates.sort((a, b) => b.score - a.score);
+    const dedupWatch: string[] = [];
+    const seenWatch = new Set<string>([canonicalSourceUrl]);
+    for (const wc of watchCandidates) {
+      const c = canonicalizeCompareUrl(wc.url);
+      if (!c || seenWatch.has(c)) continue;
+      seenWatch.add(c);
+      dedupWatch.push(wc.url);
+      if (dedupWatch.length >= 4) break;
+    }
+    if (dedupWatch.length > 0) {
+      hints.watchSubpageCandidates = dedupWatch;
+      hints.watchSubpageUrl = dedupWatch[0];
+    }
   }
+
   if (!hints.downloadSubpageUrl && allScriptsText) {
     const jsDlMatch = allScriptsText.match(/["'](https?:\/\/[^"'\s<>]+\/+download\/?)["']/i);
     if (jsDlMatch?.[1]) hints.downloadSubpageUrl = jsDlMatch[1];
@@ -3446,7 +3766,7 @@ export function parseHtmlToMediaWithHints(
   const mergedInitialCast = mergeCastMembersServer(jsonLdCast, domCast, 20);
 
   const normalizedServers = Array.from(serversMap.values())
-    .slice(0, 15)
+    .slice(0, 30)
     .map((srv, idx) => ({
       ...srv,
       id: srv.id || `srv-ext-${idx + 1}`,
@@ -3534,9 +3854,11 @@ function isLikelyContentUrl(candidateUrl: string, allowedOrigins: string | strin
       p === '/' ||
       p === '' ||
       /\.(jpg|jpeg|png|gif|webp|svg|css|js|ico|xml|pdf|zip|mp4|mkv)$/i.test(p) ||
-      /^\/(movies|series|shows|mix|one|recent|trends|discovery|actors|tv-channels|collections|requests|modal)\/?$/i.test(
+      /^\/(movies|series|shows|mix|one|recent|trends|discovery|actors|tv-channels|collections|requests|modal|watch|embed)\/?$/i.test(
         p
       ) ||
+      /\/(?:watch|embed)\/?$/i.test(p) ||
+      /\/embed\.php$/i.test(p) ||
       /\/(index|rss|feed|tag|tags|label|category|categories|genre|search|author|page|login|register|admin|wp-admin|wp-content|comments|contact|about|privacy|terms|play|download|actor|collection|modal)(\.php)?(\/|$)/i.test(
         p
       ) ||
@@ -3841,7 +4163,7 @@ export function isKnownVideoEmbedUrlServer(rawUrl: string): boolean {
   const clean = String(rawUrl || '').trim();
   if (!/^https?:\/\//i.test(clean)) return false;
   if (
-    /(doodstream|dood\.|ds2play|d000d|playmogo|mixdrop|mxdrop|uqload|vidmoly|streamwish|filemoon|voe\.sx|streamtape|ok\.ru|vk\.com|luluvdo|mp4upload|vidbom|vidspeed|abyss|megamax|govad|yourupload|sibnet|turboviplay|myvi|fembed|upstream|sbembed|liiivideo|videa|anafast|vidoba|filelions|earnvids|mp4plus)/i.test(
+    /(doodstream|dood\.|myvidplay|ds2play|d000d|playmogo|mixdrop|mxdrop|uqload|vidmoly|streamwish|hlswish|wishembed|filemoon|moonplayer|voe\.sx|streamtape|ok\.ru|vk\.com|vkvideo\.ru|luluvdo|lulustream|lulu\.st|mp4upload|vidbom|vidspeed|vidspeeds|abyss|megamax|govad|yourupload|sibnet|turboviplay|myvi|fembed|upstream|sbembed|liiivideo|videa|anafast|vidoba|filelions|earnvids|mp4plus|vidshare|streamhg|dhcplay|vinovo|goodstream|vidoza|wolfstream|streamlare|dropload|sendvid|rumble|dailymotion|vimeo|rutube|mail\.ru|vidhide|guccihide|minochinos|bysetayico)/i.test(
       clean
     )
   ) {
@@ -3849,7 +4171,11 @@ export function isKnownVideoEmbedUrlServer(rawUrl: string): boolean {
   }
   try {
     const p = new URL(clean).pathname;
-    return /^\/(?:e|embed|v|f)\/[a-z0-9_-]{5,}/i.test(p) || /\.(?:mp4|m3u8|webm)(?:\?|$)/i.test(p);
+    return (
+      /^\/(?:e|embed|v|f|d|player|watch)\/[a-z0-9_-]{4,}/i.test(p) ||
+      /\/embed-[a-z0-9_-]{4,}/i.test(p) ||
+      /\.(?:mp4|m3u8|webm)(?:\?|$)/i.test(p)
+    );
   } catch {
     return false;
   }
@@ -3866,14 +4192,14 @@ async function verifyScrapedServers(
   if (preFiltered.length === 0) return [];
 
   if (options?.skipRemoteProbe) {
-    return preFiltered.slice(0, 15).map((srv, idx) => ({
+    return preFiltered.slice(0, 30).map((srv, idx) => ({
       ...srv,
       id: srv.id || `srv-ext-${idx + 1}`,
       name: cleanBaselineServerName(srv.name, srv.url, idx),
     }));
   }
 
-  const probeSlice = preFiltered.slice(0, 15);
+  const probeSlice = preFiltered.slice(0, 30);
 
   const checkOne = async (srv: ScrapedMediaItem['servers'][number]) => {
     const target = srv.url;
@@ -3899,9 +4225,21 @@ async function verifyScrapedServers(
       const ct = (response.headers.get('content-type') || '').toLowerCase();
 
       let snippet = '';
-      if (ct.includes('text/html') || ct.includes('text/plain') || !ct || response.status === 403) {
+      if (
+        ct.includes('text/html') ||
+        ct.includes('text/plain') ||
+        !ct ||
+        response.status === 403 ||
+        response.status === 503 ||
+        response.status === 429
+      ) {
         snippet = (await response.text().catch(() => '')).slice(0, 28000);
       }
+
+      const deletedText =
+        /file\s*(?:was|has been)?\s*(?:deleted|removed)|video\s*(?:was|has been)?\s*(?:deleted|removed|not found)|file\s*not\s*found|404\s*not\s*found|no\s*longer\s*available|تم\s*حذف\s*(?:الملف|الفيديو)|الفيديو\s*غير\s*موجود|الملف\s*غير\s*موجود/i.test(
+          snippet
+        );
 
       const isChallengePage =
         cfMitigated === 'challenge' ||
@@ -3910,8 +4248,8 @@ async function verifyScrapedServers(
 
       if (!response.ok && response.status !== 206) {
         if (
-          response.status === 403 &&
-          (isChallengePage || !/file\s*(?:not\s*found|deleted)|404\s*not\s*found/i.test(snippet)) &&
+          (response.status === 403 || response.status === 503 || response.status === 429) &&
+          (isChallengePage || (response.status === 403 && !deletedText)) &&
           (isKnownVideoEmbedUrlServer(finalUrl) || isKnownVideoEmbedUrlServer(target)) &&
           !isWebsiteHomepageHtml(finalUrl, snippet)
         ) {
@@ -3924,13 +4262,7 @@ async function verifyScrapedServers(
 
       if (snippet) {
         if (isWebsiteHomepageHtml(finalUrl, snippet)) return false;
-        if (
-          /file\s*(?:was|has been)?\s*(?:deleted|removed)|video\s*(?:was|has been)?\s*(?:deleted|removed|not found)|file\s*not\s*found|404\s*not\s*found|no\s*longer\s*available|تم\s*حذف\s*(?:الملف|الفيديو)|الفيديو\s*غير\s*موجود|الملف\s*غير\s*موجود/i.test(
-            snippet
-          )
-        ) {
-          return false;
-        }
+        if (deletedText) return false;
         if (
           /<title>\s*(?:403\s+Forbidden|Access\s+Denied|Just\s+a\s+moment|Attention\s+Required|404\s+Not\s+Found)/i.test(
             snippet
@@ -3944,20 +4276,22 @@ async function verifyScrapedServers(
           }
           return false;
         }
-        const xFrame = (response.headers.get('x-frame-options') || '').toLowerCase();
-        const csp = (response.headers.get('content-security-policy') || '').toLowerCase();
-        const frameBlocked =
-          xFrame.includes('deny') ||
-          xFrame.includes('sameorigin') ||
-          /frame-ancestors\s+[^;]*'none'|frame-ancestors\s+'self'/.test(csp) ||
-          /sandboxed\s+embed\s+is\s+not\s+allowed|please\s+disable\s+sandbox/i.test(snippet);
-        if (frameBlocked && !/\.(mp4|m3u8)(\?|"|')/i.test(snippet)) {
-          return false;
+        if (!isChallengePage) {
+          const xFrame = (response.headers.get('x-frame-options') || '').toLowerCase();
+          const csp = (response.headers.get('content-security-policy') || '').toLowerCase();
+          const frameBlocked =
+            xFrame.includes('deny') ||
+            xFrame.includes('sameorigin') ||
+            /frame-ancestors\s+[^;]*'none'|frame-ancestors\s+'self'/.test(csp) ||
+            /sandboxed\s+embed\s+is\s+not\s+allowed|please\s+disable\s+sandbox/i.test(snippet);
+          if (frameBlocked && !/\.(mp4|m3u8)(\?|"|')/i.test(snippet)) {
+            return false;
+          }
         }
       }
       return true;
     } catch {
-      return false;
+      return isKnownVideoEmbedUrlServer(target) && !isLikelyNonVideoWebsiteUrl(target, sourceOrigin);
     } finally {
       clearTimeout(timer);
     }
@@ -3966,7 +4300,7 @@ async function verifyScrapedServers(
   const keptFlags = await Promise.all(probeSlice.map((srv) => checkOne(srv)));
   return probeSlice
     .filter((_, idx) => keptFlags[idx])
-    .slice(0, 15)
+    .slice(0, 30)
     .map((srv, idx) => ({
       ...srv,
       id: srv.id || `srv-ext-${idx + 1}`,
@@ -3985,6 +4319,76 @@ function canonicalizeCompareUrl(rawUrl?: string): string {
   }
 }
 
+async function resolveWpAjaxPosts(
+  wpAjaxPosts: WpAjaxPostHint[],
+  refererUrl: string,
+  sourceOrigin: string,
+  quality: string
+): Promise<ScrapedMediaItem['servers']> {
+  const out: ScrapedMediaItem['servers'] = [];
+  const seenUrls = new Set<string>();
+  for (const item of wpAjaxPosts.slice(0, 15)) {
+    try {
+      const u = new URL(item.endpoint);
+      if (isBlockedHost(u.hostname) || !['http:', 'https:'].includes(u.protocol)) continue;
+      const bodyParams = new URLSearchParams();
+      if (item.action === 'twatch') {
+        bodyParams.set('post_id', item.postId);
+        bodyParams.set('id', item.postId);
+      } else {
+        bodyParams.set('action', item.action);
+        bodyParams.set('post', item.postId);
+        if (item.nume) bodyParams.set('nume', item.nume);
+        if (item.type) bodyParams.set('type', item.type);
+      }
+      const res = await fetch(item.endpoint, {
+        method: 'POST',
+        headers: {
+          ...DEFAULT_FETCH_HEADERS,
+          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+          'X-Requested-With': 'XMLHttpRequest',
+          Referer: refererUrl || `${u.origin}/`,
+          Origin: u.origin,
+        },
+        body: bodyParams.toString(),
+        signal: AbortSignal.timeout(7000),
+      });
+      if (!res.ok) continue;
+      const txt = await res.text();
+      if (!txt || txt.length < 10) continue;
+
+      let candidateHtml = txt;
+      try {
+        const parsedJson = JSON.parse(txt) as Record<string, unknown>;
+        if (typeof parsedJson?.embed_url === 'string') {
+          candidateHtml = `<iframe src="${parsedJson.embed_url}"></iframe>`;
+        } else if (typeof parsedJson?.url === 'string') {
+          candidateHtml = `<iframe src="${parsedJson.url}"></iframe>`;
+        } else if (typeof parsedJson?.html === 'string') {
+          candidateHtml = parsedJson.html;
+        }
+      } catch {
+        // Plain HTML response
+      }
+
+      const parsed = parseHtmlToMediaWithHints(candidateHtml, refererUrl || item.endpoint);
+      for (const srv of parsed.media.servers) {
+        if (!srv.url || seenUrls.has(srv.url) || isLikelyNonVideoWebsiteUrl(srv.url, sourceOrigin)) continue;
+        seenUrls.add(srv.url);
+        out.push({
+          ...srv,
+          id: `srv-wpajax-${out.length + 1}`,
+          name: item.label ? cleanBaselineServerName(item.label, srv.url, out.length) : srv.name,
+          quality: srv.quality || quality,
+        });
+      }
+    } catch {
+      // Non-fatal
+    }
+  }
+  return out;
+}
+
 export async function scrapeFullItemWithSubpages(
   mainUrl: string,
   mainHtml: string,
@@ -3992,53 +4396,88 @@ export async function scrapeFullItemWithSubpages(
 ): Promise<ScrapedMediaItem> {
   const { media, hints } = parseHtmlToMediaWithHints(mainHtml, mainUrl);
 
-  let watchUrl = hints.watchSubpageUrl;
   let downloadUrl = hints.downloadSubpageUrl;
+  const collectedAjaxIds = [...hints.ajaxEmbedIds];
+  const seenAjaxIdSet = new Set(collectedAjaxIds.map((x) => x.id));
+  const collectedOrigins = new Set<string>(hints.candidateOrigins);
+  const collectedWatchForms: WatchFormHint[] = [...(hints.watchForms || [])];
+  const collectedWpAjaxPosts: WpAjaxPostHint[] = [...(hints.wpAjaxPosts || [])];
 
-  // Step 1: If an ID-compatible watch/player subpage exists (e.g. watch.php?vid=X -> play.php?vid=X), fetch it
-  if (watchUrl && canonicalizeCompareUrl(watchUrl) !== canonicalizeCompareUrl(mainUrl)) {
+  // Step 1: Multi-hop watch/player subpage traversal (up to 3 hops, up to 4 candidates, SSRF protected)
+  const visitedWatchUrls = new Set<string>([canonicalizeCompareUrl(mainUrl)]);
+  const watchQueue: Array<{ url: string; depth: number }> = [];
+  for (const candUrl of hints.watchSubpageCandidates || (hints.watchSubpageUrl ? [hints.watchSubpageUrl] : [])) {
+    const canon = canonicalizeCompareUrl(candUrl);
+    if (canon && !visitedWatchUrls.has(canon)) {
+      watchQueue.push({ url: candUrl, depth: 1 });
+    }
+  }
+
+  let primaryWatchUrl = watchQueue[0]?.url || '';
+  while (watchQueue.length > 0 && visitedWatchUrls.size < 8) {
+    const current = watchQueue.shift()!;
+    const canonCurrent = canonicalizeCompareUrl(current.url);
+    if (!canonCurrent || visitedWatchUrls.has(canonCurrent) || current.depth > 3) continue;
+    visitedWatchUrls.add(canonCurrent);
+
     try {
-      const u = new URL(watchUrl);
-      if (!isBlockedHost(u.hostname)) {
-        const watchRes = await fetchRemoteText(watchUrl, 8500);
-        if (watchRes.ok && watchRes.text.length > 100) {
-          const watchParsed = parseHtmlToMediaWithHints(watchRes.text, watchUrl);
-          if (!media.trailerUrl && watchParsed.media.trailerUrl) {
-            media.trailerUrl = watchParsed.media.trailerUrl;
+      const u = new URL(current.url);
+      if (isBlockedHost(u.hostname)) continue;
+      const watchRes = await fetchRemoteText(current.url, 8500);
+      if (!watchRes.ok || watchRes.text.length < 40) continue;
+
+      const watchParsed = parseHtmlToMediaWithHints(watchRes.text, current.url);
+      if (!media.trailerUrl && watchParsed.media.trailerUrl) {
+        media.trailerUrl = watchParsed.media.trailerUrl;
+      }
+      if (watchParsed.media.servers.length > 0) {
+        const merged = [...media.servers];
+        const seen = new Set(merged.map((s) => s.url));
+        for (const srv of watchParsed.media.servers) {
+          if (!seen.has(srv.url)) {
+            merged.push(srv);
+            seen.add(srv.url);
           }
-          if (watchParsed.media.servers.length > 0) {
-            // Prefer watch subpage's actual player servers while keeping any unique servers from current page
-            const merged = [...watchParsed.media.servers];
-            const seen = new Set(merged.map((s) => s.url));
-            for (const srv of media.servers) {
-              if (!seen.has(srv.url)) {
-                merged.push(srv);
-                seen.add(srv.url);
-              }
-            }
-            media.servers = merged;
+        }
+        media.servers = merged;
+      }
+      if (watchParsed.media.downloads.length > 0) {
+        const seenDl = new Set(media.downloads.map((d) => d.url));
+        for (const dl of watchParsed.media.downloads) {
+          if (!seenDl.has(dl.url)) {
+            media.downloads.push(dl);
+            seenDl.add(dl.url);
           }
-          if (watchParsed.media.downloads.length > 0) {
-            const seenDl = new Set(media.downloads.map((d) => d.url));
-            for (const dl of watchParsed.media.downloads) {
-              if (!seenDl.has(dl.url)) {
-                media.downloads.push(dl);
-                seenDl.add(dl.url);
-              }
-            }
-          }
-          if (!downloadUrl && watchParsed.hints.downloadSubpageUrl) {
-            downloadUrl = watchParsed.hints.downloadSubpageUrl;
+        }
+      }
+      if (!downloadUrl && watchParsed.hints.downloadSubpageUrl) {
+        downloadUrl = watchParsed.hints.downloadSubpageUrl;
+      }
+      for (const aj of watchParsed.hints.ajaxEmbedIds) {
+        if (!seenAjaxIdSet.has(aj.id)) {
+          seenAjaxIdSet.add(aj.id);
+          collectedAjaxIds.push(aj);
+        }
+      }
+      for (const orig of watchParsed.hints.candidateOrigins) collectedOrigins.add(orig);
+      if (watchParsed.hints.watchForms?.length) collectedWatchForms.push(...watchParsed.hints.watchForms);
+      if (watchParsed.hints.wpAjaxPosts?.length) collectedWpAjaxPosts.push(...watchParsed.hints.wpAjaxPosts);
+
+      if (current.depth < 3 && watchParsed.media.servers.length === 0) {
+        for (const nextCand of watchParsed.hints.watchSubpageCandidates || []) {
+          const canonNext = canonicalizeCompareUrl(nextCand);
+          if (canonNext && !visitedWatchUrls.has(canonNext)) {
+            watchQueue.push({ url: nextCand, depth: current.depth + 1 });
           }
         }
       }
     } catch {
-      // Non-fatal: continue with main page data
+      // Non-fatal: continue with next candidate
     }
   }
 
   // Step 2: If a separate download subpage exists (e.g. download.php?vid=...), fetch it for real download mirrors
-  if (downloadUrl && downloadUrl !== mainUrl && downloadUrl !== watchUrl) {
+  if (downloadUrl && downloadUrl !== mainUrl && downloadUrl !== primaryWatchUrl) {
     try {
       const u = new URL(downloadUrl);
       if (!isBlockedHost(u.hostname)) {
@@ -4063,28 +4502,85 @@ export async function scrapeFullItemWithSubpages(
     }
   }
 
+  let mainOrigin = '';
+  try {
+    if (mainUrl) mainOrigin = new URL(mainUrl).origin;
+  } catch {
+    // ignore
+  }
+
+  // Step 2b: Submit discovered watch <form> targets when forms exist and server list is not already saturated
+  if (collectedWatchForms.length > 0 && media.servers.length < 15) {
+    for (const wf of collectedWatchForms.slice(0, 3)) {
+      try {
+        const fu = new URL(wf.action);
+        if (isBlockedHost(fu.hostname)) continue;
+        const qs = new URLSearchParams(wf.params);
+        let targetFetchUrl = wf.action;
+        const fetchInit: RequestInit = {
+          method: wf.method,
+          headers: {
+            ...DEFAULT_FETCH_HEADERS,
+            Referer: mainUrl || `${fu.origin}/`,
+            Origin: fu.origin,
+          },
+          signal: AbortSignal.timeout(7500),
+        };
+        if (wf.method === 'GET') {
+          qs.forEach((v, k) => fu.searchParams.set(k, v));
+          targetFetchUrl = fu.toString();
+        } else {
+          (fetchInit.headers as Record<string, string>)['Content-Type'] =
+            'application/x-www-form-urlencoded; charset=UTF-8';
+          fetchInit.body = qs.toString();
+        }
+        const fRes = await fetch(targetFetchUrl, fetchInit);
+        if (!fRes.ok) continue;
+        const fText = await fRes.text();
+        if (fText.length > 40) {
+          const fParsed = parseHtmlToMediaWithHints(fText, targetFetchUrl);
+          const seen = new Set(media.servers.map((s) => s.url));
+          for (const srv of fParsed.media.servers) {
+            if (!seen.has(srv.url) && !isLikelyNonVideoWebsiteUrl(srv.url, mainOrigin)) {
+              media.servers.push(srv);
+              seen.add(srv.url);
+            }
+          }
+          if (media.servers.length >= 25) break;
+        }
+      } catch {
+        // Non-fatal
+      }
+    }
+  }
+
   // Step 3: If servers are loaded dynamically via AJAX embed IDs (e.g. FaselHD `data-embed="173411"`), resolve them via /ajax/embed
-  if (media.servers.length === 0 && hints.ajaxEmbedIds.length > 0) {
+  if (media.servers.length === 0 && collectedAjaxIds.length > 0) {
     const ajaxServers = await resolveAjaxEmbedsFromOrigins(
-      hints.ajaxEmbedIds,
-      hints.candidateOrigins,
+      collectedAjaxIds,
+      Array.from(collectedOrigins),
       mainUrl,
       media.quality
     );
     const seen = new Set(media.servers.map((s) => s.url));
     for (const srv of ajaxServers) {
-      if (!seen.has(srv.url) && !isLikelyNonVideoWebsiteUrl(srv.url)) {
+      if (!seen.has(srv.url) && !isLikelyNonVideoWebsiteUrl(srv.url, mainOrigin)) {
         media.servers.push(srv);
         seen.add(srv.url);
       }
     }
   }
 
-  let mainOrigin = '';
-  try {
-    if (mainUrl) mainOrigin = new URL(mainUrl).origin;
-  } catch {
-    // ignore
+  // Step 3b: WordPress admin-ajax / theme TWatch AJAX fallback
+  if (collectedWpAjaxPosts.length > 0 && media.servers.length < 20) {
+    const wpServers = await resolveWpAjaxPosts(collectedWpAjaxPosts, mainUrl, mainOrigin, media.quality);
+    const seen = new Set(media.servers.map((s) => s.url));
+    for (const srv of wpServers) {
+      if (!seen.has(srv.url) && !isLikelyNonVideoWebsiteUrl(srv.url, mainOrigin)) {
+        media.servers.push(srv);
+        seen.add(srv.url);
+      }
+    }
   }
 
   const skipExternal = Boolean(options?.skipExternalEnrichment || options?.skipEpisodeCrawl);
@@ -4094,7 +4590,7 @@ export async function scrapeFullItemWithSubpages(
   const [filteredServers, fallbackTrailer, resolvedImages, resolvedRating, resolvedCast] =
     await Promise.all([
       verifyScrapedServers(media.servers, mainOrigin, {
-        skipRemoteProbe: Boolean(options?.skipEpisodeCrawl && options?.skipExternalEnrichment),
+        skipRemoteProbe: false,
       }),
       media.trailerUrl || skipExternal
         ? Promise.resolve(media.trailerUrl)
@@ -4274,7 +4770,7 @@ export async function scrapeFullItemWithSubpages(
                   id: `ep-s${seasonNumber}-e${ep.number}-srv-${sIdx + 1}`,
                   name: cleanBaselineServerName(s.name, s.url, sIdx),
                 }));
-              if (watchUrl) ep.watchSubpageUrl = watchUrl;
+              if (primaryWatchUrl) ep.watchSubpageUrl = primaryWatchUrl;
               ep.watchUrl = ep.servers[0]?.url || '';
               return;
             }
